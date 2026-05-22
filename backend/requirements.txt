@@ -1,5 +1,16 @@
-# Backend requirements para CRM Local AI
-fastapi>=0.100.0
-uvicorn>=0.23.0
-sqlmodel>=0.0.8
-pydantic>=2.0.0
+# Runtime principal (stdlib HTTP server, sin framework)
+# Instalar con: pip install -r requirements.txt
+
+# Parseo de archivos
+pandas>=2.0.0
+openpyxl>=3.1.0
+pypdf>=3.0.0
+
+# OCR local (requiere instalacion separada de Tesseract-OCR)
+pytesseract>=0.3.10
+
+# Integracion OpenAI (OCR por API y clasificacion asistida)
+openai>=1.0.0
+
+# Linting y formato (dev)
+ruff>=0.4.0
