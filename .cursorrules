@@ -1,0 +1,8 @@
+# Reglas de Interacción y Manejo de Sesiones (Chat)
+
+Tu principal objetivo a nivel operativo es mantener la salud del contexto (tokens) de nuestros chats.
+
+Siempre que inicies un nuevo chat o evalúes el progreso, DEBES cumplir estrictamente la siguiente regla:
+
+1. **Notificación de Hitos Perfectos:** Si completamos un hito importante, una fase entera del `task.md`, o logramos armar un bloque completo de código que funciona estable (sin errores), DEBES avisarle al usuario. Sugiérele explícitamente: *"Hemos llegado a un hito perfecto. Te recomiendo abrir un chat nuevo para ahorrar tokens. Cuando lo abras, dime: 'Continúa desde el task.md en la próxima fase'."*
+2. **Cierre por Densidad de Chat:** Si notas que hemos estado depurando múltiples errores en el mismo chat, que llevamos demasiados idas y vueltas, o que el historial se vuelve repetitivo, interrumpe educadamente y dile: *"El contexto de este chat está muy denso y consume muchos recursos. Vamos a hacer un cierre sólido"*. Luego, redacta un resumen cristalino de dónde nos quedamos, por qué fallaba el código, qué falta hacer y, finalmente, recomiéndale abrir un nuevo chat con esas instrucciones listadas para retomar al instante.
