@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# Load .env before any module import that reads os.environ at module level
+from dotenv import load_dotenv
+load_dotenv()
+
 import io
 import os
 from contextlib import asynccontextmanager
