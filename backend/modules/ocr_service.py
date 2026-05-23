@@ -162,6 +162,18 @@ def extract_text_with_openai(raw_bytes: bytes, filename: str, mime_type: str) ->
 
 
 def extract_text_from_pdf(raw_bytes: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(raw_bytes))
+        pages_text = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                pages_text.append(text)
+        if pages_text:
+            return "\n".join(pages_text)
+    except Exception:
+        pass
     return raw_bytes.decode("latin-1", errors="ignore")
 
 
@@ -242,6 +254,37 @@ def infer_status(contact: str) -> str:
     return "revisar" if contact == "A quien corresponda" else "mantener"
 
 
+# Keywords that appear in the same row/block as an email in the PDF
+_STATUS_KEYWORDS: list[tuple[re.Pattern, str, str, str]] = [
+    # (pattern, status, decision, next_action)
+    (re.compile(r"\bSACAR\b|\bREBOT[OÓ]\b|\bELIMINAR\b|\bBOTAR\b", re.IGNORECASE), "sacar", "skip", "descartar"),
+    (re.compile(r"\bPRIORIDAD\b|\bVIP\b|\bTOP\b", re.IGNORECASE), "prioridad", "approve", "seguir"),
+    (re.compile(r"\bPORTAL\b", re.IGNORECASE), "portal", "approve", "portal"),
+    (re.compile(r"\bSEGUIMIENTO\b|\bFOLLOW[- ]?UP\b", re.IGNORECASE), "seguimiento", "approve", "seguir"),
+    (re.compile(r"\bREVISAR\b|\bVERIFICAR\b|\bCHECKEAR\b", re.IGNORECASE), "revisar", "approve", "revisar_manual"),
+    (re.compile(r"\bMANTENER\b|\bV[AÁ]LIDO\b|\bACTIVO\b|\bOK\b", re.IGNORECASE), "mantener", "approve", "enviar"),
+]
+
+
+def infer_status_from_context(full_text: str, email: str) -> dict | None:
+    """Return {status, decision, next_action} if the PDF line near *email* has a status keyword."""
+    lines = full_text.splitlines()
+    target_lines: list[str] = []
+    for idx, line in enumerate(lines):
+        if email.lower() in line.lower():
+            # Include the line itself plus one line above/below for context
+            start = max(0, idx - 1)
+            end = min(len(lines), idx + 2)
+            target_lines.extend(lines[start:end])
+    if not target_lines:
+        return None
+    context = " ".join(target_lines)
+    for pattern, status, decision, next_action in _STATUS_KEYWORDS:
+        if pattern.search(context):
+            return {"status": status, "decision": decision, "next_action": next_action}
+    return None
+
+
 def infer_next_action(status: str | None, decision: str | None) -> str:
     normalized_status = normalize_status(status)
     normalized_decision = normalize_decision(decision)
@@ -282,6 +325,7 @@ def build_suggested_message(candidate: dict) -> str:
 def prepare_candidates(extraction: dict, existing_emails: set[str]) -> list[dict]:
     seen_in_file: set[str] = set()
     prepared: list[dict] = []
+    full_text = extraction.get("text", "")
 
     for email in sorted(set(extraction["emails"])):
         normalized_email = email.strip().lower() or None
@@ -294,6 +338,7 @@ def prepare_candidates(extraction: dict, existing_emails: set[str]) -> list[dict
         decision = "approve"
         reason = ""
         status = infer_status(contact)
+        pdf_context: dict | None = None
 
         if normalized_email in existing_emails or normalized_email in seen_in_file:
             decision = "duplicate"
@@ -301,6 +346,12 @@ def prepare_candidates(extraction: dict, existing_emails: set[str]) -> list[dict
         elif not VALID_EMAIL_RE.fullmatch(normalized_email):
             decision = "invalid"
             reason = "Formato de email invalido."
+        else:
+            pdf_context = infer_status_from_context(full_text, normalized_email)
+            if pdf_context:
+                status = pdf_context["status"]
+                decision = pdf_context["decision"]
+                reason = f"Estado detectado desde contexto del PDF: {status.upper()}"
 
         seen_in_file.add(normalized_email)
         prepared.append(
@@ -315,6 +366,7 @@ def prepare_candidates(extraction: dict, existing_emails: set[str]) -> list[dict
                 "raw_text": normalized_email,
                 "decision": decision,
                 "reason": reason,
+                "_pdf_context": bool(pdf_context),
             }
         )
 
@@ -342,14 +394,24 @@ def classify_candidates(candidates: list[dict], *, capabilities: dict) -> tuple[
 
     if capabilities.get("openai_enabled"):
         try:
-            return classify_candidates_with_openai(classified), "openai"
+            result, provider = classify_candidates_with_openai(classified), "openai"
         except Exception:
-            return classified, "heuristic"
-    return classified, "heuristic"
+            result, provider = classified, "heuristic"
+    else:
+        result, provider = classified, "heuristic"
+
+    for c in result:
+        c.pop("_pdf_context", None)
+    return result, provider
 
 
 def apply_heuristic_classification(candidate: dict) -> dict:
-    if candidate["decision"] in {"duplicate", "invalid"}:
+    if candidate.get("_pdf_context"):
+        candidate["next_action"] = infer_next_action(candidate["status"], candidate["decision"])
+        candidate["suggested_message"] = build_suggested_message(candidate)
+        return candidate
+
+    if candidate["decision"] in {"duplicate", "invalid", "skip"}:
         candidate["next_action"] = infer_next_action(candidate["status"], candidate["decision"])
         candidate["suggested_message"] = build_suggested_message(candidate)
         return candidate
