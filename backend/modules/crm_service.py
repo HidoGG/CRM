@@ -8,7 +8,9 @@ from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from urllib.parse import quote, urlencode
 
-from modules.database import connection, insert_history, now_iso, row_to_dict
+from sqlalchemy import text
+
+from modules.database import get_session, insert_history, now_iso, row_to_dict
 
 
 # ---------------------------------------------------------------------------
@@ -51,23 +53,23 @@ def normalize_email(value: object) -> str | None:
 
 
 def normalize_status(value: object) -> str:
-    text = str(value or "revisar").strip().lower()
-    if text in {"mantener", "revisar", "seguimiento", "prioridad", "sacar", "portal"}:
-        return text
+    text_val = str(value or "revisar").strip().lower()
+    if text_val in {"mantener", "revisar", "seguimiento", "prioridad", "sacar", "portal"}:
+        return text_val
     return "revisar"
 
 
 def normalize_next_action(value: object) -> str:
-    text = str(value or "revisar_manual").strip().lower()
-    if text in {"enviar", "seguir", "portal", "descartar", "revisar_manual"}:
-        return text
+    text_val = str(value or "revisar_manual").strip().lower()
+    if text_val in {"enviar", "seguir", "portal", "descartar", "revisar_manual"}:
+        return text_val
     return "revisar_manual"
 
 
 def normalize_decision(value: object) -> str:
-    text = str(value or "pending").strip().lower()
-    if text in {"approve", "skip", "duplicate", "invalid", "pending"}:
-        return text
+    text_val = str(value or "pending").strip().lower()
+    if text_val in {"approve", "skip", "duplicate", "invalid", "pending"}:
+        return text_val
     return "pending"
 
 
@@ -371,94 +373,106 @@ def build_reporting_overview(contacts: list[dict], history: list[dict]) -> dict:
     }
 
 
-def build_reporting_overview_payload(conn) -> dict:
-    contact_rows = conn.execute(
-        """
-        SELECT id, status, next_action, follow_up_date, portal_status, discard_reason, updated_at
-        FROM contacts
-        """
+def build_reporting_overview_payload(session) -> dict:
+    contact_rows = session.execute(
+        text("""
+            SELECT id, status, next_action, follow_up_date, portal_status, discard_reason, updated_at
+            FROM contacts
+        """)
     ).fetchall()
-    history_rows = conn.execute(
-        """
-        SELECT event_type, metadata_json, created_at
-        FROM history
-        WHERE event_type = 'contact.action_executed'
-          AND created_at >= ?
-        ORDER BY created_at DESC, id DESC
-        """,
-        ((datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds"),),
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds")
+    history_rows = session.execute(
+        text("""
+            SELECT event_type, metadata_json, created_at
+            FROM history
+            WHERE event_type = 'contact.action_executed'
+              AND created_at >= :cutoff
+            ORDER BY created_at DESC, id DESC
+        """),
+        {"cutoff": cutoff},
     ).fetchall()
     contacts = [row_to_dict(row) for row in contact_rows]
     history = [row_to_dict(row) for row in history_rows]
     return build_reporting_overview(contacts, history)
 
 
-def persist_reporting_snapshot(conn, overview: dict) -> None:
+def persist_reporting_snapshot(session, overview: dict) -> None:
     snapshot_date = overview.get("snapshot_date")
     queue = overview.get("queue", {})
     now = now_iso()
-    conn.execute(
-        """
-        INSERT INTO reporting_snapshots (
-            snapshot_date, total_contacts, active_total,
-            overdue_count, due_today_count, due_this_week_count,
-            without_date_count, statuses_json, actions_json,
-            created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(snapshot_date) DO UPDATE SET
-            total_contacts = excluded.total_contacts,
-            active_total = excluded.active_total,
-            overdue_count = excluded.overdue_count,
-            due_today_count = excluded.due_today_count,
-            due_this_week_count = excluded.due_this_week_count,
-            without_date_count = excluded.without_date_count,
-            statuses_json = excluded.statuses_json,
-            actions_json = excluded.actions_json,
-            updated_at = excluded.updated_at
-        """,
-        (
-            snapshot_date,
-            int(sum(item.get("count", 0) for item in overview.get("pipeline", {}).get("by_status", []))),
-            int(queue.get("active_total", 0)),
-            int(queue.get("overdue", 0)),
-            int(queue.get("due_today", 0)),
-            int(queue.get("due_this_week", 0)),
-            int(queue.get("without_date", 0)),
-            json.dumps(overview.get("pipeline", {}).get("by_status", []), ensure_ascii=True),
-            json.dumps(overview.get("pipeline", {}).get("by_action", []), ensure_ascii=True),
-            now,
-            now,
-        ),
+    session.execute(
+        text("""
+            INSERT INTO reporting_snapshots (
+                snapshot_date, total_contacts, active_total,
+                overdue_count, due_today_count, due_this_week_count,
+                without_date_count, statuses_json, actions_json,
+                created_at, updated_at
+            )
+            VALUES (
+                :snapshot_date, :total_contacts, :active_total,
+                :overdue_count, :due_today_count, :due_this_week_count,
+                :without_date_count, :statuses_json, :actions_json,
+                :created_at, :updated_at
+            )
+            ON CONFLICT (snapshot_date) DO UPDATE SET
+                total_contacts = EXCLUDED.total_contacts,
+                active_total = EXCLUDED.active_total,
+                overdue_count = EXCLUDED.overdue_count,
+                due_today_count = EXCLUDED.due_today_count,
+                due_this_week_count = EXCLUDED.due_this_week_count,
+                without_date_count = EXCLUDED.without_date_count,
+                statuses_json = EXCLUDED.statuses_json,
+                actions_json = EXCLUDED.actions_json,
+                updated_at = EXCLUDED.updated_at
+        """),
+        {
+            "snapshot_date": snapshot_date,
+            "total_contacts": int(sum(
+                item.get("count", 0) for item in overview.get("pipeline", {}).get("by_status", [])
+            )),
+            "active_total": int(queue.get("active_total", 0)),
+            "overdue_count": int(queue.get("overdue", 0)),
+            "due_today_count": int(queue.get("due_today", 0)),
+            "due_this_week_count": int(queue.get("due_this_week", 0)),
+            "without_date_count": int(queue.get("without_date", 0)),
+            "statuses_json": json.dumps(
+                overview.get("pipeline", {}).get("by_status", []), ensure_ascii=True
+            ),
+            "actions_json": json.dumps(
+                overview.get("pipeline", {}).get("by_action", []), ensure_ascii=True
+            ),
+            "created_at": now,
+            "updated_at": now,
+        },
     )
 
 
-def get_previous_reporting_snapshot(conn, snapshot_date: str) -> dict | None:
-    row = conn.execute(
-        """
-        SELECT snapshot_date, total_contacts, active_total, overdue_count,
-               due_today_count, due_this_week_count, without_date_count,
-               statuses_json, actions_json, created_at, updated_at
-        FROM reporting_snapshots
-        WHERE snapshot_date < ?
-        ORDER BY snapshot_date DESC
-        LIMIT 1
-        """,
-        (snapshot_date,),
+def get_previous_reporting_snapshot(session, snapshot_date: str) -> dict | None:
+    row = session.execute(
+        text("""
+            SELECT snapshot_date, total_contacts, active_total, overdue_count,
+                   due_today_count, due_this_week_count, without_date_count,
+                   statuses_json, actions_json, created_at, updated_at
+            FROM reporting_snapshots
+            WHERE snapshot_date < :snapshot_date
+            ORDER BY snapshot_date DESC
+            LIMIT 1
+        """),
+        {"snapshot_date": snapshot_date},
     ).fetchone()
     return row_to_dict(row) if row is not None else None
 
 
-def get_recent_reporting_snapshots(conn, limit: int) -> list[dict]:
-    rows = conn.execute(
-        """
-        SELECT snapshot_date, total_contacts, active_total, overdue_count,
-               due_today_count, due_this_week_count, without_date_count
-        FROM reporting_snapshots
-        ORDER BY snapshot_date DESC
-        LIMIT ?
-        """,
-        (limit,),
+def get_recent_reporting_snapshots(session, limit: int) -> list[dict]:
+    rows = session.execute(
+        text("""
+            SELECT snapshot_date, total_contacts, active_total, overdue_count,
+                   due_today_count, due_this_week_count, without_date_count
+            FROM reporting_snapshots
+            ORDER BY snapshot_date DESC
+            LIMIT :limit
+        """),
+        {"limit": limit},
     ).fetchall()
     return [row_to_dict(row) for row in rows]
 
@@ -466,7 +480,9 @@ def get_recent_reporting_snapshots(conn, limit: int) -> list[dict]:
 def build_stock_comparison(overview: dict, previous_snapshot: dict | None) -> dict:
     queue = overview.get("queue", {})
     current = {
-        "total_contacts": int(sum(item.get("count", 0) for item in overview.get("pipeline", {}).get("by_status", []))),
+        "total_contacts": int(sum(
+            item.get("count", 0) for item in overview.get("pipeline", {}).get("by_status", [])
+        )),
         "active_total": int(queue.get("active_total", 0)),
         "overdue_count": int(queue.get("overdue", 0)),
         "without_date_count": int(queue.get("without_date", 0)),
@@ -541,29 +557,33 @@ _CONTACT_COLS = (
 
 
 def get_contacts(limit: int = 100, offset: int = 0) -> list[dict]:
-    with connection() as conn:
-        rows = conn.execute(
-            f"SELECT {_CONTACT_COLS} FROM contacts ORDER BY id DESC LIMIT ? OFFSET ?",
-            (limit, offset),
+    with get_session() as session:
+        rows = session.execute(
+            text(f"SELECT {_CONTACT_COLS} FROM contacts ORDER BY id DESC LIMIT :limit OFFSET :offset"),
+            {"limit": limit, "offset": offset},
         ).fetchall()
     return [row_to_dict(row) for row in rows]
 
 
 def get_summary() -> dict:
-    with connection() as conn:
-        total_contacts = conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0]
-        total_companies = conn.execute(
+    with get_session() as session:
+        total_contacts = session.execute(text("SELECT COUNT(*) FROM contacts")).fetchone()[0]
+        total_companies = session.execute(text(
             "SELECT COUNT(DISTINCT company) FROM contacts WHERE company IS NOT NULL AND TRIM(company) <> ''"
-        ).fetchone()[0]
-        priority_contacts = conn.execute(
+        )).fetchone()[0]
+        priority_contacts = session.execute(text(
             "SELECT COUNT(*) FROM contacts WHERE lower(status) = 'prioridad'"
-        ).fetchone()[0]
-        review_contacts = conn.execute(
+        )).fetchone()[0]
+        review_contacts = session.execute(text(
             "SELECT COUNT(*) FROM contacts WHERE lower(status) = 'revisar'"
-        ).fetchone()[0]
-        imports_count = conn.execute("SELECT COUNT(*) FROM imports").fetchone()[0]
-        draft_imports = conn.execute("SELECT COUNT(*) FROM imports WHERE status = 'draft'").fetchone()[0]
-        confirmed_imports = conn.execute("SELECT COUNT(*) FROM imports WHERE status = 'confirmed'").fetchone()[0]
+        )).fetchone()[0]
+        imports_count = session.execute(text("SELECT COUNT(*) FROM imports")).fetchone()[0]
+        draft_imports = session.execute(text(
+            "SELECT COUNT(*) FROM imports WHERE status = 'draft'"
+        )).fetchone()[0]
+        confirmed_imports = session.execute(text(
+            "SELECT COUNT(*) FROM imports WHERE status = 'confirmed'"
+        )).fetchone()[0]
     return {
         "total_contacts": int(total_contacts),
         "total_companies": int(total_companies),
@@ -576,23 +596,24 @@ def get_summary() -> dict:
 
 
 def get_contact_history(contact_id: int) -> list[dict]:
-    with connection() as conn:
-        contact = conn.execute(
-            "SELECT id, email FROM contacts WHERE id = ?", (contact_id,)
+    with get_session() as session:
+        row = session.execute(
+            text("SELECT id, email FROM contacts WHERE id = :id"),
+            {"id": contact_id},
         ).fetchone()
-        if contact is None:
+        if row is None:
             raise ServiceError("Contact not found", HTTPStatus.NOT_FOUND)
-        email = contact["email"]
-        rows = conn.execute(
-            """
-            SELECT id, event_type, entity_type, entity_id, message, metadata_json, created_at
-            FROM history
-            WHERE (entity_type = 'contact' AND entity_id = ?)
-               OR (metadata_json IS NOT NULL AND instr(lower(metadata_json), lower(?)) > 0)
-            ORDER BY created_at DESC, id DESC
-            LIMIT 30
-            """,
-            (str(contact_id), email),
+        email = row_to_dict(row)["email"]
+        rows = session.execute(
+            text("""
+                SELECT id, event_type, entity_type, entity_id, message, metadata_json, created_at
+                FROM history
+                WHERE (entity_type = 'contact' AND entity_id = :contact_id)
+                   OR (metadata_json IS NOT NULL AND strpos(lower(metadata_json), lower(:email)) > 0)
+                ORDER BY created_at DESC, id DESC
+                LIMIT 30
+            """),
+            {"contact_id": str(contact_id), "email": email},
         ).fetchall()
     return [row_to_dict(row) for row in rows]
 
@@ -606,49 +627,59 @@ def create_contact(payload: dict) -> dict:
         raise ServiceError("name cannot be empty", HTTPStatus.UNPROCESSABLE_ENTITY)
 
     now = now_iso()
-    with connection() as conn:
-        existing = conn.execute("SELECT id FROM contacts WHERE email = ?", (email,)).fetchone()
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT id FROM contacts WHERE email = :email"),
+            {"email": email},
+        ).fetchone()
         if existing is not None:
             raise ServiceError("contact email already exists", HTTPStatus.CONFLICT)
 
-        cursor = conn.execute(
-            f"""
-            INSERT INTO contacts (
-                email, name, company, title, status, next_action, suggested_message,
-                follow_up_date, portal_url, portal_status, discard_reason, source, notes, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                email,
-                name,
-                clean_optional(payload.get("company")),
-                clean_optional(payload.get("title")),
-                normalize_status(payload.get("status", "mantener")),
-                normalize_next_action(payload.get("next_action")),
-                clean_optional(payload.get("suggested_message")),
-                normalize_follow_up_date(payload.get("follow_up_date"))
-                or infer_follow_up_date_for_action(payload.get("next_action")),
-                clean_optional(payload.get("portal_url")),
-                clean_optional(payload.get("portal_status")),
-                clean_optional(payload.get("discard_reason")),
-                str(payload.get("source", "manual")).strip() or "manual",
-                clean_optional(payload.get("notes")),
-                now,
-                now,
-            ),
+        result = session.execute(
+            text(f"""
+                INSERT INTO contacts (
+                    email, name, company, title, status, next_action, suggested_message,
+                    follow_up_date, portal_url, portal_status, discard_reason, source, notes, created_at, updated_at
+                )
+                VALUES (
+                    :email, :name, :company, :title, :status, :next_action, :suggested_message,
+                    :follow_up_date, :portal_url, :portal_status, :discard_reason, :source, :notes, :created_at, :updated_at
+                )
+                RETURNING id
+            """),
+            {
+                "email": email,
+                "name": name,
+                "company": clean_optional(payload.get("company")),
+                "title": clean_optional(payload.get("title")),
+                "status": normalize_status(payload.get("status", "mantener")),
+                "next_action": normalize_next_action(payload.get("next_action")),
+                "suggested_message": clean_optional(payload.get("suggested_message")),
+                "follow_up_date": (
+                    normalize_follow_up_date(payload.get("follow_up_date"))
+                    or infer_follow_up_date_for_action(payload.get("next_action"))
+                ),
+                "portal_url": clean_optional(payload.get("portal_url")),
+                "portal_status": clean_optional(payload.get("portal_status")),
+                "discard_reason": clean_optional(payload.get("discard_reason")),
+                "source": str(payload.get("source", "manual")).strip() or "manual",
+                "notes": clean_optional(payload.get("notes")),
+                "created_at": now,
+                "updated_at": now,
+            },
         )
-        contact_id = int(cursor.lastrowid)
+        contact_id = int(result.fetchone()[0])
         insert_history(
-            conn,
+            session,
             event_type="contact.created",
             entity_type="contact",
             entity_id=str(contact_id),
             message=f"Created contact {email}",
             metadata_json=json.dumps({"email": email, "name": name}, ensure_ascii=True),
         )
-        row = conn.execute(
-            f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = ?", (contact_id,)
+        row = session.execute(
+            text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
+            {"id": contact_id},
         ).fetchone()
     return row_to_dict(row)
 
@@ -663,9 +694,10 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
     discard_reason = clean_optional(payload.get("discard_reason"))
     now = now_iso()
 
-    with connection() as conn:
-        row = conn.execute(
-            f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = ?", (contact_id,)
+    with get_session() as session:
+        row = session.execute(
+            text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
+            {"id": contact_id},
         ).fetchone()
         if row is None:
             raise ServiceError("Contact not found", HTTPStatus.NOT_FOUND)
@@ -707,21 +739,29 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
                 build_structured_action_note(action, next_portal_url, next_portal_status, next_discard_reason),
             )
 
-        conn.execute(
-            """
-            UPDATE contacts
-            SET status = ?, next_action = ?, suggested_message = ?, follow_up_date = ?,
-                portal_url = ?, portal_status = ?, discard_reason = ?, notes = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                next_status, next_action, updated_message, follow_up_date,
-                next_portal_url, next_portal_status, next_discard_reason,
-                merged_note, now, contact_id,
-            ),
+        session.execute(
+            text("""
+                UPDATE contacts
+                SET status = :status, next_action = :next_action, suggested_message = :suggested_message,
+                    follow_up_date = :follow_up_date, portal_url = :portal_url, portal_status = :portal_status,
+                    discard_reason = :discard_reason, notes = :notes, updated_at = :updated_at
+                WHERE id = :id
+            """),
+            {
+                "status": next_status,
+                "next_action": next_action,
+                "suggested_message": updated_message,
+                "follow_up_date": follow_up_date,
+                "portal_url": next_portal_url,
+                "portal_status": next_portal_status,
+                "discard_reason": next_discard_reason,
+                "notes": merged_note,
+                "updated_at": now,
+                "id": contact_id,
+            },
         )
         insert_history(
-            conn,
+            session,
             event_type="contact.action_executed",
             entity_type="contact",
             entity_id=str(contact_id),
@@ -741,8 +781,9 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
                 ensure_ascii=True,
             ),
         )
-        updated_row = conn.execute(
-            f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = ?", (contact_id,)
+        updated_row = session.execute(
+            text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
+            {"id": contact_id},
         ).fetchone()
 
     result = {
@@ -761,22 +802,22 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def get_reporting_overview() -> dict:
-    with connection() as conn:
-        overview = build_reporting_overview_payload(conn)
-        persist_reporting_snapshot(conn, overview)
-        previous_snapshot = get_previous_reporting_snapshot(conn, overview["snapshot_date"])
-        recent_snapshots = get_recent_reporting_snapshots(conn, 30)
+    with get_session() as session:
+        overview = build_reporting_overview_payload(session)
+        persist_reporting_snapshot(session, overview)
+        previous_snapshot = get_previous_reporting_snapshot(session, overview["snapshot_date"])
+        recent_snapshots = get_recent_reporting_snapshots(session, 30)
     overview["stock_comparison"] = build_stock_comparison(overview, previous_snapshot)
     overview["recent_snapshots"] = recent_snapshots
     return overview
 
 
 def export_reporting_csv(export_type: str, limit: int) -> tuple[str, str]:
-    with connection() as conn:
-        overview = build_reporting_overview_payload(conn)
-        persist_reporting_snapshot(conn, overview)
-        previous_snapshot = get_previous_reporting_snapshot(conn, overview["snapshot_date"])
-        recent_snapshots = get_recent_reporting_snapshots(conn, limit)
+    with get_session() as session:
+        overview = build_reporting_overview_payload(session)
+        persist_reporting_snapshot(session, overview)
+        previous_snapshot = get_previous_reporting_snapshot(session, overview["snapshot_date"])
+        recent_snapshots = get_recent_reporting_snapshots(session, limit)
     overview["stock_comparison"] = build_stock_comparison(overview, previous_snapshot)
     overview["recent_snapshots"] = recent_snapshots
 
@@ -805,24 +846,25 @@ _CANDIDATE_COLS = (
 
 
 def get_imports(limit: int = 50, offset: int = 0) -> list[dict]:
-    with connection() as conn:
-        rows = conn.execute(
-            f"SELECT {_IMPORT_COLS} FROM imports ORDER BY id DESC LIMIT ? OFFSET ?",
-            (limit, offset),
+    with get_session() as session:
+        rows = session.execute(
+            text(f"SELECT {_IMPORT_COLS} FROM imports ORDER BY id DESC LIMIT :limit OFFSET :offset"),
+            {"limit": limit, "offset": offset},
         ).fetchall()
     return [row_to_dict(row) for row in rows]
 
 
 def get_import_detail(import_id: int) -> dict:
-    with connection() as conn:
-        batch = conn.execute(
-            f"SELECT {_IMPORT_COLS} FROM imports WHERE id = ?", (import_id,)
+    with get_session() as session:
+        batch = session.execute(
+            text(f"SELECT {_IMPORT_COLS} FROM imports WHERE id = :id"),
+            {"id": import_id},
         ).fetchone()
         if batch is None:
             raise ServiceError("Import not found", HTTPStatus.NOT_FOUND)
-        candidates = conn.execute(
-            f"SELECT {_CANDIDATE_COLS} FROM import_candidates WHERE import_id = ? ORDER BY id ASC",
-            (import_id,),
+        candidates = session.execute(
+            text(f"SELECT {_CANDIDATE_COLS} FROM import_candidates WHERE import_id = :import_id ORDER BY id ASC"),
+            {"import_id": import_id},
         ).fetchall()
     payload = row_to_dict(batch)
     payload["candidates"] = [row_to_dict(row) for row in candidates]
@@ -836,20 +878,29 @@ def create_mock_import(payload: dict) -> dict:
     notes = clean_optional(payload.get("notes"))
     now = now_iso()
 
-    with connection() as conn:
-        cursor = conn.execute(
-            f"""
-            INSERT INTO imports (
-                filename, mime_type, source, total_contacts, total_ready,
-                total_duplicates, total_invalid, confirmed_contacts, status, notes, created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (filename, "text/csv", source, total_contacts, total_contacts, 0, 0, 0, "mock", notes, now),
+    with get_session() as session:
+        result = session.execute(
+            text("""
+                INSERT INTO imports (
+                    filename, mime_type, source, total_contacts, total_ready,
+                    total_duplicates, total_invalid, confirmed_contacts, status, notes, created_at
+                )
+                VALUES (
+                    :filename, :mime_type, :source, :total_contacts, :total_ready,
+                    :total_duplicates, :total_invalid, :confirmed_contacts, :status, :notes, :created_at
+                )
+                RETURNING id
+            """),
+            {
+                "filename": filename, "mime_type": "text/csv", "source": source,
+                "total_contacts": total_contacts, "total_ready": total_contacts,
+                "total_duplicates": 0, "total_invalid": 0, "confirmed_contacts": 0,
+                "status": "mock", "notes": notes, "created_at": now,
+            },
         )
-        import_id = int(cursor.lastrowid)
+        import_id = int(result.fetchone()[0])
         insert_history(
-            conn,
+            session,
             event_type="import.mock_created",
             entity_type="import",
             entity_id=str(import_id),
@@ -862,69 +913,74 @@ def create_mock_import(payload: dict) -> dict:
     }
 
 
-def preview_import(payload: dict) -> dict:
-    from modules.ocr_service import extract_candidates_from_file, prepare_candidates, classify_candidates, summarize_candidates
-    import base64
-
-    filename = str(payload.get("filename", "archivo.txt")).strip() or "archivo.txt"
-    mime_type = str(payload.get("mime_type", "application/octet-stream")).strip() or "application/octet-stream"
-    content_base64 = str(payload.get("content_base64", "")).strip()
-    source = str(payload.get("source", "upload")).strip() or "upload"
-
-    if not content_base64:
-        raise ServiceError("missing content_base64", HTTPStatus.UNPROCESSABLE_ENTITY)
-    try:
-        raw_bytes = base64.b64decode(content_base64)
-    except Exception:
-        raise ServiceError("invalid base64 payload", HTTPStatus.UNPROCESSABLE_ENTITY)
+def preview_import(filename: str, mime_type: str, raw_bytes: bytes, source: str) -> dict:
+    from modules.ocr_service import classify_candidates, extract_candidates_from_file, prepare_candidates, summarize_candidates
 
     extraction = extract_candidates_from_file(filename, mime_type, raw_bytes)
-    with connection() as conn:
+    with get_session() as session:
         existing_emails = {
-            row["email"].strip().lower()
-            for row in conn.execute("SELECT email FROM contacts WHERE email IS NOT NULL").fetchall()
+            row_to_dict(row)["email"].strip().lower()
+            for row in session.execute(
+                text("SELECT email FROM contacts WHERE email IS NOT NULL")
+            ).fetchall()
         }
         prepared = prepare_candidates(extraction, existing_emails)
         prepared, classification_provider = classify_candidates(prepared, capabilities=extraction["capabilities"])
         totals = summarize_candidates(prepared)
         now = now_iso()
-        cursor = conn.execute(
-            f"""
-            INSERT INTO imports (
-                filename, mime_type, source, total_contacts, total_ready,
-                total_duplicates, total_invalid, confirmed_contacts, status, notes, created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                filename, mime_type, source,
-                totals["total_contacts"], totals["total_ready"],
-                totals["total_duplicates"], totals["total_invalid"],
-                0, "draft", extraction["notes"], now,
-            ),
+        result = session.execute(
+            text("""
+                INSERT INTO imports (
+                    filename, mime_type, source, total_contacts, total_ready,
+                    total_duplicates, total_invalid, confirmed_contacts, status, notes, created_at
+                )
+                VALUES (
+                    :filename, :mime_type, :source, :total_contacts, :total_ready,
+                    :total_duplicates, :total_invalid, :confirmed_contacts, :status, :notes, :created_at
+                )
+                RETURNING id
+            """),
+            {
+                "filename": filename, "mime_type": mime_type, "source": source,
+                "total_contacts": totals["total_contacts"], "total_ready": totals["total_ready"],
+                "total_duplicates": totals["total_duplicates"], "total_invalid": totals["total_invalid"],
+                "confirmed_contacts": 0, "status": "draft", "notes": extraction["notes"], "created_at": now,
+            },
         )
-        import_id = int(cursor.lastrowid)
+        import_id = int(result.fetchone()[0])
 
         for candidate in prepared:
-            conn.execute(
-                f"""
-                INSERT INTO import_candidates (
-                    import_id, email, name, company, title, status, next_action, suggested_message,
-                    source, notes, raw_text, decision, reason, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    import_id,
-                    candidate["email"], candidate["name"], candidate["company"],
-                    candidate["title"], candidate["status"], candidate["next_action"],
-                    candidate["suggested_message"], candidate["source"], candidate["notes"],
-                    candidate["raw_text"], candidate["decision"], candidate["reason"], now,
-                ),
+            session.execute(
+                text("""
+                    INSERT INTO import_candidates (
+                        import_id, email, name, company, title, status, next_action, suggested_message,
+                        source, notes, raw_text, decision, reason, created_at
+                    )
+                    VALUES (
+                        :import_id, :email, :name, :company, :title, :status, :next_action, :suggested_message,
+                        :source, :notes, :raw_text, :decision, :reason, :created_at
+                    )
+                """),
+                {
+                    "import_id": import_id,
+                    "email": candidate["email"],
+                    "name": candidate["name"],
+                    "company": candidate["company"],
+                    "title": candidate["title"],
+                    "status": candidate["status"],
+                    "next_action": candidate["next_action"],
+                    "suggested_message": candidate["suggested_message"],
+                    "source": candidate["source"],
+                    "notes": candidate["notes"],
+                    "raw_text": candidate["raw_text"],
+                    "decision": candidate["decision"],
+                    "reason": candidate["reason"],
+                    "created_at": now,
+                },
             )
 
         insert_history(
-            conn,
+            session,
             event_type="import.preview_created",
             entity_type="import",
             entity_id=str(import_id),
@@ -940,10 +996,13 @@ def preview_import(payload: dict) -> dict:
             ),
         )
 
-        batch = conn.execute(f"SELECT {_IMPORT_COLS} FROM imports WHERE id = ?", (import_id,)).fetchone()
-        candidates = conn.execute(
-            f"SELECT {_CANDIDATE_COLS} FROM import_candidates WHERE import_id = ? ORDER BY id ASC",
-            (import_id,),
+        batch = session.execute(
+            text(f"SELECT {_IMPORT_COLS} FROM imports WHERE id = :id"),
+            {"id": import_id},
+        ).fetchone()
+        candidates = session.execute(
+            text(f"SELECT {_CANDIDATE_COLS} FROM import_candidates WHERE import_id = :import_id ORDER BY id ASC"),
+            {"import_id": import_id},
         ).fetchall()
 
     return {
@@ -962,8 +1021,11 @@ def confirm_import(import_id: int, payload: dict) -> dict:
     now = now_iso()
     inserted_contacts = []
 
-    with connection() as conn:
-        batch = conn.execute("SELECT id FROM imports WHERE id = ?", (import_id,)).fetchone()
+    with get_session() as session:
+        batch = session.execute(
+            text("SELECT id FROM imports WHERE id = :id"),
+            {"id": import_id},
+        ).fetchone()
         if batch is None:
             raise ServiceError("Import not found", HTTPStatus.NOT_FOUND)
 
@@ -981,48 +1043,64 @@ def confirm_import(import_id: int, payload: dict) -> dict:
             decision = normalize_decision(candidate.get("decision", "pending"))
             reason = clean_optional(candidate.get("reason"))
 
-            conn.execute(
-                """
-                UPDATE import_candidates
-                SET email = ?, name = ?, company = ?, title = ?, status = ?, next_action = ?,
-                    suggested_message = ?, source = ?, notes = ?, decision = ?, reason = ?
-                WHERE id = ? AND import_id = ?
-                """,
-                (
-                    email, name, company, title, status, next_action, suggested_message,
-                    source, notes, decision, reason, candidate_id, import_id,
-                ),
+            session.execute(
+                text("""
+                    UPDATE import_candidates
+                    SET email = :email, name = :name, company = :company, title = :title,
+                        status = :status, next_action = :next_action, suggested_message = :suggested_message,
+                        source = :source, notes = :notes, decision = :decision, reason = :reason
+                    WHERE id = :id AND import_id = :import_id
+                """),
+                {
+                    "email": email, "name": name, "company": company, "title": title,
+                    "status": status, "next_action": next_action, "suggested_message": suggested_message,
+                    "source": source, "notes": notes, "decision": decision, "reason": reason,
+                    "id": candidate_id, "import_id": import_id,
+                },
             )
 
             if decision != "approve" or not email or not VALID_EMAIL_RE.fullmatch(email):
                 continue
 
-            exists = conn.execute("SELECT id FROM contacts WHERE email = ?", (email,)).fetchone()
+            exists = session.execute(
+                text("SELECT id FROM contacts WHERE email = :email"),
+                {"email": email},
+            ).fetchone()
             if exists is not None:
-                conn.execute(
-                    "UPDATE import_candidates SET decision = 'duplicate', reason = COALESCE(reason, 'Ya existia en contactos.') WHERE id = ? AND import_id = ?",
-                    (candidate_id, import_id),
+                session.execute(
+                    text("""
+                        UPDATE import_candidates
+                        SET decision = 'duplicate',
+                            reason = COALESCE(reason, 'Ya existia en contactos.')
+                        WHERE id = :id AND import_id = :import_id
+                    """),
+                    {"id": candidate_id, "import_id": import_id},
                 )
                 continue
 
-            cursor = conn.execute(
-                """
-                INSERT INTO contacts (
-                    email, name, company, title, status, next_action, suggested_message,
-                    follow_up_date, source, notes, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    email, name, company, title, status, next_action, suggested_message,
-                    infer_follow_up_date_for_action(next_action),
-                    source, notes, now, now,
-                ),
+            result = session.execute(
+                text("""
+                    INSERT INTO contacts (
+                        email, name, company, title, status, next_action, suggested_message,
+                        follow_up_date, source, notes, created_at, updated_at
+                    )
+                    VALUES (
+                        :email, :name, :company, :title, :status, :next_action, :suggested_message,
+                        :follow_up_date, :source, :notes, :created_at, :updated_at
+                    )
+                    RETURNING id
+                """),
+                {
+                    "email": email, "name": name, "company": company, "title": title,
+                    "status": status, "next_action": next_action, "suggested_message": suggested_message,
+                    "follow_up_date": infer_follow_up_date_for_action(next_action),
+                    "source": source, "notes": notes, "created_at": now, "updated_at": now,
+                },
             )
-            contact_id = int(cursor.lastrowid)
+            contact_id = int(result.fetchone()[0])
             inserted_contacts.append({"id": contact_id, "email": email})
             insert_history(
-                conn,
+                session,
                 event_type="contact.imported",
                 entity_type="contact",
                 entity_id=str(contact_id),
@@ -1030,20 +1108,25 @@ def confirm_import(import_id: int, payload: dict) -> dict:
                 metadata_json=json.dumps({"import_id": import_id, "email": email}, ensure_ascii=True),
             )
 
-        conn.execute(
-            "UPDATE imports SET status = 'confirmed', confirmed_contacts = ?, confirmed_at = ? WHERE id = ?",
-            (len(inserted_contacts), now, import_id),
+        session.execute(
+            text("""
+                UPDATE imports
+                SET status = 'confirmed', confirmed_contacts = :confirmed_contacts, confirmed_at = :confirmed_at
+                WHERE id = :id
+            """),
+            {"confirmed_contacts": len(inserted_contacts), "confirmed_at": now, "id": import_id},
         )
         insert_history(
-            conn,
+            session,
             event_type="import.confirmed",
             entity_type="import",
             entity_id=str(import_id),
             message=f"Confirmed import batch {import_id}",
             metadata_json=json.dumps({"confirmed_contacts": len(inserted_contacts)}, ensure_ascii=True),
         )
-        updated_batch = conn.execute(
-            f"SELECT {_IMPORT_COLS} FROM imports WHERE id = ?", (import_id,)
+        updated_batch = session.execute(
+            text(f"SELECT {_IMPORT_COLS} FROM imports WHERE id = :id"),
+            {"id": import_id},
         ).fetchone()
 
     return {

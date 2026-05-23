@@ -1,167 +1,153 @@
 from __future__ import annotations
 
-import json
-import re
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+import io
+import os
+from contextlib import asynccontextmanager
+
+import uvicorn
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 import modules.crm_service as crm_service
 import modules.ocr_service as ocr_service
-from modules.database import init_db
 from modules.crm_service import ServiceError
+from modules.database import init_db
 
 
-class CRMHandler(BaseHTTPRequestHandler):
-    def do_OPTIONS(self) -> None:  # noqa: N802
-        self.send_response(HTTPStatus.NO_CONTENT)
-        self._send_cors_headers()
-        self.end_headers()
-
-    def do_GET(self) -> None:  # noqa: N802
-        parsed = urlparse(self.path)
-        path = parsed.path
-        params = parse_qs(parsed.query)
-
-        if path == "/health":
-            self._send_json({"status": "ok", "service": "crm-local-api-stdlib"})
-
-        elif path == "/contacts":
-            limit = int(params.get("limit", ["100"])[0])
-            offset = int(params.get("offset", ["0"])[0])
-            self._send_json(crm_service.get_contacts(limit, offset))
-
-        elif re.fullmatch(r"/contacts/\d+/history", path):
-            contact_id = crm_service.extract_contact_history_id(path)
-            try:
-                self._send_json(crm_service.get_contact_history(contact_id))
-            except ServiceError as exc:
-                self._send_json({"detail": exc.message}, status=exc.status)
-
-        elif path == "/summary":
-            self._send_json(crm_service.get_summary())
-
-        elif path == "/reporting/overview":
-            self._send_json(crm_service.get_reporting_overview())
-
-        elif path == "/reporting/export.csv":
-            export_type = str(params.get("type", ["snapshots"])[0]).strip().lower()
-            limit = max(1, min(int(params.get("limit", ["30"])[0]), 365))
-            content, filename = crm_service.export_reporting_csv(export_type, limit)
-            self._send_csv(content, filename)
-
-        elif path == "/capabilities":
-            self._send_json(ocr_service.get_runtime_capabilities())
-
-        elif path == "/imports":
-            limit = int(params.get("limit", ["50"])[0])
-            offset = int(params.get("offset", ["0"])[0])
-            self._send_json(crm_service.get_imports(limit, offset))
-
-        elif path.startswith("/imports/"):
-            import_id = crm_service.extract_import_id(path)
-            if import_id is None:
-                self._send_json({"detail": "Not found"}, status=HTTPStatus.NOT_FOUND)
-            else:
-                try:
-                    self._send_json(crm_service.get_import_detail(import_id))
-                except ServiceError as exc:
-                    self._send_json({"detail": exc.message}, status=exc.status)
-
-        else:
-            self._send_json({"detail": "Not found"}, status=HTTPStatus.NOT_FOUND)
-
-    def do_POST(self) -> None:  # noqa: N802
-        parsed = urlparse(self.path)
-        path = parsed.path
-        payload = self._read_json_body()
-
-        if path == "/contacts":
-            try:
-                self._send_json(crm_service.create_contact(payload), status=HTTPStatus.CREATED)
-            except ServiceError as exc:
-                self._send_json({"detail": exc.message}, status=exc.status)
-
-        elif re.fullmatch(r"/contacts/\d+/execute", path):
-            contact_id = crm_service.extract_contact_id(path)
-            if contact_id is None:
-                self._send_json({"detail": "Contact not found"}, status=HTTPStatus.NOT_FOUND)
-            else:
-                try:
-                    self._send_json(crm_service.execute_contact_action(contact_id, payload))
-                except ServiceError as exc:
-                    self._send_json({"detail": exc.message}, status=exc.status)
-
-        elif path == "/imports/mock":
-            try:
-                self._send_json(crm_service.create_mock_import(payload), status=HTTPStatus.CREATED)
-            except ServiceError as exc:
-                self._send_json({"detail": exc.message}, status=exc.status)
-
-        elif path == "/imports/preview":
-            try:
-                self._send_json(crm_service.preview_import(payload), status=HTTPStatus.CREATED)
-            except ServiceError as exc:
-                self._send_json({"detail": exc.message}, status=exc.status)
-
-        elif path.startswith("/imports/") and path.endswith("/confirm"):
-            import_id = crm_service.extract_import_id(path)
-            if import_id is None:
-                self._send_json({"detail": "Import not found"}, status=HTTPStatus.NOT_FOUND)
-            else:
-                try:
-                    self._send_json(crm_service.confirm_import(import_id, payload))
-                except ServiceError as exc:
-                    self._send_json({"detail": exc.message}, status=exc.status)
-
-        else:
-            self._send_json({"detail": "Not found"}, status=HTTPStatus.NOT_FOUND)
-
-    # ------------------------------------------------------------------
-    # HTTP helpers
-    # ------------------------------------------------------------------
-
-    def _read_json_body(self) -> dict:
-        length = int(self.headers.get("Content-Length", "0"))
-        if not length:
-            return {}
-        raw = self.rfile.read(length)
-        return json.loads(raw.decode("utf-8"))
-
-    def _send_json(self, payload: object, status: HTTPStatus = HTTPStatus.OK) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self._send_cors_headers()
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _send_csv(self, content: str, filename: str, status: HTTPStatus = HTTPStatus.OK) -> None:
-        body = content.encode("utf-8")
-        self.send_response(status)
-        self._send_cors_headers()
-        self.send_header("Content-Type", "text/csv; charset=utf-8")
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _send_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-        pass
-
-
-def main() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
-    server = ThreadingHTTPServer(("127.0.0.1", 8000), CRMHandler)
-    print("CRM backend running on http://127.0.0.1:8000")
-    server.serve_forever()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+]
+_frontend_url = os.getenv("FRONTEND_URL", "")
+if _frontend_url:
+    _origins.append(_frontend_url)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "crm-api"}
+
+
+@app.get("/contacts")
+def list_contacts(limit: int = 100, offset: int = 0):
+    return crm_service.get_contacts(limit, offset)
+
+
+@app.get("/contacts/{contact_id}/history")
+def contact_history(contact_id: int):
+    try:
+        return crm_service.get_contact_history(contact_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.post("/contacts", status_code=201)
+async def create_contact(request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.create_contact(payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.post("/contacts/{contact_id}/execute")
+async def execute_action(contact_id: int, request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.execute_contact_action(contact_id, payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.get("/summary")
+def summary():
+    return crm_service.get_summary()
+
+
+@app.get("/reporting/overview")
+def reporting_overview():
+    return crm_service.get_reporting_overview()
+
+
+@app.get("/reporting/export.csv")
+def export_csv(type: str = "snapshots", limit: int = 30):
+    limit = max(1, min(limit, 365))
+    content, filename = crm_service.export_reporting_csv(type, limit)
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/capabilities")
+def capabilities():
+    return ocr_service.get_runtime_capabilities()
+
+
+@app.get("/imports")
+def list_imports(limit: int = 50, offset: int = 0):
+    return crm_service.get_imports(limit, offset)
+
+
+@app.post("/imports/mock", status_code=201)
+async def mock_import(request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.create_mock_import(payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.post("/imports/preview", status_code=201)
+async def preview_import(
+    file: UploadFile = File(...),
+    source: str = Form("upload_ui"),
+):
+    raw_bytes = await file.read()
+    filename = file.filename or "archivo.txt"
+    mime_type = file.content_type or "application/octet-stream"
+    try:
+        return crm_service.preview_import(filename, mime_type, raw_bytes, source)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.post("/imports/{import_id}/confirm")
+async def confirm_import(import_id: int, request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.confirm_import(import_id, payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.get("/imports/{import_id}")
+def import_detail(import_id: int):
+    try:
+        return crm_service.get_import_detail(import_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
 if __name__ == "__main__":
-    main()
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)

@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import base64
 import io
 import json
 import os
 import re
-import shutil
-import subprocess
-import tempfile
 import zipfile
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 from xml.etree import ElementTree as ET
+
+import openai
 
 from modules.crm_service import (
     VALID_EMAIL_RE,
@@ -43,33 +39,18 @@ DOMAIN_OVERRIDES = {
 # ---------------------------------------------------------------------------
 
 def get_runtime_capabilities() -> dict:
-    tesseract_path = resolve_tesseract_path()
     openai_enabled = bool(os.getenv("OPENAI_API_KEY"))
-    providers = []
-    if tesseract_path:
-        providers.append("tesseract")
-    if openai_enabled:
-        providers.append("openai")
     return {
-        "tesseract_available": bool(tesseract_path),
-        "tesseract_path": tesseract_path,
         "openai_enabled": openai_enabled,
-        "providers": providers,
+        "providers": ["openai"] if openai_enabled else [],
     }
 
 
-def resolve_tesseract_path() -> str | None:
-    direct = shutil.which("tesseract")
-    if direct:
-        return direct
-    common_paths = [
-        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-    ]
-    for candidate in common_paths:
-        if os.path.exists(candidate):
-            return candidate
-    return None
+def _openai_client() -> openai.OpenAI:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY no esta configurada.")
+    return openai.OpenAI(api_key=api_key)
 
 
 # ---------------------------------------------------------------------------
@@ -99,23 +80,17 @@ def extract_candidates_from_file(filename: str, mime_type: str, raw_bytes: bytes
                 warnings.append(f"No pude hacer OCR del PDF por API: {exc}")
         else:
             warnings.append(
-                "No pude sacar texto util del PDF. Si es escaneado, agrega OPENAI_API_KEY o instala OCR local."
+                "No pude sacar texto util del PDF. Si es escaneado, agrega OPENAI_API_KEY."
             )
     elif mime_type.startswith("image/") or extension in {"png", "jpg", "jpeg", "gif", "webp"}:
-        if capabilities["tesseract_available"]:
-            try:
-                text = extract_text_with_tesseract(raw_bytes, extension, capabilities["tesseract_path"])
-                provider = "tesseract"
-            except Exception as exc:
-                warnings.append(f"No pude hacer OCR local con Tesseract: {exc}")
-        elif capabilities["openai_enabled"]:
+        if capabilities["openai_enabled"]:
             try:
                 text = extract_text_with_openai(raw_bytes, filename, mime_type)
                 provider = "openai_image"
             except Exception as exc:
                 warnings.append(f"No pude hacer OCR de la imagen por API: {exc}")
         else:
-            warnings.append("Las imagenes necesitan OCR local o OPENAI_API_KEY para extraer texto.")
+            warnings.append("Las imagenes necesitan OPENAI_API_KEY para extraer texto.")
     else:
         text = decode_text(raw_bytes)
 
@@ -156,96 +131,34 @@ def decode_text(raw_bytes: bytes) -> str:
     return raw_bytes.decode("utf-8", errors="ignore")
 
 
-def extract_text_with_tesseract(raw_bytes: bytes, extension: str, tesseract_path: str | None) -> str:
-    if not tesseract_path:
-        raise RuntimeError("Tesseract no esta instalado.")
-    suffix = f".{extension}" if extension else ".img"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-        handle.write(raw_bytes)
-        temp_input = handle.name
-    try:
-        result = subprocess.run(
-            [tesseract_path, temp_input, "stdout", "-l", "spa+eng"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            message = result.stderr.strip() or "OCR local fallo."
-            raise RuntimeError(message)
-        return result.stdout
-    finally:
-        try:
-            os.remove(temp_input)
-        except OSError:
-            pass
-
-
 def extract_text_with_openai(raw_bytes: bytes, filename: str, mime_type: str) -> str:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY no esta configurada.")
+    import base64
 
+    client = _openai_client()
+    model = os.getenv("OPENAI_MODEL", "gpt-4o")
     prompt = (
         "Extrae todo el texto visible del archivo y prioriza correos electronicos. "
         "Devuelve texto plano legible, sin markdown."
     )
-    payload = {
-        "model": os.getenv("OPENAI_OCR_MODEL", "gpt-4.1-mini"),
-        "input": [
-            {
-                "role": "user",
-                "content": build_openai_content(prompt, raw_bytes, filename, mime_type),
-            }
-        ],
-    }
-    request = urllib_request.Request(
-        "https://api.openai.com/v1/responses",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib_request.urlopen(request, timeout=90) as response:
-            raw_response = response.read().decode("utf-8")
-    except urllib_error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"OpenAI devolvio {exc.code}: {detail}") from exc
-    except urllib_error.URLError as exc:
-        raise RuntimeError(f"No pude conectar con OpenAI: {exc.reason}") from exc
-
-    parsed = json.loads(raw_response)
-    text = collect_openai_output_text(parsed)
-    if not text.strip():
-        raise RuntimeError("OpenAI no devolvio texto util.")
-    return text
-
-
-def build_openai_content(prompt: str, raw_bytes: bytes, filename: str, mime_type: str) -> list[dict]:
     file_data = base64.b64encode(raw_bytes).decode("ascii")
     if mime_type.startswith("image/"):
-        return [
+        content = [
             {"type": "input_text", "text": prompt},
             {"type": "input_image", "image_url": f"data:{mime_type};base64,{file_data}"},
         ]
-    return [
-        {"type": "input_text", "text": prompt},
-        {"type": "input_file", "filename": filename, "file_data": f"data:{mime_type};base64,{file_data}"},
-    ]
-
-
-def collect_openai_output_text(payload: dict) -> str:
-    fragments: list[str] = []
-    for item in payload.get("output", []):
-        for content in item.get("content", []):
-            if content.get("type") == "output_text":
-                fragments.append(content.get("text", ""))
-    if fragments:
-        return "\n".join(fragment for fragment in fragments if fragment)
-    return str(payload.get("output_text", "") or "")
+    else:
+        content = [
+            {"type": "input_text", "text": prompt},
+            {"type": "input_file", "filename": filename, "file_data": f"data:{mime_type};base64,{file_data}"},
+        ]
+    response = client.responses.create(
+        model=model,
+        input=[{"role": "user", "content": content}],
+    )
+    extracted = response.output_text
+    if not extracted.strip():
+        raise RuntimeError("OpenAI no devolvio texto util.")
+    return extracted
 
 
 def extract_text_from_pdf(raw_bytes: bytes) -> str:
@@ -475,9 +388,8 @@ def apply_heuristic_classification(candidate: dict) -> dict:
 
 
 def classify_candidates_with_openai(candidates: list[dict]) -> list[dict]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY no esta configurada.")
+    client = _openai_client()
+    model = os.getenv("OPENAI_MODEL", "gpt-4o")
 
     prompt = (
         "Clasifica cada contacto en uno de estos estados: mantener, revisar, seguimiento, prioridad, sacar, portal. "
@@ -497,9 +409,9 @@ def classify_candidates_with_openai(candidates: list[dict]) -> list[dict]:
         for candidate in candidates
         if candidate.get("email")
     ]
-    payload = {
-        "model": os.getenv("OPENAI_CLASSIFIER_MODEL", os.getenv("OPENAI_OCR_MODEL", "gpt-4.1-mini")),
-        "input": [
+    response = client.responses.create(
+        model=model,
+        input=[
             {
                 "role": "user",
                 "content": [
@@ -508,26 +420,8 @@ def classify_candidates_with_openai(candidates: list[dict]) -> list[dict]:
                 ],
             }
         ],
-    }
-    request = urllib_request.Request(
-        "https://api.openai.com/v1/responses",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
     )
-    try:
-        with urllib_request.urlopen(request, timeout=90) as response:
-            raw_response = response.read().decode("utf-8")
-    except urllib_error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"OpenAI devolvio {exc.code}: {detail}") from exc
-    except urllib_error.URLError as exc:
-        raise RuntimeError(f"No pude conectar con OpenAI: {exc.reason}") from exc
-
-    text = collect_openai_output_text(json.loads(raw_response))
+    text = response.output_text
     items = parse_json_items(text)
     by_email = {item.get("email"): item for item in items if item.get("email")}
 

@@ -231,16 +231,12 @@ function AppShell() {
     setSelectedFile(file);
     setImporting(true);
     try {
-      const content_base64 = await fileToBase64(file);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('source', 'upload_ui');
       const response = await fetch(`${API_BASE}/imports/preview`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          mime_type: file.type || 'application/octet-stream',
-          content_base64,
-          source: 'upload_ui',
-        }),
+        body: formData,
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));

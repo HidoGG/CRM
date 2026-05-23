@@ -27,11 +27,8 @@ export function ImportsView({
         </div>
 
         <div className="provider-row">
-          <span className={`provider-pill ${capabilities.tesseract_available ? 'is-ready' : ''}`}>
-            OCR local: {capabilities.tesseract_available ? 'Tesseract detectado' : 'No detectado'}
-          </span>
           <span className={`provider-pill ${capabilities.openai_enabled ? 'is-ready' : ''}`}>
-            OCR por API: {capabilities.openai_enabled ? 'OpenAI activo' : 'OPENAI_API_KEY ausente'}
+            OCR: {capabilities.openai_enabled ? 'OpenAI activo' : 'OPENAI_API_KEY ausente'}
           </span>
           <span className={`provider-pill ${capabilities.openai_enabled ? 'is-ready' : ''}`}>
             Clasificacion: {capabilities.openai_enabled ? 'OpenAI + heuristica' : 'Heuristica local'}

@@ -1,62 +1,65 @@
 from __future__ import annotations
 
-import sqlite3
+import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Iterator
 
+from sqlalchemy import text
+from sqlmodel import Session, create_engine
 
-DATA_DIR = Path.home() / "AppData" / "Local" / "CRMIA"
-DB_PATH = DATA_DIR / "crm.sqlite3"
+
+DATABASE_URL = os.environ["DATABASE_URL"]
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=2,
+    max_overflow=0,
+    connect_args={"prepare_threshold": None},
+)
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def get_connection() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
-
-
 @contextmanager
-def connection() -> Iterator[sqlite3.Connection]:
-    conn = get_connection()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+def get_session() -> Iterator[Session]:
+    with Session(engine) as session:
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
 
 
 def init_db() -> None:
-    with connection() as conn:
-        conn.executescript(
-            """
+    with engine.connect() as conn:
+        conn.execute(text("""
             CREATE TABLE IF NOT EXISTS contacts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 email TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
                 company TEXT,
                 title TEXT,
-                status TEXT NOT NULL DEFAULT 'active',
+                status TEXT NOT NULL DEFAULT 'revisar',
                 next_action TEXT,
                 suggested_message TEXT,
+                follow_up_date TEXT,
+                portal_url TEXT,
+                portal_status TEXT,
+                discard_reason TEXT,
                 source TEXT NOT NULL DEFAULT 'manual',
                 notes TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
-            );
-
+            )
+        """))
+        conn.execute(text("""
             CREATE TABLE IF NOT EXISTS imports (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 filename TEXT NOT NULL,
                 mime_type TEXT,
                 source TEXT NOT NULL DEFAULT 'manual',
@@ -69,11 +72,12 @@ def init_db() -> None:
                 notes TEXT,
                 created_at TEXT NOT NULL,
                 confirmed_at TEXT
-            );
-
+            )
+        """))
+        conn.execute(text("""
             CREATE TABLE IF NOT EXISTS import_candidates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                import_id INTEGER NOT NULL,
+                id SERIAL PRIMARY KEY,
+                import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
                 email TEXT,
                 name TEXT NOT NULL,
                 company TEXT,
@@ -86,22 +90,23 @@ def init_db() -> None:
                 raw_text TEXT,
                 decision TEXT NOT NULL DEFAULT 'pending',
                 reason TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (import_id) REFERENCES imports(id) ON DELETE CASCADE
-            );
-
+                created_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
             CREATE TABLE IF NOT EXISTS history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 event_type TEXT NOT NULL,
                 entity_type TEXT NOT NULL,
                 entity_id TEXT,
                 message TEXT NOT NULL,
                 metadata_json TEXT,
                 created_at TEXT NOT NULL
-            );
-
+            )
+        """))
+        conn.execute(text("""
             CREATE TABLE IF NOT EXISTS reporting_snapshots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 snapshot_date TEXT NOT NULL UNIQUE,
                 total_contacts INTEGER NOT NULL DEFAULT 0,
                 active_total INTEGER NOT NULL DEFAULT 0,
@@ -113,46 +118,21 @@ def init_db() -> None:
                 actions_json TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);
-            CREATE INDEX IF NOT EXISTS idx_import_candidates_import_id ON import_candidates(import_id);
-            CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at);
-            CREATE INDEX IF NOT EXISTS idx_reporting_snapshots_date ON reporting_snapshots(snapshot_date);
-            """
-        )
-        ensure_column(conn, "imports", "mime_type", "TEXT")
-        ensure_column(conn, "imports", "total_ready", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "imports", "total_duplicates", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "imports", "total_invalid", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "imports", "confirmed_contacts", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "imports", "status", "TEXT NOT NULL DEFAULT 'draft'")
-        ensure_column(conn, "imports", "confirmed_at", "TEXT")
-        ensure_column(conn, "contacts", "next_action", "TEXT")
-        ensure_column(conn, "contacts", "suggested_message", "TEXT")
-        ensure_column(conn, "contacts", "follow_up_date", "TEXT")
-        ensure_column(conn, "contacts", "portal_url", "TEXT")
-        ensure_column(conn, "contacts", "portal_status", "TEXT")
-        ensure_column(conn, "contacts", "discard_reason", "TEXT")
-        ensure_column(conn, "import_candidates", "next_action", "TEXT")
-        ensure_column(conn, "import_candidates", "suggested_message", "TEXT")
-        ensure_column(conn, "reporting_snapshots", "total_contacts", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "reporting_snapshots", "active_total", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "reporting_snapshots", "overdue_count", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "reporting_snapshots", "due_today_count", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "reporting_snapshots", "due_this_week_count", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "reporting_snapshots", "without_date_count", "INTEGER NOT NULL DEFAULT 0")
-        ensure_column(conn, "reporting_snapshots", "statuses_json", "TEXT")
-        ensure_column(conn, "reporting_snapshots", "actions_json", "TEXT")
-        ensure_column(conn, "reporting_snapshots", "updated_at", "TEXT")
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_import_candidates_import_id ON import_candidates(import_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_reporting_snapshots_date ON reporting_snapshots(snapshot_date)"))
+        conn.commit()
 
 
-def row_to_dict(row: sqlite3.Row) -> dict:
-    return dict(row)
+def row_to_dict(row) -> dict:
+    return dict(row._mapping)
 
 
 def insert_history(
-    conn: sqlite3.Connection,
+    session: Session,
     *,
     event_type: str,
     entity_type: str,
@@ -160,35 +140,19 @@ def insert_history(
     message: str,
     metadata_json: str | None = None,
 ) -> int:
-    cursor = conn.execute(
-        """
-        INSERT INTO history (
-            event_type,
-            entity_type,
-            entity_id,
-            message,
-            metadata_json,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            event_type,
-            entity_type,
-            entity_id,
-            message,
-            metadata_json,
-            now_iso(),
-        ),
+    result = session.execute(
+        text("""
+            INSERT INTO history (event_type, entity_type, entity_id, message, metadata_json, created_at)
+            VALUES (:event_type, :entity_type, :entity_id, :message, :metadata_json, :created_at)
+            RETURNING id
+        """),
+        {
+            "event_type": event_type,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "message": message,
+            "metadata_json": metadata_json,
+            "created_at": now_iso(),
+        },
     )
-    return int(cursor.lastrowid)
-
-
-def ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
-    existing = {
-        row["name"]
-        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    }
-    if column_name in existing:
-        return
-    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+    return int(result.fetchone()[0])
