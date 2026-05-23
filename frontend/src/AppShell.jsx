@@ -381,6 +381,20 @@ function AppShell() {
 
   return (
     <div className="grid grid-cols-[280px_minmax(0,1fr)] min-h-screen">
+
+      {importing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl px-10 py-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-lg font-semibold text-gray-800 text-center">Analizando archivo…</p>
+            <p className="text-sm text-gray-500 text-center">
+              Estamos procesando el documento con inteligencia artificial.<br />
+              Esto puede tardar unos minutos, no cierres la ventana.
+            </p>
+          </div>
+        </div>
+      )}
+
       <Sidebar activeView={activeView} setActiveView={setActiveView} statusMessage={statusMessage} />
 
       <main className="p-6 flex flex-col gap-6">

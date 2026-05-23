@@ -69,19 +69,30 @@ def extract_candidates_from_file(filename: str, mime_type: str, raw_bytes: bytes
     elif extension == "xlsx" or "spreadsheetml" in mime_type:
         text = extract_text_from_xlsx(raw_bytes)
     elif extension == "pdf" or mime_type == "application/pdf":
-        text = extract_text_from_pdf(raw_bytes)
-        if EMAIL_RE.search(text or ""):
-            provider = "pdf_text"
-        elif capabilities["openai_enabled"]:
+        if capabilities["openai_enabled"]:
             try:
                 text = extract_text_with_openai(raw_bytes, filename, mime_type)
                 provider = "openai_pdf"
             except Exception as exc:
-                warnings.append(f"No pude hacer OCR del PDF por API: {exc}")
+                exc_str = str(exc)
+                if "429" in exc_str or "insufficient_quota" in exc_str or "quota" in exc_str.lower():
+                    warnings.append(
+                        "Cuota de OpenAI agotada. Se usó extracción local; "
+                        "recargá créditos en platform.openai.com para OCR completo."
+                    )
+                else:
+                    warnings.append(f"OpenAI no pudo procesar el PDF: {exc_str[:120]}")
+                text = extract_text_from_pdf(raw_bytes)
+                if EMAIL_RE.search(text or ""):
+                    provider = "pdf_text"
         else:
-            warnings.append(
-                "No pude sacar texto util del PDF. Si es escaneado, agrega OPENAI_API_KEY."
-            )
+            text = extract_text_from_pdf(raw_bytes)
+            if EMAIL_RE.search(text or ""):
+                provider = "pdf_text"
+            else:
+                warnings.append(
+                    "No pude sacar texto util del PDF. Si es escaneado, agrega OPENAI_API_KEY."
+                )
     elif mime_type.startswith("image/") or extension in {"png", "jpg", "jpeg", "gif", "webp"}:
         if capabilities["openai_enabled"]:
             try:
@@ -95,13 +106,6 @@ def extract_candidates_from_file(filename: str, mime_type: str, raw_bytes: bytes
         text = decode_text(raw_bytes)
 
     emails = extract_emails(text)
-    if not emails and capabilities["openai_enabled"] and provider in {"direct", "pdf_text"} and extension == "pdf":
-        try:
-            text = extract_text_with_openai(raw_bytes, filename, mime_type)
-            provider = "openai_pdf"
-            emails = extract_emails(text)
-        except Exception as exc:
-            warnings.append(f"No pude reintentar el PDF con OpenAI: {exc}")
 
     return {
         "filename": filename,
@@ -162,6 +166,20 @@ def extract_text_with_openai(raw_bytes: bytes, filename: str, mime_type: str) ->
 
 
 def extract_text_from_pdf(raw_bytes: bytes) -> str:
+    # pdfplumber first — better for tables and structured layouts
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(raw_bytes)) as pdf:
+            pages_text = []
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    pages_text.append(text)
+            if pages_text:
+                return "\n".join(pages_text)
+    except Exception:
+        pass
+    # pypdf fallback
     try:
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(raw_bytes))
