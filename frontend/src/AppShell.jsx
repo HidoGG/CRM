@@ -7,6 +7,8 @@ import { Worktray } from './components/views/Worktray';
 import { PipelineView } from './views/PipelineView';
 import { ContactsView } from './views/ContactsView';
 import { ImportsView } from './views/ImportsView';
+import { TemplatesView } from './views/TemplatesView';
+import { EmailJobsView } from './views/EmailJobsView';
 
 export const API_BASE = 'http://127.0.0.1:8000';
 
@@ -61,6 +63,10 @@ function AppShell() {
   const [activePipelineActionFilter, setActivePipelineActionFilter] = useState('todos');
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [cvFiles, setCvFiles] = useState([]);
+  const [emailJobs, setEmailJobs] = useState([]);
+  const [gmailStatus, setGmailStatus] = useState({ authorized: false });
 
   const pageTitle = useMemo(() => {
     if (activeView === 'tendencias') return 'Tendencias operativas';
@@ -68,6 +74,8 @@ function AppShell() {
     if (activeView === 'contactos') return 'Contactos';
     if (activeView === 'importaciones') return 'Importaciones';
     if (activeView === 'bandeja') return 'Bandeja de trabajo';
+    if (activeView === 'plantillas') return 'Plantillas de mensaje';
+    if (activeView === 'envios') return 'Envíos automáticos';
     return 'Dashboard';
   }, [activeView]);
 
@@ -151,13 +159,18 @@ function AppShell() {
 
   async function refreshData() {
     try {
-      const [healthRes, contactsRes, summaryRes, importsRes, capabilitiesRes, reportingRes] = await Promise.all([
+      const [healthRes, contactsRes, summaryRes, importsRes, capabilitiesRes, reportingRes,
+             templatesRes, cvFilesRes, emailJobsRes, gmailStatusRes] = await Promise.all([
         fetch(`${API_BASE}/health`),
         fetch(`${API_BASE}/contacts`),
         fetch(`${API_BASE}/summary`),
         fetch(`${API_BASE}/imports`),
         fetch(`${API_BASE}/capabilities`),
         fetch(`${API_BASE}/reporting/overview`),
+        fetch(`${API_BASE}/templates`),
+        fetch(`${API_BASE}/cv-files`),
+        fetch(`${API_BASE}/email-jobs`),
+        fetch(`${API_BASE}/gmail/status`),
       ]);
 
       if (!healthRes.ok) throw new Error('No se pudo conectar con la API');
@@ -167,12 +180,20 @@ function AppShell() {
       const importsData = importsRes.ok ? await importsRes.json() : [];
       const capabilitiesData = capabilitiesRes.ok ? await capabilitiesRes.json() : capabilities;
       const reportingData = reportingRes.ok ? await reportingRes.json() : createEmptyReporting();
+      const templatesData = templatesRes.ok ? await templatesRes.json() : [];
+      const cvFilesData = cvFilesRes.ok ? await cvFilesRes.json() : [];
+      const emailJobsData = emailJobsRes.ok ? await emailJobsRes.json() : [];
+      const gmailStatusData = gmailStatusRes.ok ? await gmailStatusRes.json() : { authorized: false };
 
       setContacts(contactsData);
       setSummary(summaryData);
       setImports(importsData);
       setCapabilities(capabilitiesData);
       setReporting(reportingData);
+      setTemplates(templatesData);
+      setCvFiles(cvFilesData);
+      setEmailJobs(emailJobsData);
+      setGmailStatus(gmailStatusData);
       setStatusMessage('API conectada. Ya podes cargar, confirmar y operar desde la bandeja.');
     } catch {
       setStatusMessage('No pude conectar con la API local. Primero hay que levantar el backend.');
@@ -487,6 +508,24 @@ function AppShell() {
               setImportPreview(null);
               setSelectedFile(null);
             }}
+          />
+        )}
+
+        {activeView === 'plantillas' && (
+          <TemplatesView
+            templates={templates}
+            onRefresh={refreshData}
+          />
+        )}
+
+        {activeView === 'envios' && (
+          <EmailJobsView
+            contacts={contacts}
+            templates={templates}
+            emailJobs={emailJobs}
+            cvFiles={cvFiles}
+            gmailStatus={gmailStatus}
+            onRefresh={refreshData}
           />
         )}
       </main>

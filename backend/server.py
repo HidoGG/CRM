@@ -6,23 +6,41 @@ load_dotenv()
 
 import io
 import os
+import shutil
+import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 
 import modules.crm_service as crm_service
 import modules.ocr_service as ocr_service
 from modules.crm_service import ServiceError
 from modules.database import init_db
 
+CV_UPLOAD_DIR = Path(__file__).parent / "uploads" / "cv"
+CV_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+_scheduler = BackgroundScheduler()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _scheduler.add_job(
+        crm_service.process_pending_email_jobs,
+        trigger="interval",
+        minutes=10,
+        id="email_sender",
+        replace_existing=True,
+    )
+    _scheduler.start()
     yield
+    _scheduler.shutdown(wait=False)
 
 
 app = FastAPI(lifespan=lifespan)
@@ -150,6 +168,138 @@ def import_detail(import_id: int):
         return crm_service.get_import_detail(import_id)
     except ServiceError as exc:
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+# ---------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------
+
+@app.get("/templates")
+def list_templates():
+    return crm_service.get_templates()
+
+
+@app.post("/templates", status_code=201)
+async def create_template(request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.create_template(payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.put("/templates/{template_id}")
+async def update_template(template_id: int, request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.update_template(template_id, payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.delete("/templates/{template_id}")
+def delete_template(template_id: int):
+    try:
+        return crm_service.delete_template(template_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.put("/templates/{template_id}/default")
+def set_default_template(template_id: int):
+    try:
+        return crm_service.set_default_template(template_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+# ---------------------------------------------------------------------------
+# CV files
+# ---------------------------------------------------------------------------
+
+@app.get("/cv-files")
+def list_cv_files():
+    return crm_service.get_cv_files()
+
+
+@app.post("/cv-files", status_code=201)
+async def upload_cv(file: UploadFile = File(...)):
+    ext = Path(file.filename or "cv.pdf").suffix or ".pdf"
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    dest = CV_UPLOAD_DIR / unique_name
+    with dest.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+    return crm_service.save_cv_file(file.filename or unique_name, str(dest))
+
+
+@app.put("/cv-files/{cv_id}/default")
+def set_default_cv(cv_id: int):
+    try:
+        return crm_service.set_default_cv(cv_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.delete("/cv-files/{cv_id}")
+def delete_cv_file(cv_id: int):
+    try:
+        return crm_service.delete_cv_file(cv_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+# ---------------------------------------------------------------------------
+# Email jobs
+# ---------------------------------------------------------------------------
+
+@app.get("/email-jobs")
+def list_email_jobs():
+    return crm_service.get_email_jobs()
+
+
+@app.post("/email-jobs", status_code=201)
+async def create_email_job(request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.create_email_job(payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.delete("/email-jobs/{job_id}")
+def delete_email_job(job_id: int):
+    try:
+        return crm_service.delete_email_job(job_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.post("/email-jobs/run-now")
+def run_email_jobs_now():
+    return crm_service.process_pending_email_jobs()
+
+
+# ---------------------------------------------------------------------------
+# Gmail OAuth
+# ---------------------------------------------------------------------------
+
+@app.get("/gmail/status")
+def gmail_status():
+    from modules import gmail_service
+    return gmail_service.get_status()
+
+
+@app.get("/gmail/auth-url")
+def gmail_auth_url():
+    from modules import gmail_service
+    return {"url": gmail_service.get_auth_url()}
+
+
+@app.get("/gmail/callback")
+def gmail_callback(code: str):
+    from modules import gmail_service
+    gmail_service.exchange_code(code)
+    return RedirectResponse(url="http://localhost:5173?gmail=authorized")
 
 
 if __name__ == "__main__":

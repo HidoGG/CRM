@@ -1134,3 +1134,350 @@ def confirm_import(import_id: int, payload: dict) -> dict:
         "confirmed_contacts": len(inserted_contacts),
         "inserted_contacts": inserted_contacts,
     }
+
+
+# ---------------------------------------------------------------------------
+# Message templates
+# ---------------------------------------------------------------------------
+
+_DEFAULT_TEMPLATE_NAME = "Presentación Oil & Gas"
+_DEFAULT_TEMPLATE_SUBJECT = "Postulacion y CV - {company}"
+_DEFAULT_TEMPLATE_BODY = (
+    "{name},\n\n"
+    "Te comparto mi CV para ser considerado en futuras oportunidades dentro de {company}. "
+    "Cuento con experiencia en entornos operativos y administrativos, "
+    "y quedo disponible para ampliar informacion.\n\n"
+    "Muchas gracias por tu tiempo.\n"
+    "Gabriel"
+)
+
+
+def _ensure_default_template(session) -> None:
+    count = session.execute(text("SELECT COUNT(*) FROM message_templates")).scalar()
+    if count == 0:
+        now = now_iso()
+        session.execute(
+            text("""
+                INSERT INTO message_templates (name, subject, body, is_default, created_at, updated_at)
+                VALUES (:name, :subject, :body, 1, :now, :now)
+            """),
+            {"name": _DEFAULT_TEMPLATE_NAME, "subject": _DEFAULT_TEMPLATE_SUBJECT,
+             "body": _DEFAULT_TEMPLATE_BODY, "now": now},
+        )
+
+
+def get_templates() -> list[dict]:
+    with get_session() as session:
+        _ensure_default_template(session)
+        rows = session.execute(
+            text("SELECT * FROM message_templates ORDER BY is_default DESC, id ASC")
+        ).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def create_template(payload: dict) -> dict:
+    name = (payload.get("name") or "").strip()
+    subject = (payload.get("subject") or "").strip()
+    body = (payload.get("body") or "").strip()
+    if not name or not subject or not body:
+        raise ServiceError("Nombre, asunto y cuerpo son obligatorios.")
+    now = now_iso()
+    with get_session() as session:
+        result = session.execute(
+            text("""
+                INSERT INTO message_templates (name, subject, body, is_default, created_at, updated_at)
+                VALUES (:name, :subject, :body, 0, :now, :now)
+                RETURNING id
+            """),
+            {"name": name, "subject": subject, "body": body, "now": now},
+        )
+        new_id = result.fetchone()[0]
+        row = session.execute(
+            text("SELECT * FROM message_templates WHERE id = :id"), {"id": new_id}
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def update_template(template_id: int, payload: dict) -> dict:
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT id FROM message_templates WHERE id = :id"), {"id": template_id}
+        ).fetchone()
+        if not existing:
+            raise ServiceError("Plantilla no encontrada.", HTTPStatus.NOT_FOUND)
+        fields = {}
+        if "name" in payload and payload["name"]:
+            fields["name"] = payload["name"].strip()
+        if "subject" in payload and payload["subject"]:
+            fields["subject"] = payload["subject"].strip()
+        if "body" in payload and payload["body"]:
+            fields["body"] = payload["body"].strip()
+        if not fields:
+            raise ServiceError("No hay campos para actualizar.")
+        fields["updated_at"] = now_iso()
+        fields["id"] = template_id
+        set_clause = ", ".join(f"{k} = :{k}" for k in fields if k != "id")
+        session.execute(text(f"UPDATE message_templates SET {set_clause} WHERE id = :id"), fields)
+        row = session.execute(
+            text("SELECT * FROM message_templates WHERE id = :id"), {"id": template_id}
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def delete_template(template_id: int) -> dict:
+    with get_session() as session:
+        row = session.execute(
+            text("SELECT * FROM message_templates WHERE id = :id"), {"id": template_id}
+        ).fetchone()
+        if not row:
+            raise ServiceError("Plantilla no encontrada.", HTTPStatus.NOT_FOUND)
+        t = row_to_dict(row)
+        if t["is_default"]:
+            raise ServiceError("No podés eliminar la plantilla por defecto.")
+        session.execute(text("DELETE FROM message_templates WHERE id = :id"), {"id": template_id})
+        return {"deleted": template_id}
+
+
+def set_default_template(template_id: int) -> dict:
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT id FROM message_templates WHERE id = :id"), {"id": template_id}
+        ).fetchone()
+        if not existing:
+            raise ServiceError("Plantilla no encontrada.", HTTPStatus.NOT_FOUND)
+        session.execute(text("UPDATE message_templates SET is_default = 0"))
+        session.execute(
+            text("UPDATE message_templates SET is_default = 1 WHERE id = :id"), {"id": template_id}
+        )
+        rows = session.execute(
+            text("SELECT * FROM message_templates ORDER BY is_default DESC, id ASC")
+        ).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def render_template(template: dict, contact: dict) -> dict:
+    name = contact.get("name") or "Hola"
+    company = contact.get("company") or "su empresa"
+    subject = template.get("subject", "").replace("{name}", name).replace("{company}", company)
+    body = template.get("body", "").replace("{name}", name).replace("{company}", company)
+    return {"subject": subject, "body": body}
+
+
+# ---------------------------------------------------------------------------
+# CV files
+# ---------------------------------------------------------------------------
+
+def get_cv_files() -> list[dict]:
+    with get_session() as session:
+        rows = session.execute(
+            text("SELECT * FROM cv_files ORDER BY is_default DESC, id ASC")
+        ).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def save_cv_file(original_name: str, file_path: str) -> dict:
+    now = now_iso()
+    with get_session() as session:
+        count = session.execute(text("SELECT COUNT(*) FROM cv_files")).scalar()
+        is_default = 1 if count == 0 else 0
+        result = session.execute(
+            text("""
+                INSERT INTO cv_files (original_name, file_path, is_default, created_at)
+                VALUES (:original_name, :file_path, :is_default, :now)
+                RETURNING id
+            """),
+            {"original_name": original_name, "file_path": file_path,
+             "is_default": is_default, "now": now},
+        )
+        new_id = result.fetchone()[0]
+        row = session.execute(
+            text("SELECT * FROM cv_files WHERE id = :id"), {"id": new_id}
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def set_default_cv(cv_id: int) -> list[dict]:
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT id FROM cv_files WHERE id = :id"), {"id": cv_id}
+        ).fetchone()
+        if not existing:
+            raise ServiceError("CV no encontrado.", HTTPStatus.NOT_FOUND)
+        session.execute(text("UPDATE cv_files SET is_default = 0"))
+        session.execute(text("UPDATE cv_files SET is_default = 1 WHERE id = :id"), {"id": cv_id})
+        rows = session.execute(
+            text("SELECT * FROM cv_files ORDER BY is_default DESC, id ASC")
+        ).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def delete_cv_file(cv_id: int) -> dict:
+    with get_session() as session:
+        row = session.execute(
+            text("SELECT * FROM cv_files WHERE id = :id"), {"id": cv_id}
+        ).fetchone()
+        if not row:
+            raise ServiceError("CV no encontrado.", HTTPStatus.NOT_FOUND)
+        cv = row_to_dict(row)
+        import os as _os
+        if _os.path.exists(cv["file_path"]):
+            _os.remove(cv["file_path"])
+        session.execute(text("DELETE FROM cv_files WHERE id = :id"), {"id": cv_id})
+        return {"deleted": cv_id}
+
+
+# ---------------------------------------------------------------------------
+# Email jobs
+# ---------------------------------------------------------------------------
+
+def get_email_jobs() -> list[dict]:
+    with get_session() as session:
+        rows = session.execute(text("""
+            SELECT ej.*, c.name as contact_name, c.email as contact_email,
+                   c.company as contact_company, mt.name as template_name,
+                   cv.original_name as cv_name
+            FROM email_jobs ej
+            LEFT JOIN contacts c ON ej.contact_id = c.id
+            LEFT JOIN message_templates mt ON ej.template_id = mt.id
+            LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
+            ORDER BY ej.scheduled_at ASC
+        """)).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def create_email_job(payload: dict) -> dict:
+    contact_id = payload.get("contact_id")
+    template_id = payload.get("template_id")
+    cv_file_id = payload.get("cv_file_id")
+    frequency_days = int(payload.get("frequency_days") or 0)
+    scheduled_at = payload.get("scheduled_at") or now_iso()
+
+    if not contact_id:
+        raise ServiceError("contact_id es obligatorio.")
+
+    with get_session() as session:
+        contact = session.execute(
+            text("SELECT id FROM contacts WHERE id = :id"), {"id": contact_id}
+        ).fetchone()
+        if not contact:
+            raise ServiceError("Contacto no encontrado.", HTTPStatus.NOT_FOUND)
+
+        if not template_id:
+            tmpl = session.execute(
+                text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
+            ).fetchone()
+            template_id = tmpl[0] if tmpl else None
+
+        result = session.execute(
+            text("""
+                INSERT INTO email_jobs (contact_id, template_id, cv_file_id, frequency_days,
+                    scheduled_at, status, created_at)
+                VALUES (:contact_id, :template_id, :cv_file_id, :frequency_days,
+                    :scheduled_at, 'pending', :now)
+                RETURNING id
+            """),
+            {"contact_id": contact_id, "template_id": template_id, "cv_file_id": cv_file_id,
+             "frequency_days": frequency_days, "scheduled_at": scheduled_at, "now": now_iso()},
+        )
+        new_id = result.fetchone()[0]
+        row = session.execute(text("""
+            SELECT ej.*, c.name as contact_name, c.email as contact_email,
+                   c.company as contact_company, mt.name as template_name,
+                   cv.original_name as cv_name
+            FROM email_jobs ej
+            LEFT JOIN contacts c ON ej.contact_id = c.id
+            LEFT JOIN message_templates mt ON ej.template_id = mt.id
+            LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
+            WHERE ej.id = :id
+        """), {"id": new_id}).fetchone()
+        return row_to_dict(row)
+
+
+def delete_email_job(job_id: int) -> dict:
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT id, status FROM email_jobs WHERE id = :id"), {"id": job_id}
+        ).fetchone()
+        if not existing:
+            raise ServiceError("Job no encontrado.", HTTPStatus.NOT_FOUND)
+        session.execute(text("DELETE FROM email_jobs WHERE id = :id"), {"id": job_id})
+        return {"deleted": job_id}
+
+
+def process_pending_email_jobs() -> dict:
+    from modules import gmail_service
+    from pathlib import Path
+
+    now = now_iso()
+    sent = 0
+    failed = 0
+
+    with get_session() as session:
+        jobs = session.execute(text("""
+            SELECT ej.id, ej.contact_id, ej.template_id, ej.cv_file_id,
+                   ej.frequency_days, ej.scheduled_at,
+                   c.email, c.name, c.company,
+                   cv.file_path, cv.original_name
+            FROM email_jobs ej
+            LEFT JOIN contacts c ON ej.contact_id = c.id
+            LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
+            WHERE ej.status = 'pending' AND ej.scheduled_at <= :now
+        """), {"now": now}).fetchall()
+
+        for job in jobs:
+            j = row_to_dict(job)
+            try:
+                tmpl_row = session.execute(
+                    text("SELECT * FROM message_templates WHERE id = :id"),
+                    {"id": j["template_id"]}
+                ).fetchone() if j["template_id"] else None
+
+                contact = {"name": j["name"], "company": j["company"], "email": j["email"]}
+                if tmpl_row:
+                    rendered = render_template(row_to_dict(tmpl_row), contact)
+                else:
+                    rendered = {
+                        "subject": f"Postulacion y CV - {j['company'] or j['email']}",
+                        "body": f"{j['name'] or 'Hola'},\n\nTe comparto mi CV.\n\nGracias,\nGabriel",
+                    }
+
+                msg_id = gmail_service.send_email(
+                    to=j["email"],
+                    subject=rendered["subject"],
+                    body=rendered["body"],
+                    cv_path=j.get("file_path"),
+                    cv_filename=j.get("original_name"),
+                )
+
+                session.execute(text("""
+                    UPDATE email_jobs SET status = 'sent', sent_at = :now,
+                        gmail_message_id = :msg_id WHERE id = :id
+                """), {"now": now_iso(), "msg_id": msg_id, "id": j["id"]})
+
+                if j["frequency_days"] and int(j["frequency_days"]) > 0:
+                    from datetime import datetime, timedelta, timezone
+                    next_send = (
+                        datetime.now(timezone.utc) + timedelta(days=int(j["frequency_days"]))
+                    ).isoformat(timespec="seconds")
+                    session.execute(text("""
+                        INSERT INTO email_jobs (contact_id, template_id, cv_file_id,
+                            frequency_days, scheduled_at, status, created_at)
+                        VALUES (:contact_id, :template_id, :cv_file_id,
+                            :frequency_days, :scheduled_at, 'pending', :now)
+                    """), {
+                        "contact_id": j["contact_id"], "template_id": j["template_id"],
+                        "cv_file_id": j["cv_file_id"], "frequency_days": j["frequency_days"],
+                        "scheduled_at": next_send, "now": now_iso(),
+                    })
+
+                insert_history(session, event_type="email.sent", entity_type="contact",
+                               entity_id=str(j["contact_id"]),
+                               message=f"Email enviado a {j['email']}")
+                sent += 1
+            except Exception as exc:
+                session.execute(text("""
+                    UPDATE email_jobs SET status = 'failed', error_message = :err WHERE id = :id
+                """), {"err": str(exc)[:300], "id": j["id"]})
+                failed += 1
+
+    return {"sent": sent, "failed": failed}

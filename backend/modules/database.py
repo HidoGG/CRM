@@ -120,10 +120,47 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL
             )
         """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS message_templates (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS cv_files (
+                id SERIAL PRIMARY KEY,
+                original_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS email_jobs (
+                id SERIAL PRIMARY KEY,
+                contact_id INTEGER REFERENCES contacts(id) ON DELETE CASCADE,
+                template_id INTEGER REFERENCES message_templates(id) ON DELETE SET NULL,
+                cv_file_id INTEGER REFERENCES cv_files(id) ON DELETE SET NULL,
+                frequency_days INTEGER NOT NULL DEFAULT 0,
+                scheduled_at TEXT NOT NULL,
+                sent_at TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                error_message TEXT,
+                gmail_message_id TEXT,
+                created_at TEXT NOT NULL
+            )
+        """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_import_candidates_import_id ON import_candidates(import_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_reporting_snapshots_date ON reporting_snapshots(snapshot_date)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_status ON email_jobs(status)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_scheduled ON email_jobs(scheduled_at)"))
         conn.commit()
 
 

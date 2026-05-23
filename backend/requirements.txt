@@ -19,5 +19,13 @@ pdfplumber>=0.11.0
 # Integracion OpenAI (OCR por API y clasificacion asistida)
 openai>=1.30.0
 
+# Gmail API
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+
+# Scheduler
+apscheduler>=3.10.0
+
 # Linting y formato (dev)
 ruff>=0.4.0

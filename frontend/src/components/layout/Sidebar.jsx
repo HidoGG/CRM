@@ -8,6 +8,8 @@ const navItems = [
   { id: 'tendencias', label: 'Tendencias', note: 'Historico y ritmo' },
   { id: 'contactos', label: 'Contactos', note: 'Base y filtros' },
   { id: 'importaciones', label: 'Importaciones', note: 'Trazabilidad' },
+  { id: 'plantillas', label: 'Plantillas', note: 'Cuerpos de mensaje' },
+  { id: 'envios', label: 'Envíos', note: 'Gmail automatico' },
 ];
 
 export function Sidebar({ activeView, setActiveView, statusMessage }) {
