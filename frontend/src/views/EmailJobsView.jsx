@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { API_BASE } from '../AppShell';
-import { ConfirmModal } from '../components/ConfirmModal';
+import { ConfirmModal, InfoModal } from '../components/ConfirmModal';
 
 const STATUS_LABEL = {
   pending: 'Pendiente',
@@ -27,6 +27,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   const cvInputRef = useRef(null);
   const [confirmCv, setConfirmCv] = useState(null);    // cv id | null
   const [confirmJob, setConfirmJob] = useState(null);  // job id | null
+  const [runResult, setRunResult] = useState(null);    // {sent, failed} | null
 
   function handleFileSelected(e) {
     const file = e.target.files?.[0];
@@ -74,8 +75,10 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   }
 
   async function runNow() {
-    await fetch(`${API_BASE}/email-jobs/run-now`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/email-jobs/run-now`, { method: 'POST' });
+    const data = res.ok ? await res.json() : { sent: 0, failed: 0 };
     await onRefresh();
+    setRunResult(data);
   }
 
   async function authorize() {
@@ -89,6 +92,25 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
 
   return (
     <div className="flex flex-col gap-6">
+      <InfoModal
+        open={runResult !== null}
+        title={
+          runResult?.sent > 0 && runResult?.failed === 0 ? '✓ Correos enviados' :
+          runResult?.sent === 0 && runResult?.failed === 0 ? 'Sin envíos pendientes' :
+          runResult?.sent > 0 ? 'Envíos completados con errores' : '⚠ Falló el envío'
+        }
+        message={
+          runResult?.sent > 0 && runResult?.failed === 0
+            ? <><p className="m-0">Se enviaron correctamente <strong>{runResult.sent}</strong> {runResult.sent === 1 ? 'correo' : 'correos'}.</p><p className="m-0 mt-2 text-xs">Revisá tu bandeja de entrada para confirmarlo.</p></>
+            : runResult?.sent === 0 && runResult?.failed === 0
+            ? <p className="m-0">No había correos pendientes de envío en este momento.</p>
+            : runResult?.sent > 0
+            ? <p className="m-0">Se enviaron <strong>{runResult.sent}</strong> correos, pero <strong>{runResult.failed}</strong> fallaron. Revisá los detalles en la cola.</p>
+            : <p className="m-0">No se pudo enviar. Revisá el estado de Gmail o los detalles del error en la cola.</p>
+        }
+        onClose={() => setRunResult(null)}
+      />
+
       <ConfirmModal
         open={confirmCv !== null}
         title="Eliminar CV"
