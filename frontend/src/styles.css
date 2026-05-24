@@ -158,6 +158,27 @@ button {
   flex-wrap: wrap;
 }
 
+.confirm-options {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 12px 0 4px;
+}
+
+.confirm-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted, #888);
+}
+
+.confirm-options select {
+  min-width: 200px;
+}
+
 .ghost-button,
 .primary-button {
   border: 0;

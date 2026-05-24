@@ -677,6 +677,7 @@ def create_contact(payload: dict) -> dict:
             message=f"Created contact {email}",
             metadata_json=json.dumps({"email": email, "name": name}, ensure_ascii=True),
         )
+        _auto_create_email_job(session, contact_id, payload.get("next_action", ""))
         row = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
             {"id": contact_id},
@@ -1018,6 +1019,8 @@ def preview_import(filename: str, mime_type: str, raw_bytes: bytes, source: str)
 
 def confirm_import(import_id: int, payload: dict) -> dict:
     requested_candidates = payload.get("candidates") or []
+    template_id: int | None = payload.get("template_id")
+    cv_file_id: int | None = payload.get("cv_file_id")
     now = now_iso()
     inserted_contacts = []
 
@@ -1107,6 +1110,7 @@ def confirm_import(import_id: int, payload: dict) -> dict:
                 message=f"Imported contact {email} from batch {import_id}",
                 metadata_json=json.dumps({"import_id": import_id, "email": email}, ensure_ascii=True),
             )
+            _auto_create_email_job(session, contact_id, next_action, template_id, cv_file_id)
 
         session.execute(
             text("""
@@ -1253,6 +1257,33 @@ def set_default_template(template_id: int) -> dict:
             text("SELECT * FROM message_templates ORDER BY is_default DESC, id ASC")
         ).fetchall()
         return [row_to_dict(r) for r in rows]
+
+
+def _auto_create_email_job(session, contact_id: int, next_action: str,
+                           template_id: int | None = None, cv_file_id: int | None = None) -> None:
+    """Crea automáticamente un email_job para un contacto recién insertado.
+    Solo lo hace si la acción es enviar o seguir."""
+    if normalize_next_action(next_action) not in {"enviar", "seguir"}:
+        return
+    if template_id is None:
+        tmpl = session.execute(
+            text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
+        ).fetchone()
+        template_id = tmpl[0] if tmpl else None
+    if cv_file_id is None:
+        cv = session.execute(
+            text("SELECT id FROM cv_files WHERE is_default = 1 LIMIT 1")
+        ).fetchone()
+        cv_file_id = cv[0] if cv else None
+    session.execute(
+        text("""
+            INSERT INTO email_jobs (contact_id, template_id, cv_file_id, frequency_days,
+                scheduled_at, status, created_at)
+            VALUES (:contact_id, :template_id, :cv_file_id, 0, :scheduled_at, 'pending', :now)
+        """),
+        {"contact_id": contact_id, "template_id": template_id, "cv_file_id": cv_file_id,
+         "scheduled_at": now_iso(), "now": now_iso()},
+    )
 
 
 def render_template(template: dict, contact: dict) -> dict:

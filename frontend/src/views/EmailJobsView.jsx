@@ -336,8 +336,3 @@ function JobRow({ job, onDelete }) {
   );
 }
 
-function formatDate(iso) {
-  if (!iso) return '—';
-  try { return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
-  catch { return iso; }
-}

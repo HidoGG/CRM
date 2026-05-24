@@ -288,14 +288,18 @@ function AppShell() {
     });
   }
 
-  async function confirmPreview() {
+  async function confirmPreview({ templateId, cvFileId } = {}) {
     if (!importPreview?.batch?.id) return;
     setConfirming(true);
     try {
       const response = await fetch(`${API_BASE}/imports/${importPreview.batch.id}/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidates: importPreview.candidates }),
+        body: JSON.stringify({
+          candidates: importPreview.candidates,
+          ...(templateId != null && { template_id: templateId }),
+          ...(cvFileId != null && { cv_file_id: cvFileId }),
+        }),
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
@@ -501,6 +505,8 @@ function AppShell() {
             importing={importing}
             confirming={confirming}
             capabilities={capabilities}
+            templates={templates}
+            cvFiles={cvFiles}
             onFileChange={handleFileSelection}
             onCandidateChange={updateCandidate}
             onConfirm={confirmPreview}

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { capitalize, formatDate, prettifyAction } from '../AppShell';
 
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
@@ -10,11 +11,24 @@ export function ImportsView({
   importing,
   confirming,
   capabilities,
+  templates = [],
+  cvFiles = [],
   onFileChange,
   onCandidateChange,
   onConfirm,
   onClearPreview,
 }) {
+  const defaultTemplate = templates.find((t) => t.is_default) ?? templates[0];
+  const defaultCv = cvFiles.find((c) => c.is_default) ?? cvFiles[0];
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [selectedCvId, setSelectedCvId] = useState(null);
+
+  function handleConfirm() {
+    onConfirm({
+      templateId: selectedTemplateId ?? defaultTemplate?.id ?? null,
+      cvFileId: selectedCvId ?? defaultCv?.id ?? null,
+    });
+  }
   return (
     <section className="page">
       <section className="card">
@@ -175,11 +189,41 @@ export function ImportsView({
               </table>
             </div>
 
+            <div className="confirm-options">
+              <label>
+                Plantilla
+                <select
+                  value={selectedTemplateId ?? defaultTemplate?.id ?? ''}
+                  onChange={(e) => setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  {templates.length === 0 && <option value="">Sin plantillas</option>}
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.is_default ? ' (por defecto)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                CV adjunto
+                <select
+                  value={selectedCvId ?? defaultCv?.id ?? ''}
+                  onChange={(e) => setSelectedCvId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Sin CV</option>
+                  {cvFiles.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.original_name}{c.is_default ? ' (por defecto)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="detail-actions">
               <button type="button" className="ghost-button" onClick={onClearPreview}>
                 Descartar preview
               </button>
-              <button type="button" className="primary-button" onClick={onConfirm} disabled={confirming}>
+              <button type="button" className="primary-button" onClick={handleConfirm} disabled={confirming}>
                 {confirming ? 'Confirmando...' : 'Confirmar importacion'}
               </button>
             </div>

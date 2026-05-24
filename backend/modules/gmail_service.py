@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
+import secrets
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -11,6 +13,15 @@ from pathlib import Path
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 CREDENTIALS_FILE = Path(__file__).parent.parent / "credentials.json"
 TOKEN_FILE = Path(__file__).parent.parent / "token.json"
+_VERIFIER_FILE = Path(__file__).parent.parent / ".oauth_verifier"
+
+
+def _generate_pkce() -> tuple[str, str]:
+    verifier = secrets.token_urlsafe(96)
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()
+    ).rstrip(b"=").decode()
+    return verifier, challenge
 
 
 def _get_credentials():
@@ -32,6 +43,9 @@ def _get_credentials():
 def get_auth_url() -> str:
     from google_auth_oauthlib.flow import Flow
 
+    verifier, challenge = _generate_pkce()
+    _VERIFIER_FILE.write_text(verifier)
+
     flow = Flow.from_client_secrets_file(
         str(CREDENTIALS_FILE),
         scopes=SCOPES,
@@ -39,8 +53,9 @@ def get_auth_url() -> str:
     )
     auth_url, _ = flow.authorization_url(
         access_type="offline",
-        include_granted_scopes="true",
         prompt="consent",
+        code_challenge=challenge,
+        code_challenge_method="S256",
     )
     return auth_url
 
@@ -48,13 +63,20 @@ def get_auth_url() -> str:
 def exchange_code(code: str) -> None:
     from google_auth_oauthlib.flow import Flow
 
+    verifier = _VERIFIER_FILE.read_text().strip() if _VERIFIER_FILE.exists() else None
+
     flow = Flow.from_client_secrets_file(
         str(CREDENTIALS_FILE),
         scopes=SCOPES,
         redirect_uri="http://localhost:8000/gmail/callback",
     )
-    flow.fetch_token(code=code)
+    kwargs: dict = {"code": code}
+    if verifier:
+        kwargs["code_verifier"] = verifier
+    flow.fetch_token(**kwargs)
     TOKEN_FILE.write_text(flow.credentials.to_json())
+    if _VERIFIER_FILE.exists():
+        _VERIFIER_FILE.unlink()
 
 
 def is_authorized() -> bool:

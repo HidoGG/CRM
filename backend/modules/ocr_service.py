@@ -69,7 +69,12 @@ def extract_candidates_from_file(filename: str, mime_type: str, raw_bytes: bytes
     elif extension == "xlsx" or "spreadsheetml" in mime_type:
         text = extract_text_from_xlsx(raw_bytes)
     elif extension == "pdf" or mime_type == "application/pdf":
-        if capabilities["openai_enabled"]:
+        # Siempre intentar extracción local primero (gratis, sin API)
+        text = extract_text_from_pdf(raw_bytes)
+        if EMAIL_RE.search(text or ""):
+            provider = "pdf_text"
+        elif capabilities["openai_enabled"]:
+            # Solo usar OpenAI si el PDF es escaneado y no tiene texto extraíble
             try:
                 text = extract_text_with_openai(raw_bytes, filename, mime_type)
                 provider = "openai_pdf"
@@ -77,22 +82,15 @@ def extract_candidates_from_file(filename: str, mime_type: str, raw_bytes: bytes
                 exc_str = str(exc)
                 if "429" in exc_str or "insufficient_quota" in exc_str or "quota" in exc_str.lower():
                     warnings.append(
-                        "Cuota de OpenAI agotada. Se usó extracción local; "
-                        "recargá créditos en platform.openai.com para OCR completo."
+                        "El PDF no tiene texto extraíble y la cuota de OpenAI está agotada. "
+                        "Recargá créditos en platform.openai.com para procesar PDFs escaneados."
                     )
                 else:
                     warnings.append(f"OpenAI no pudo procesar el PDF: {exc_str[:120]}")
-                text = extract_text_from_pdf(raw_bytes)
-                if EMAIL_RE.search(text or ""):
-                    provider = "pdf_text"
         else:
-            text = extract_text_from_pdf(raw_bytes)
-            if EMAIL_RE.search(text or ""):
-                provider = "pdf_text"
-            else:
-                warnings.append(
-                    "No pude sacar texto util del PDF. Si es escaneado, agrega OPENAI_API_KEY."
-                )
+            warnings.append(
+                "No pude sacar texto útil del PDF. Si es escaneado, agregá OPENAI_API_KEY."
+            )
     elif mime_type.startswith("image/") or extension in {"png", "jpg", "jpeg", "gif", "webp"}:
         if capabilities["openai_enabled"]:
             try:
