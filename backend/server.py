@@ -90,6 +90,14 @@ async def create_contact(request: Request):
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
+@app.delete("/contacts/{contact_id}")
+def delete_contact(contact_id: int):
+    try:
+        return crm_service.delete_contact(contact_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
 @app.post("/contacts/{contact_id}/execute")
 async def execute_action(contact_id: int, request: Request):
     payload = await request.json()

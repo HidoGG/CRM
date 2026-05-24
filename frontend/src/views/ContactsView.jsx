@@ -1,11 +1,23 @@
+import { useState } from 'react';
 import { capitalize, prettifyAction } from '../AppShell';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
 
-export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving }) {
+export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete }) {
+  const [confirmId, setConfirmId] = useState(null);
+  const confirmContact = contacts.find(c => c.id === confirmId);
   return (
     <section className="contacts-layout">
+      <ConfirmModal
+        open={confirmId !== null}
+        title="Eliminar contacto"
+        message={confirmContact ? `¿Seguro que querés eliminar a ${confirmContact.name || confirmContact.email}? Se van a borrar también sus envíos programados.` : ''}
+        confirmLabel="Eliminar"
+        onConfirm={() => { onDelete(confirmId); setConfirmId(null); }}
+        onCancel={() => setConfirmId(null)}
+      />
       <div className="contacts-main">
         <div className="section-head">
           <div>
@@ -38,6 +50,7 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                 <th>Estado</th>
                 <th>Accion</th>
                 <th>Origen</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -54,6 +67,16 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                     </td>
                     <td>{prettifyAction(contact.next_action || 'revisar_manual')}</td>
                     <td>{contact.source}</td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmId(contact.id)}
+                        title="Eliminar contacto"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px 6px', borderRadius: '6px', fontSize: '0.8rem' }}
+                      >
+                        Eliminar
+                      </button>
+                    </td>
                   </tr>
                 ))
               ) : (

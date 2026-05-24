@@ -565,6 +565,17 @@ def get_contacts(limit: int = 100, offset: int = 0) -> list[dict]:
     return [row_to_dict(row) for row in rows]
 
 
+def delete_contact(contact_id: int) -> dict:
+    with get_session() as session:
+        row = session.execute(
+            text("SELECT id, email FROM contacts WHERE id = :id"), {"id": contact_id}
+        ).fetchone()
+        if not row:
+            raise ServiceError("Contacto no encontrado.", HTTPStatus.NOT_FOUND)
+        session.execute(text("DELETE FROM contacts WHERE id = :id"), {"id": contact_id})
+    return {"deleted": contact_id}
+
+
 def get_summary() -> dict:
     with get_session() as session:
         total_contacts = session.execute(text("SELECT COUNT(*) FROM contacts")).fetchone()[0]

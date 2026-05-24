@@ -494,6 +494,10 @@ function AppShell() {
             onSubmit={handleSubmit}
             onReset={() => setForm(defaultForm)}
             saving={saving}
+            onDelete={async (id) => {
+              await fetch(`${API_BASE}/contacts/${id}`, { method: 'DELETE' });
+              await refreshData();
+            }}
           />
         )}
 
