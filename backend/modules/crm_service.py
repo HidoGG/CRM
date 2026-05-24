@@ -634,8 +634,6 @@ def create_contact(payload: dict) -> dict:
     name = str(payload.get("name", "")).strip()
     if not VALID_EMAIL_RE.fullmatch(email):
         raise ServiceError("invalid email format", HTTPStatus.UNPROCESSABLE_ENTITY)
-    if not name:
-        raise ServiceError("name cannot be empty", HTTPStatus.UNPROCESSABLE_ENTITY)
 
     now = now_iso()
     with get_session() as session:
@@ -1046,7 +1044,7 @@ def confirm_import(import_id: int, payload: dict) -> dict:
         for candidate in requested_candidates:
             candidate_id = int(candidate.get("id", 0))
             email = normalize_email(candidate.get("email"))
-            name = clean_name(candidate.get("name")) or "A quien corresponda"
+            name = clean_name(candidate.get("name"))
             company = clean_optional(candidate.get("company"))
             title = clean_optional(candidate.get("title"))
             status = normalize_status(candidate.get("status", "revisar"))
@@ -1298,10 +1296,27 @@ def _auto_create_email_job(session, contact_id: int, next_action: str,
 
 
 def render_template(template: dict, contact: dict) -> dict:
-    name = contact.get("name") or "Hola"
-    company = contact.get("company") or "su empresa"
-    subject = template.get("subject", "").replace("{name}", name).replace("{company}", company)
-    body = template.get("body", "").replace("{name}", name).replace("{company}", company)
+    import re as _re
+    name = (contact.get("name") or "").strip()
+    company = (contact.get("company") or "su empresa").strip()
+
+    subject = template.get("subject", "").replace("{company}", company)
+    body = template.get("body", "").replace("{company}", company)
+
+    if name:
+        subject = subject.replace("{name}", name)
+        body = body.replace("{name}", name)
+    else:
+        subject = subject.replace("{name}", "").strip(" ,")
+        # Si una línea queda solo con puntuación después de quitar {name}, eliminamos la línea
+        cleaned = []
+        for line in body.split("\n"):
+            replaced = line.replace("{name}", "")
+            if replaced.strip().strip(",.;: ") == "" and "{name}" in line:
+                continue
+            cleaned.append(replaced)
+        body = _re.sub(r"\n{3,}", "\n\n", "\n".join(cleaned))
+
     return {"subject": subject, "body": body}
 
 
