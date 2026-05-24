@@ -137,6 +137,7 @@ def init_db() -> None:
                 original_name TEXT NOT NULL,
                 file_path TEXT NOT NULL,
                 is_default INTEGER NOT NULL DEFAULT 0,
+                comment TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             )
         """))
@@ -161,6 +162,7 @@ def init_db() -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_reporting_snapshots_date ON reporting_snapshots(snapshot_date)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_status ON email_jobs(status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_scheduled ON email_jobs(scheduled_at)"))
+        conn.execute(text("ALTER TABLE cv_files ADD COLUMN IF NOT EXISTS comment TEXT NOT NULL DEFAULT ''"))
         conn.commit()
 
 

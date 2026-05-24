@@ -223,13 +223,21 @@ def list_cv_files():
 
 
 @app.post("/cv-files", status_code=201)
-async def upload_cv(file: UploadFile = File(...)):
+async def upload_cv(file: UploadFile = File(...), comment: str = Form("")):
     ext = Path(file.filename or "cv.pdf").suffix or ".pdf"
     unique_name = f"{uuid.uuid4().hex}{ext}"
     dest = CV_UPLOAD_DIR / unique_name
     with dest.open("wb") as f:
         shutil.copyfileobj(file.file, f)
-    return crm_service.save_cv_file(file.filename or unique_name, str(dest))
+    return crm_service.save_cv_file(file.filename or unique_name, str(dest), comment)
+
+
+@app.patch("/cv-files/{cv_id}")
+def update_cv_comment(cv_id: int, body: dict):
+    try:
+        return crm_service.update_cv_comment(cv_id, body.get("comment", ""))
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
 @app.put("/cv-files/{cv_id}/default")

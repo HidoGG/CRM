@@ -1306,23 +1306,40 @@ def get_cv_files() -> list[dict]:
         return [row_to_dict(r) for r in rows]
 
 
-def save_cv_file(original_name: str, file_path: str) -> dict:
+def save_cv_file(original_name: str, file_path: str, comment: str = "") -> dict:
     now = now_iso()
     with get_session() as session:
         count = session.execute(text("SELECT COUNT(*) FROM cv_files")).scalar()
         is_default = 1 if count == 0 else 0
         result = session.execute(
             text("""
-                INSERT INTO cv_files (original_name, file_path, is_default, created_at)
-                VALUES (:original_name, :file_path, :is_default, :now)
+                INSERT INTO cv_files (original_name, file_path, is_default, comment, created_at)
+                VALUES (:original_name, :file_path, :is_default, :comment, :now)
                 RETURNING id
             """),
             {"original_name": original_name, "file_path": file_path,
-             "is_default": is_default, "now": now},
+             "is_default": is_default, "comment": comment, "now": now},
         )
         new_id = result.fetchone()[0]
         row = session.execute(
             text("SELECT * FROM cv_files WHERE id = :id"), {"id": new_id}
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def update_cv_comment(cv_id: int, comment: str) -> dict:
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT id FROM cv_files WHERE id = :id"), {"id": cv_id}
+        ).fetchone()
+        if not existing:
+            raise ServiceError("CV no encontrado.", HTTPStatus.NOT_FOUND)
+        session.execute(
+            text("UPDATE cv_files SET comment = :comment WHERE id = :id"),
+            {"comment": comment.strip(), "id": cv_id},
+        )
+        row = session.execute(
+            text("SELECT * FROM cv_files WHERE id = :id"), {"id": cv_id}
         ).fetchone()
         return row_to_dict(row)
 
