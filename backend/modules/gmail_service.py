@@ -15,6 +15,9 @@ CREDENTIALS_FILE = Path(__file__).parent.parent / "credentials.json"
 TOKEN_FILE = Path(__file__).parent.parent / "token.json"
 _VERIFIER_FILE = Path(__file__).parent.parent / ".oauth_verifier"
 
+def _backend_url() -> str:
+    return os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+
 
 def _generate_pkce() -> tuple[str, str]:
     verifier = secrets.token_urlsafe(96)
@@ -49,7 +52,7 @@ def get_auth_url() -> str:
     flow = Flow.from_client_secrets_file(
         str(CREDENTIALS_FILE),
         scopes=SCOPES,
-        redirect_uri="http://localhost:8000/gmail/callback",
+        redirect_uri=f"{_backend_url()}/gmail/callback",
     )
     auth_url, _ = flow.authorization_url(
         access_type="offline",
@@ -68,7 +71,7 @@ def exchange_code(code: str) -> None:
     flow = Flow.from_client_secrets_file(
         str(CREDENTIALS_FILE),
         scopes=SCOPES,
-        redirect_uri="http://localhost:8000/gmail/callback",
+        redirect_uri=f"{_backend_url()}/gmail/callback",
     )
     kwargs: dict = {"code": code}
     if verifier:

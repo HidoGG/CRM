@@ -315,7 +315,8 @@ def gmail_auth_url():
 def gmail_callback(code: str):
     from modules import gmail_service
     gmail_service.exchange_code(code)
-    return RedirectResponse(url="http://localhost:5173?gmail=authorized")
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    return RedirectResponse(url=f"{frontend_url}?gmail=authorized")
 
 
 if __name__ == "__main__":
