@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { API_BASE } from '../AppShell';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 const STATUS_LABEL = {
   pending: 'Pendiente',
@@ -24,6 +25,8 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   const [pendingFile, setPendingFile] = useState(null);
   const [pendingComment, setPendingComment] = useState('');
   const cvInputRef = useRef(null);
+  const [confirmCv, setConfirmCv] = useState(null);    // cv id | null
+  const [confirmJob, setConfirmJob] = useState(null);  // job id | null
 
   function handleFileSelected(e) {
     const file = e.target.files?.[0];
@@ -54,14 +57,18 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     await onRefresh();
   }
 
-  async function deleteCv(id) {
-    if (!confirm('¿Eliminar este CV?')) return;
+  function deleteCv(id) { setConfirmCv(id); }
+  async function confirmDeleteCv() {
+    const id = confirmCv;
+    setConfirmCv(null);
     await fetch(`${API_BASE}/cv-files/${id}`, { method: 'DELETE' });
     await onRefresh();
   }
 
-  async function deleteJob(id) {
-    if (!confirm('¿Cancelar este envío?')) return;
+  function deleteJob(id) { setConfirmJob(id); }
+  async function confirmDeleteJob() {
+    const id = confirmJob;
+    setConfirmJob(null);
     await fetch(`${API_BASE}/email-jobs/${id}`, { method: 'DELETE' });
     await onRefresh();
   }
@@ -82,6 +89,22 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
 
   return (
     <div className="flex flex-col gap-6">
+      <ConfirmModal
+        open={confirmCv !== null}
+        title="Eliminar CV"
+        message="¿Seguro que querés eliminar este archivo? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={confirmDeleteCv}
+        onCancel={() => setConfirmCv(null)}
+      />
+      <ConfirmModal
+        open={confirmJob !== null}
+        title="Cancelar envío"
+        message="¿Seguro que querés cancelar este envío programado?"
+        confirmLabel="Cancelar envío"
+        onConfirm={confirmDeleteJob}
+        onCancel={() => setConfirmJob(null)}
+      />
 
       {/* Estado Gmail */}
       <div className={`rounded-[20px] p-5 flex items-center justify-between gap-4 ${gmailStatus?.authorized ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>

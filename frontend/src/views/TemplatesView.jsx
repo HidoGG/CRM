@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { API_BASE } from '../AppShell';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 export function TemplatesView({ templates, onRefresh }) {
   const [editing, setEditing] = useState(null); // null | 'new' | template object
   const [form, setForm] = useState({ name: '', subject: '', body: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null); // template id | null
 
   function openNew() {
     setForm({ name: '', subject: '', body: '' });
@@ -60,11 +62,16 @@ export function TemplatesView({ templates, onRefresh }) {
   }
 
   async function remove(id) {
-    if (!confirm('¿Eliminar esta plantilla?')) return;
+    setConfirmDelete(id);
+  }
+
+  async function confirmRemove() {
+    const id = confirmDelete;
+    setConfirmDelete(null);
     const res = await fetch(`${API_BASE}/templates/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      alert(body.detail || 'No se pudo eliminar.');
+      setError(body.detail || 'No se pudo eliminar.');
       return;
     }
     await onRefresh();
@@ -72,6 +79,14 @@ export function TemplatesView({ templates, onRefresh }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <ConfirmModal
+        open={confirmDelete !== null}
+        title="Eliminar plantilla"
+        message="¿Seguro que querés eliminar esta plantilla? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        onConfirm={confirmRemove}
+        onCancel={() => setConfirmDelete(null)}
+      />
       <div className="bg-white rounded-[24px] p-6 border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
         <div className="flex items-center justify-between mb-4">
           <div>
