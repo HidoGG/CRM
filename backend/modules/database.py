@@ -163,6 +163,12 @@ def init_db() -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_status ON email_jobs(status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_scheduled ON email_jobs(scheduled_at)"))
         conn.execute(text("ALTER TABLE cv_files ADD COLUMN IF NOT EXISTS comment TEXT NOT NULL DEFAULT ''"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """))
         conn.commit()
 
 
