@@ -10,3 +10,7 @@ __pycache__/
 .DS_Store
 .env
 *.env
+backend/credentials.json
+backend/token.json
+backend/.oauth_verifier
+backend/uploads/

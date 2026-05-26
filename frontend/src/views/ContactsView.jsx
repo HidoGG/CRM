@@ -97,7 +97,7 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
           </div>
         </div>
 
-        <form className="detail-card" onSubmit={onSubmit}>
+        <form className="detail-card" onSubmit={onSubmit} autoComplete="off">
           <FormField label="Nombre" value={form.name} onChange={(value) => onFormChange({ ...form, name: value })} />
           <FormField label="Email" value={form.email} onChange={(value) => onFormChange({ ...form, email: value })} />
           <FormField
@@ -161,7 +161,12 @@ function FormField({ label, value, onChange }) {
   return (
     <label className="detail-field">
       <span>{label}</span>
-      <input type="text" value={value} onChange={(event) => onChange(event.target.value)} />
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete="new-password"
+      />
     </label>
   );
 }
