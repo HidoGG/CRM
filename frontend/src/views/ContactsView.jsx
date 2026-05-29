@@ -5,7 +5,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
 
-export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete }) {
+export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, schedules = [] }) {
   const [confirmId, setConfirmId] = useState(null);
   const confirmContact = contacts.find(c => c.id === confirmId);
   return (
@@ -129,6 +129,21 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
               {actionOptions.map((item) => (
                 <option key={item} value={item}>
                   {prettifyAction(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="detail-field">
+            <span>Cronograma de envío</span>
+            <select
+              value={form.schedule_id ?? ''}
+              onChange={(e) => onFormChange({ ...form, schedule_id: e.target.value ? Number(e.target.value) : null })}
+            >
+              <option value="">Sin cronograma (inmediato)</option>
+              {schedules.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} — {String(s.start_hour_art).padStart(2,'0')}:00–{String(s.end_hour_art).padStart(2,'0')}:00 ART
                 </option>
               ))}
             </select>

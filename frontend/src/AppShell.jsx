@@ -8,6 +8,7 @@ import { PipelineView } from './views/PipelineView';
 import { ContactsView } from './views/ContactsView';
 import { ImportsView } from './views/ImportsView';
 import { TemplatesView } from './views/TemplatesView';
+import { SchedulesView } from './views/SchedulesView';
 import { EmailJobsView } from './views/EmailJobsView';
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
@@ -30,6 +31,7 @@ const defaultForm = {
   next_action: 'enviar',
   source: 'manual',
   notes: '',
+  schedule_id: null,
 };
 
 export const worktrayActions = ['enviar', 'seguir', 'portal', 'descartar'];
@@ -74,6 +76,7 @@ function AppShell() {
   const [saving, setSaving] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [cvFiles, setCvFiles] = useState([]);
+  const [schedules, setSchedules] = useState([]);
   const [emailJobs, setEmailJobs] = useState([]);
   const [gmailStatus, setGmailStatus] = useState({ authorized: false });
 
@@ -84,6 +87,7 @@ function AppShell() {
     if (activeView === 'importaciones') return 'Importaciones';
     if (activeView === 'bandeja') return 'Bandeja de trabajo';
     if (activeView === 'plantillas') return 'Plantillas de mensaje';
+    if (activeView === 'cronogramas') return 'Cronogramas de envío';
     if (activeView === 'envios') return 'Envíos automáticos';
     return 'Dashboard';
   }, [activeView]);
@@ -169,7 +173,7 @@ function AppShell() {
   async function refreshData() {
     try {
       const [healthRes, contactsRes, summaryRes, importsRes, capabilitiesRes, reportingRes,
-             templatesRes, cvFilesRes, emailJobsRes, gmailStatusRes] = await Promise.all([
+             templatesRes, cvFilesRes, schedulesRes, emailJobsRes, gmailStatusRes] = await Promise.all([
         apiFetch(`${API_BASE}/health`),
         apiFetch(`${API_BASE}/contacts`),
         apiFetch(`${API_BASE}/summary`),
@@ -178,6 +182,7 @@ function AppShell() {
         apiFetch(`${API_BASE}/reporting/overview`),
         apiFetch(`${API_BASE}/templates`),
         apiFetch(`${API_BASE}/cv-files`),
+        apiFetch(`${API_BASE}/schedules`),
         apiFetch(`${API_BASE}/email-jobs`),
         apiFetch(`${API_BASE}/gmail/status`),
       ]);
@@ -191,6 +196,7 @@ function AppShell() {
       const reportingData = reportingRes.ok ? await reportingRes.json() : createEmptyReporting();
       const templatesData = templatesRes.ok ? await templatesRes.json() : [];
       const cvFilesData = cvFilesRes.ok ? await cvFilesRes.json() : [];
+      const schedulesData = schedulesRes.ok ? await schedulesRes.json() : [];
       const emailJobsData = emailJobsRes.ok ? await emailJobsRes.json() : [];
       const gmailStatusData = gmailStatusRes.ok ? await gmailStatusRes.json() : { authorized: false };
 
@@ -201,6 +207,7 @@ function AppShell() {
       setReporting(reportingData);
       setTemplates(templatesData);
       setCvFiles(cvFilesData);
+      setSchedules(schedulesData);
       setEmailJobs(emailJobsData);
       setGmailStatus(gmailStatusData);
       setStatusMessage('API conectada. Ya podes cargar, confirmar y operar desde la bandeja.');
@@ -297,7 +304,7 @@ function AppShell() {
     });
   }
 
-  async function confirmPreview({ templateId, cvFileId } = {}) {
+  async function confirmPreview({ templateId, cvFileId, scheduleId } = {}) {
     if (!importPreview?.batch?.id) return;
     setConfirming(true);
     try {
@@ -308,6 +315,7 @@ function AppShell() {
           candidates: importPreview.candidates,
           ...(templateId != null && { template_id: templateId }),
           ...(cvFileId != null && { cv_file_id: cvFileId }),
+          ...(scheduleId != null && { schedule_id: scheduleId }),
         }),
       });
       if (!response.ok) {
@@ -503,6 +511,7 @@ function AppShell() {
             onSubmit={handleSubmit}
             onReset={() => setForm(defaultForm)}
             saving={saving}
+            schedules={schedules}
             onDelete={async (id) => {
               await apiFetch(`${API_BASE}/contacts/${id}`, { method: 'DELETE' });
               await refreshData();
@@ -520,6 +529,7 @@ function AppShell() {
             capabilities={capabilities}
             templates={templates}
             cvFiles={cvFiles}
+            schedules={schedules}
             onFileChange={handleFileSelection}
             onCandidateChange={updateCandidate}
             onConfirm={confirmPreview}
@@ -533,6 +543,13 @@ function AppShell() {
         {activeView === 'plantillas' && (
           <TemplatesView
             templates={templates}
+            onRefresh={refreshData}
+          />
+        )}
+
+        {activeView === 'cronogramas' && (
+          <SchedulesView
+            schedules={schedules}
             onRefresh={refreshData}
           />
         )}

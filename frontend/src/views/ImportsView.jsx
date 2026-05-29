@@ -13,6 +13,7 @@ export function ImportsView({
   capabilities,
   templates = [],
   cvFiles = [],
+  schedules = [],
   onFileChange,
   onCandidateChange,
   onConfirm,
@@ -22,11 +23,13 @@ export function ImportsView({
   const defaultCv = cvFiles.find((c) => c.is_default) ?? cvFiles[0];
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [selectedCvId, setSelectedCvId] = useState(null);
+  const [selectedScheduleId, setSelectedScheduleId] = useState('');
 
   function handleConfirm() {
     onConfirm({
       templateId: selectedTemplateId ?? defaultTemplate?.id ?? null,
       cvFileId: selectedCvId ?? defaultCv?.id ?? null,
+      scheduleId: selectedScheduleId ? Number(selectedScheduleId) : null,
     });
   }
   return (
@@ -214,6 +217,20 @@ export function ImportsView({
                   {cvFiles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.original_name}{c.is_default ? ' (por defecto)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Cronograma de envío
+                <select
+                  value={selectedScheduleId}
+                  onChange={(e) => setSelectedScheduleId(e.target.value)}
+                >
+                  <option value="">Sin cronograma (inmediato)</option>
+                  {schedules.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {String(s.start_hour_art).padStart(2,'0')}:00–{String(s.end_hour_art).padStart(2,'0')}:00 ART, c/{s.interval_minutes}min
                     </option>
                   ))}
                 </select>

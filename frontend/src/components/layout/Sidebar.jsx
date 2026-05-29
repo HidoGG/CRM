@@ -9,6 +9,7 @@ const navItems = [
   { id: 'contactos', label: 'Contactos', note: 'Base y filtros' },
   { id: 'importaciones', label: 'Importaciones', note: 'Trazabilidad' },
   { id: 'plantillas', label: 'Plantillas', note: 'Cuerpos de mensaje' },
+  { id: 'cronogramas', label: 'Cronogramas', note: 'Ventanas horarias ART' },
   { id: 'envios', label: 'Envíos', note: 'Gmail automatico' },
 ];
 
