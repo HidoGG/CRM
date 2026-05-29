@@ -81,6 +81,11 @@ export function SchedulesView({ schedules, onRefresh }) {
     }
   }
 
+  async function setDefault(id) {
+    await apiFetch(`${API_BASE}/schedules/${id}/default`, { method: 'PUT' });
+    await onRefresh();
+  }
+
   async function confirmRemove() {
     const id = confirmDelete;
     setConfirmDelete(null);
@@ -236,7 +241,14 @@ export function SchedulesView({ schedules, onRefresh }) {
                 className="border border-[#142433]/10 rounded-[18px] p-4 flex items-center justify-between gap-4 bg-white hover:border-[#184e77]/20 transition-colors"
               >
                 <div className="flex flex-col gap-1.5">
-                  <strong className="text-[#142433] text-[15px]">{s.name}</strong>
+                  <div className="flex items-center gap-2">
+                    <strong className="text-[#142433] text-[15px]">{s.name}</strong>
+                    {s.is_default === 1 && (
+                      <span className="text-xs bg-[#4bb3fd]/15 text-[#184e77] px-2 py-0.5 rounded-full font-semibold">
+                        Por defecto
+                      </span>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#597189]">
                     <span>
                       🕐 <strong className="text-[#142433]">{formatWindow(s.start_hour_art, s.end_hour_art)}</strong>
@@ -250,6 +262,15 @@ export function SchedulesView({ schedules, onRefresh }) {
                   </div>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
+                  {!s.is_default && (
+                    <button
+                      type="button"
+                      onClick={() => setDefault(s.id)}
+                      className="text-xs border border-[#184e77]/30 text-[#184e77] rounded-[8px] px-3 py-1.5 hover:bg-[#184e77]/5 cursor-pointer bg-white"
+                    >
+                      Usar por defecto
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => openEdit(s)}
@@ -257,13 +278,15 @@ export function SchedulesView({ schedules, onRefresh }) {
                   >
                     Editar
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(s.id)}
-                    className="text-xs border border-red-200 text-red-500 rounded-[8px] px-3 py-1.5 hover:bg-red-50 cursor-pointer bg-white"
-                  >
-                    Eliminar
-                  </button>
+                  {!s.is_default && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(s.id)}
+                      className="text-xs border border-red-200 text-red-500 rounded-[8px] px-3 py-1.5 hover:bg-red-50 cursor-pointer bg-white"
+                    >
+                      Eliminar
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

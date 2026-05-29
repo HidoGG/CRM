@@ -1515,13 +1515,17 @@ def create_schedule(payload: dict) -> dict:
         )
     now = now_iso()
     with get_session() as session:
+        # Si es el primero, queda como default automáticamente
+        count = session.execute(text("SELECT COUNT(*) FROM delivery_schedules")).scalar()
+        is_default = 1 if count == 0 else 0
         result = session.execute(text("""
-            INSERT INTO delivery_schedules (name, interval_minutes, start_hour_art, end_hour_art, created_at)
-            VALUES (:name, :interval_minutes, :start_hour_art, :end_hour_art, :now)
+            INSERT INTO delivery_schedules (name, interval_minutes, start_hour_art, end_hour_art, is_default, created_at)
+            VALUES (:name, :interval_minutes, :start_hour_art, :end_hour_art, :is_default, :now)
             RETURNING id
         """), {
             "name": name, "interval_minutes": interval_minutes,
-            "start_hour_art": start_hour_art, "end_hour_art": end_hour_art, "now": now,
+            "start_hour_art": start_hour_art, "end_hour_art": end_hour_art,
+            "is_default": is_default, "now": now,
         })
         new_id = result.fetchone()[0]
         row = session.execute(
@@ -1566,13 +1570,40 @@ def update_schedule(schedule_id: int, payload: dict) -> dict:
         return row_to_dict(row)
 
 
-def delete_schedule(schedule_id: int) -> dict:
+def set_default_schedule(schedule_id: int) -> list[dict]:
     with get_session() as session:
         existing = session.execute(
             text("SELECT id FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
         ).fetchone()
         if not existing:
             raise ServiceError("Cronograma no encontrado.", HTTPStatus.NOT_FOUND)
+        session.execute(text("UPDATE delivery_schedules SET is_default = 0"))
+        session.execute(
+            text("UPDATE delivery_schedules SET is_default = 1 WHERE id = :id"), {"id": schedule_id}
+        )
+        rows = session.execute(
+            text("SELECT * FROM delivery_schedules ORDER BY id ASC")
+        ).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def delete_schedule(schedule_id: int) -> dict:
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT * FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
+        ).fetchone()
+        if not existing:
+            raise ServiceError("Cronograma no encontrado.", HTTPStatus.NOT_FOUND)
+        s = row_to_dict(existing)
+        if s.get("is_default"):
+            others = session.execute(text(
+                "SELECT COUNT(*) FROM delivery_schedules WHERE id != :id"
+            ), {"id": schedule_id}).scalar()
+            if others > 0:
+                raise ServiceError(
+                    "No podés eliminar el cronograma por defecto. "
+                    "Primero establecé otro como por defecto."
+                )
         pending_count = session.execute(text("""
             SELECT COUNT(*) FROM email_jobs
             WHERE schedule_id = :id AND status = 'pending'

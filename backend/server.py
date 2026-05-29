@@ -362,6 +362,14 @@ async def update_schedule(schedule_id: int, request: Request):
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
+@app.put("/schedules/{schedule_id}/default")
+def set_default_schedule(schedule_id: int):
+    try:
+        return crm_service.set_default_schedule(schedule_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
 @app.delete("/schedules/{schedule_id}")
 def delete_schedule(schedule_id: int):
     try:

@@ -21,15 +21,19 @@ export function ImportsView({
 }) {
   const defaultTemplate = templates.find((t) => t.is_default) ?? templates[0];
   const defaultCv = cvFiles.find((c) => c.is_default) ?? cvFiles[0];
+  const defaultSchedule = schedules.find((s) => s.is_default) ?? schedules[0];
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [selectedCvId, setSelectedCvId] = useState(null);
-  const [selectedScheduleId, setSelectedScheduleId] = useState('');
+  const [selectedScheduleId, setSelectedScheduleId] = useState(null);
 
   function handleConfirm() {
+    const scheduleId = selectedScheduleId === ''
+      ? null
+      : (selectedScheduleId != null ? Number(selectedScheduleId) : (defaultSchedule?.id ?? null));
     onConfirm({
       templateId: selectedTemplateId ?? defaultTemplate?.id ?? null,
       cvFileId: selectedCvId ?? defaultCv?.id ?? null,
-      scheduleId: selectedScheduleId ? Number(selectedScheduleId) : null,
+      scheduleId,
     });
   }
   return (
@@ -224,13 +228,13 @@ export function ImportsView({
               <label>
                 Cronograma de envío
                 <select
-                  value={selectedScheduleId}
-                  onChange={(e) => setSelectedScheduleId(e.target.value)}
+                  value={selectedScheduleId ?? defaultSchedule?.id ?? ''}
+                  onChange={(e) => setSelectedScheduleId(e.target.value === '' ? '' : e.target.value)}
                 >
                   <option value="">Sin cronograma (inmediato)</option>
                   {schedules.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} — {String(s.start_hour_art).padStart(2,'0')}:00–{String(s.end_hour_art).padStart(2,'0')}:00 ART, c/{s.interval_minutes}min
+                      {s.name}{s.is_default ? ' (por defecto)' : ''} — {String(s.start_hour_art).padStart(2,'0')}:00–{String(s.end_hour_art).padStart(2,'0')}:00 ART, c/{s.interval_minutes}min
                     </option>
                   ))}
                 </select>

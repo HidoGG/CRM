@@ -6,6 +6,7 @@ const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
 
 export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, schedules = [] }) {
+  const defaultSchedule = schedules.find((s) => s.is_default) ?? schedules[0];
   const [confirmId, setConfirmId] = useState(null);
   const confirmContact = contacts.find(c => c.id === confirmId);
   return (
@@ -137,13 +138,13 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
           <label className="detail-field">
             <span>Cronograma de envío</span>
             <select
-              value={form.schedule_id ?? ''}
+              value={form.schedule_id ?? defaultSchedule?.id ?? ''}
               onChange={(e) => onFormChange({ ...form, schedule_id: e.target.value ? Number(e.target.value) : null })}
             >
               <option value="">Sin cronograma (inmediato)</option>
               {schedules.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} — {String(s.start_hour_art).padStart(2,'0')}:00–{String(s.end_hour_art).padStart(2,'0')}:00 ART
+                  {s.name}{s.is_default ? ' (por defecto)' : ''} — {String(s.start_hour_art).padStart(2,'0')}:00–{String(s.end_hour_art).padStart(2,'0')}:00 ART
                 </option>
               ))}
             </select>

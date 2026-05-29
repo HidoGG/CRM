@@ -185,6 +185,20 @@ def init_db() -> None:
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_schedule ON email_jobs(schedule_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_pending_sched ON email_jobs(status, scheduled_at)"))
+        conn.execute(text("""
+            ALTER TABLE delivery_schedules
+                ADD COLUMN IF NOT EXISTS is_default INTEGER NOT NULL DEFAULT 0
+        """))
+        # Si ya existe algún cronograma sin default asignado, el primero pasa a ser default
+        conn.execute(text("""
+            UPDATE delivery_schedules SET is_default = 1
+            WHERE id = (
+                SELECT id FROM delivery_schedules ORDER BY id ASC LIMIT 1
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM delivery_schedules WHERE is_default = 1
+            )
+        """))
         conn.commit()
 
 
