@@ -169,6 +169,22 @@ def init_db() -> None:
                 value TEXT NOT NULL
             )
         """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS delivery_schedules (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                interval_minutes INTEGER NOT NULL DEFAULT 30,
+                start_hour_art INTEGER NOT NULL DEFAULT 8,
+                end_hour_art INTEGER NOT NULL DEFAULT 18,
+                created_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            ALTER TABLE email_jobs
+                ADD COLUMN IF NOT EXISTS schedule_id INTEGER REFERENCES delivery_schedules(id) ON DELETE SET NULL
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_schedule ON email_jobs(schedule_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_jobs_pending_sched ON email_jobs(status, scheduled_at)"))
         conn.commit()
 
 

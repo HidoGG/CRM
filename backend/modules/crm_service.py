@@ -21,6 +21,67 @@ from modules.database import get_session, insert_history, now_iso, row_to_dict
 EMAIL_RE = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.IGNORECASE)
 VALID_EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", re.IGNORECASE)
 
+# Argentina no usa DST — offset fijo UTC-3
+ART_OFFSET = timedelta(hours=-3)
+
+
+def now_art() -> datetime:
+    """Retorna la hora actual en Argentina (UTC-3)."""
+    return datetime.now(timezone.utc) + ART_OFFSET
+
+
+def _next_slot_start_art(start_h: int, end_h: int) -> datetime:
+    """
+    Retorna el próximo momento válido para enviar un job en hora ART.
+    - Si estamos antes de la ventana: hoy a start_h:00
+    - Si estamos dentro de la ventana: ahora mismo
+    - Si ya cerró la ventana: mañana a start_h:00
+    """
+    now = now_art()
+    today_start = now.replace(hour=start_h, minute=0, second=0, microsecond=0)
+    today_end = now.replace(hour=end_h, minute=0, second=0, microsecond=0)
+    if now < today_start:
+        return today_start
+    if now < today_end:
+        return now
+    return (now + timedelta(days=1)).replace(hour=start_h, minute=0, second=0, microsecond=0)
+
+
+def calc_job_scheduled_at(schedule: dict, job_index: int = 0) -> str:
+    """
+    Calcula el scheduled_at en UTC ISO para el job número job_index dentro de un lote.
+    Distribuye los envíos respetando la ventana horaria ART; si el lote supera
+    la ventana diaria, los jobs restantes se programan para días siguientes.
+    """
+    start_h = int(schedule["start_hour_art"])
+    end_h = int(schedule["end_hour_art"])
+    interval = max(1, int(schedule["interval_minutes"]))
+
+    base_art = _next_slot_start_art(start_h, end_h)
+    remaining = job_index * interval
+    current = base_art
+
+    while remaining > 0:
+        day_end = current.replace(hour=end_h, minute=0, second=0, microsecond=0)
+        mins_left = max(0, int((day_end - current).total_seconds() / 60))
+        if remaining <= mins_left:
+            current = current + timedelta(minutes=remaining)
+            remaining = 0
+        else:
+            # El lote supera la ventana del día — avanzar al siguiente día
+            current = (current + timedelta(days=1)).replace(
+                hour=start_h, minute=0, second=0, microsecond=0
+            )
+            remaining -= mins_left
+
+    # Convertir ART → UTC para almacenar en DB
+    return (current - ART_OFFSET).isoformat(timespec="seconds")
+
+
+def _is_within_art_window(start_h: int, end_h: int) -> bool:
+    """¿La hora actual en Argentina está dentro de la ventana [start_h, end_h)?"""
+    return start_h <= now_art().hour < end_h
+
 
 # ---------------------------------------------------------------------------
 # Service exception
@@ -687,7 +748,10 @@ def create_contact(payload: dict) -> dict:
             message=f"Created contact {email}",
             metadata_json=json.dumps({"email": email, "name": name}, ensure_ascii=True),
         )
-        _auto_create_email_job(session, contact_id, payload.get("next_action", ""))
+        _auto_create_email_job(
+            session, contact_id, payload.get("next_action", ""),
+            schedule_id=payload.get("schedule_id"),
+        )
         row = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
             {"id": contact_id},
@@ -1031,8 +1095,11 @@ def confirm_import(import_id: int, payload: dict) -> dict:
     requested_candidates = payload.get("candidates") or []
     template_id: int | None = payload.get("template_id")
     cv_file_id: int | None = payload.get("cv_file_id")
+    schedule_id: int | None = payload.get("schedule_id")
     now = now_iso()
     inserted_contacts = []
+    # Contador de jobs por schedule para espaciar correctamente los scheduled_at
+    _schedule_job_index: dict[int | None, int] = {}
 
     with get_session() as session:
         batch = session.execute(
@@ -1120,7 +1187,12 @@ def confirm_import(import_id: int, payload: dict) -> dict:
                 message=f"Imported contact {email} from batch {import_id}",
                 metadata_json=json.dumps({"import_id": import_id, "email": email}, ensure_ascii=True),
             )
-            _auto_create_email_job(session, contact_id, next_action, template_id, cv_file_id)
+            job_idx = _schedule_job_index.get(schedule_id, 0)
+            _schedule_job_index[schedule_id] = job_idx + 1
+            _auto_create_email_job(
+                session, contact_id, next_action, template_id, cv_file_id,
+                schedule_id=schedule_id, job_index=job_idx,
+            )
 
         session.execute(
             text("""
@@ -1269,10 +1341,17 @@ def set_default_template(template_id: int) -> dict:
         return [row_to_dict(r) for r in rows]
 
 
-def _auto_create_email_job(session, contact_id: int, next_action: str,
-                           template_id: int | None = None, cv_file_id: int | None = None) -> None:
-    """Crea automáticamente un email_job para un contacto recién insertado.
-    Solo lo hace si la acción es enviar o seguir."""
+def _auto_create_email_job(
+    session,
+    contact_id: int,
+    next_action: str,
+    template_id: int | None = None,
+    cv_file_id: int | None = None,
+    schedule_id: int | None = None,
+    job_index: int = 0,
+) -> None:
+    """Crea un email_job para un contacto. Solo actúa para acciones enviar/seguir.
+    Si se provee schedule_id, calcula scheduled_at respetando la ventana horaria ART."""
     if normalize_next_action(next_action) not in {"enviar", "seguir"}:
         return
     if template_id is None:
@@ -1285,15 +1364,25 @@ def _auto_create_email_job(session, contact_id: int, next_action: str,
             text("SELECT id FROM cv_files WHERE is_default = 1 LIMIT 1")
         ).fetchone()
         cv_file_id = cv[0] if cv else None
-    session.execute(
-        text("""
-            INSERT INTO email_jobs (contact_id, template_id, cv_file_id, frequency_days,
-                scheduled_at, status, created_at)
-            VALUES (:contact_id, :template_id, :cv_file_id, 0, :scheduled_at, 'pending', :now)
-        """),
-        {"contact_id": contact_id, "template_id": template_id, "cv_file_id": cv_file_id,
-         "scheduled_at": now_iso(), "now": now_iso()},
-    )
+
+    # Calcular scheduled_at según el cronograma asignado
+    if schedule_id is not None:
+        sched_row = session.execute(
+            text("SELECT * FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
+        ).fetchone()
+        scheduled_at = calc_job_scheduled_at(row_to_dict(sched_row), job_index) if sched_row else now_iso()
+    else:
+        scheduled_at = now_iso()
+
+    session.execute(text("""
+        INSERT INTO email_jobs (contact_id, template_id, cv_file_id, frequency_days,
+            schedule_id, scheduled_at, status, created_at)
+        VALUES (:contact_id, :template_id, :cv_file_id, 0,
+            :schedule_id, :scheduled_at, 'pending', :now)
+    """), {
+        "contact_id": contact_id, "template_id": template_id, "cv_file_id": cv_file_id,
+        "schedule_id": schedule_id, "scheduled_at": scheduled_at, "now": now_iso(),
+    })
 
 
 def render_template(template: dict, contact: dict) -> dict:
@@ -1402,6 +1491,103 @@ def delete_cv_file(cv_id: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Delivery schedules
+# ---------------------------------------------------------------------------
+
+def get_schedules() -> list[dict]:
+    with get_session() as session:
+        rows = session.execute(
+            text("SELECT * FROM delivery_schedules ORDER BY id ASC")
+        ).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def create_schedule(payload: dict) -> dict:
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise ServiceError("El nombre del cronograma es obligatorio.")
+    interval_minutes = max(1, int(payload.get("interval_minutes") or 30))
+    start_hour_art = int(payload.get("start_hour_art") or 8)
+    end_hour_art = int(payload.get("end_hour_art") or 18)
+    if not (0 <= start_hour_art < end_hour_art <= 23):
+        raise ServiceError(
+            "Horas inválidas: start_hour_art debe ser menor a end_hour_art y ambas entre 0 y 23."
+        )
+    now = now_iso()
+    with get_session() as session:
+        result = session.execute(text("""
+            INSERT INTO delivery_schedules (name, interval_minutes, start_hour_art, end_hour_art, created_at)
+            VALUES (:name, :interval_minutes, :start_hour_art, :end_hour_art, :now)
+            RETURNING id
+        """), {
+            "name": name, "interval_minutes": interval_minutes,
+            "start_hour_art": start_hour_art, "end_hour_art": end_hour_art, "now": now,
+        })
+        new_id = result.fetchone()[0]
+        row = session.execute(
+            text("SELECT * FROM delivery_schedules WHERE id = :id"), {"id": new_id}
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def update_schedule(schedule_id: int, payload: dict) -> dict:
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT id FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
+        ).fetchone()
+        if not existing:
+            raise ServiceError("Cronograma no encontrado.", HTTPStatus.NOT_FOUND)
+        updates: dict = {}
+        if payload.get("name"):
+            updates["name"] = str(payload["name"]).strip()
+        if "interval_minutes" in payload:
+            updates["interval_minutes"] = max(1, int(payload["interval_minutes"] or 1))
+        if "start_hour_art" in payload:
+            updates["start_hour_art"] = int(payload["start_hour_art"])
+        if "end_hour_art" in payload:
+            updates["end_hour_art"] = int(payload["end_hour_art"])
+        if not updates:
+            raise ServiceError("No hay campos para actualizar.")
+        # Validar ventana si se modifican las horas
+        s_h = updates.get("start_hour_art")
+        e_h = updates.get("end_hour_art")
+        if s_h is not None or e_h is not None:
+            current = row_to_dict(existing) if existing else {}
+            final_start = s_h if s_h is not None else int(current.get("start_hour_art", 8))
+            final_end = e_h if e_h is not None else int(current.get("end_hour_art", 18))
+            if not (0 <= final_start < final_end <= 23):
+                raise ServiceError("Horas inválidas: start_hour_art debe ser menor a end_hour_art.")
+        updates["id"] = schedule_id
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates if k != "id")
+        session.execute(text(f"UPDATE delivery_schedules SET {set_clause} WHERE id = :id"), updates)
+        row = session.execute(
+            text("SELECT * FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
+        ).fetchone()
+        return row_to_dict(row)
+
+
+def delete_schedule(schedule_id: int) -> dict:
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT id FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
+        ).fetchone()
+        if not existing:
+            raise ServiceError("Cronograma no encontrado.", HTTPStatus.NOT_FOUND)
+        pending_count = session.execute(text("""
+            SELECT COUNT(*) FROM email_jobs
+            WHERE schedule_id = :id AND status = 'pending'
+        """), {"id": schedule_id}).scalar()
+        if pending_count > 0:
+            raise ServiceError(
+                f"No se puede eliminar: hay {pending_count} job(s) pendiente(s) usando este cronograma."
+            )
+        session.execute(
+            text("DELETE FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
+        )
+        return {"deleted": schedule_id}
+
+
+# ---------------------------------------------------------------------------
 # Email jobs
 # ---------------------------------------------------------------------------
 
@@ -1410,11 +1596,14 @@ def get_email_jobs() -> list[dict]:
         rows = session.execute(text("""
             SELECT ej.*, c.name as contact_name, c.email as contact_email,
                    c.company as contact_company, mt.name as template_name,
-                   cv.original_name as cv_name
+                   cv.original_name as cv_name,
+                   ds.name as schedule_name, ds.start_hour_art, ds.end_hour_art,
+                   ds.interval_minutes
             FROM email_jobs ej
             LEFT JOIN contacts c ON ej.contact_id = c.id
             LEFT JOIN message_templates mt ON ej.template_id = mt.id
             LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
+            LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
             ORDER BY ej.scheduled_at ASC
         """)).fetchall()
         return [row_to_dict(r) for r in rows]
@@ -1484,32 +1673,49 @@ def process_pending_email_jobs() -> dict:
     from pathlib import Path
 
     JOBS_PER_CYCLE = 25
-    DELAY_BETWEEN_SENDS = 2  # segundos entre envíos para evitar rate limiting de Gmail
+    DELAY_BETWEEN_SENDS = 2
 
     sent = 0
     failed = 0
+    skipped = 0
 
-    # 1. Leer los jobs pendientes en su propia sesión (lectura aislada)
+    # 1. Leer jobs candidatos: status='pending' y scheduled_at <= ahora (UTC)
+    #    JOIN con delivery_schedules para tener la ventana horaria en el mismo query.
     with get_session() as session:
         jobs = session.execute(text("""
             SELECT ej.id, ej.contact_id, ej.template_id, ej.cv_file_id,
-                   ej.frequency_days, ej.scheduled_at,
+                   ej.frequency_days, ej.scheduled_at, ej.schedule_id,
                    c.email, c.name, c.company,
-                   cv.file_path, cv.original_name
+                   cv.file_path, cv.original_name,
+                   ds.name as schedule_name,
+                   ds.start_hour_art, ds.end_hour_art, ds.interval_minutes
             FROM email_jobs ej
             LEFT JOIN contacts c ON ej.contact_id = c.id
             LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
+            LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
             WHERE ej.status = 'pending' AND ej.scheduled_at <= :now
             ORDER BY ej.scheduled_at ASC
             LIMIT :limit
         """), {"now": now_iso(), "limit": JOBS_PER_CYCLE}).fetchall()
 
-    # 2. Procesar cada job con su propia sesión de DB independiente.
-    #    Si falla la actualización de un job, no arrastra ni revierte los anteriores.
+    # 2. Procesar cada job con sesión independiente de DB
     for job in jobs:
         j = row_to_dict(job)
+
+        # --- Validación de ventana horaria ART ---
+        if j.get("schedule_id") is not None and j.get("start_hour_art") is not None:
+            s_h = int(j["start_hour_art"])
+            e_h = int(j["end_hour_art"])
+            if not _is_within_art_window(s_h, e_h):
+                skipped += 1
+                print(
+                    f"[email_jobs] Job {j['id']} fuera de ventana "
+                    f"({s_h}:00–{e_h}:00 ART, schedule: '{j.get('schedule_name')}') "
+                    f"— hora ART actual: {now_art().strftime('%H:%M')}. Saltando."
+                )
+                continue  # Queda pending, sin modificar, sin dormir
+
         try:
-            # Validar que el CV existe en disco antes de enviar
             cv_path = j.get("file_path")
             cv_filename = j.get("original_name")
             if j.get("cv_file_id") and cv_path and not Path(cv_path).exists():
@@ -1518,7 +1724,6 @@ def process_pending_email_jobs() -> dict:
                     "Re-subí el archivo desde la sección Envíos en producción."
                 )
 
-            # Obtener plantilla (sesión propia de lectura)
             tmpl_row = None
             if j["template_id"]:
                 with get_session() as s:
@@ -1544,7 +1749,6 @@ def process_pending_email_jobs() -> dict:
                 cv_filename=cv_filename,
             )
 
-            # Commit del éxito en sesión independiente
             with get_session() as s:
                 s.execute(text("""
                     UPDATE email_jobs SET status = 'sent', sent_at = :now,
@@ -1557,13 +1761,14 @@ def process_pending_email_jobs() -> dict:
                     ).isoformat(timespec="seconds")
                     s.execute(text("""
                         INSERT INTO email_jobs (contact_id, template_id, cv_file_id,
-                            frequency_days, scheduled_at, status, created_at)
+                            frequency_days, schedule_id, scheduled_at, status, created_at)
                         VALUES (:contact_id, :template_id, :cv_file_id,
-                            :frequency_days, :scheduled_at, 'pending', :now)
+                            :frequency_days, :schedule_id, :scheduled_at, 'pending', :now)
                     """), {
                         "contact_id": j["contact_id"], "template_id": j["template_id"],
                         "cv_file_id": j["cv_file_id"], "frequency_days": j["frequency_days"],
-                        "scheduled_at": next_send, "now": now_iso(),
+                        "schedule_id": j.get("schedule_id"), "scheduled_at": next_send,
+                        "now": now_iso(),
                     })
                 insert_history(s, event_type="email.sent", entity_type="contact",
                                entity_id=str(j["contact_id"]),
@@ -1572,7 +1777,6 @@ def process_pending_email_jobs() -> dict:
             print(f"[email_jobs] Enviado a {j['email']} (job {j['id']})")
 
         except Exception as exc:
-            # Registrar el fallo en sesión independiente para que no afecte otros jobs
             err_msg = str(exc)[:500]
             print(f"[email_jobs] Fallo job {j['id']} ({j.get('email')}): {err_msg}")
             try:
@@ -1584,8 +1788,11 @@ def process_pending_email_jobs() -> dict:
                 print(f"[email_jobs] No se pudo registrar fallo en DB: {db_exc}")
             failed += 1
 
-        # Rate limiting: pausa entre envíos para no saturar la API de Gmail
         time.sleep(DELAY_BETWEEN_SENDS)
 
-    print(f"[email_jobs] Ciclo completado: {sent} enviados, {failed} fallidos")
-    return {"sent": sent, "failed": failed}
+    print(
+        f"[email_jobs] Ciclo completado — enviados: {sent}, "
+        f"fallidos: {failed}, fuera de ventana: {skipped}, "
+        f"hora ART: {now_art().strftime('%H:%M')}"
+    )
+    return {"sent": sent, "failed": failed, "skipped": skipped}

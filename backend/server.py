@@ -336,6 +336,41 @@ def run_email_jobs_now():
 
 
 # ---------------------------------------------------------------------------
+# Delivery schedules
+# ---------------------------------------------------------------------------
+
+@app.get("/schedules")
+def list_schedules():
+    return crm_service.get_schedules()
+
+
+@app.post("/schedules", status_code=201)
+async def create_schedule(request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.create_schedule(payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.put("/schedules/{schedule_id}")
+async def update_schedule(schedule_id: int, request: Request):
+    payload = await request.json()
+    try:
+        return crm_service.update_schedule(schedule_id, payload)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.delete("/schedules/{schedule_id}")
+def delete_schedule(schedule_id: int):
+    try:
+        return crm_service.delete_schedule(schedule_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+# ---------------------------------------------------------------------------
 # Gmail OAuth — los errores internos se capturan aquí para no exponer trazas
 # ---------------------------------------------------------------------------
 
