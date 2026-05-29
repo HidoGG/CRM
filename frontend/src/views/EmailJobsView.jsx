@@ -82,9 +82,18 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   }
 
   async function authorize() {
-    const res = await fetch(`${API_BASE}/gmail/auth-url`);
-    const { url } = await res.json();
-    window.location.href = url;
+    try {
+      const res = await fetch(`${API_BASE}/gmail/auth-url`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(`Error al obtener URL de autorización: ${body.detail || res.status}`);
+        return;
+      }
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch (e) {
+      alert(`No se pudo conectar con el servidor: ${e.message}`);
+    }
   }
 
   const pendingJobs = emailJobs.filter(j => j.status === 'pending');
