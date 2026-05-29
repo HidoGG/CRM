@@ -11,6 +11,15 @@ import { TemplatesView } from './views/TemplatesView';
 import { EmailJobsView } from './views/EmailJobsView';
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+const _API_KEY = import.meta.env.VITE_API_KEY || '';
+
+/** Drop-in fetch que inyecta X-API-Key en todas las llamadas al backend. */
+export function apiFetch(url, options = {}) {
+  if (!_API_KEY) return fetch(url, options);
+  const headers = new Headers(options.headers || {});
+  headers.set('X-API-Key', _API_KEY);
+  return fetch(url, { ...options, headers });
+}
 
 const defaultForm = {
   email: '',
@@ -161,16 +170,16 @@ function AppShell() {
     try {
       const [healthRes, contactsRes, summaryRes, importsRes, capabilitiesRes, reportingRes,
              templatesRes, cvFilesRes, emailJobsRes, gmailStatusRes] = await Promise.all([
-        fetch(`${API_BASE}/health`),
-        fetch(`${API_BASE}/contacts`),
-        fetch(`${API_BASE}/summary`),
-        fetch(`${API_BASE}/imports`),
-        fetch(`${API_BASE}/capabilities`),
-        fetch(`${API_BASE}/reporting/overview`),
-        fetch(`${API_BASE}/templates`),
-        fetch(`${API_BASE}/cv-files`),
-        fetch(`${API_BASE}/email-jobs`),
-        fetch(`${API_BASE}/gmail/status`),
+        apiFetch(`${API_BASE}/health`),
+        apiFetch(`${API_BASE}/contacts`),
+        apiFetch(`${API_BASE}/summary`),
+        apiFetch(`${API_BASE}/imports`),
+        apiFetch(`${API_BASE}/capabilities`),
+        apiFetch(`${API_BASE}/reporting/overview`),
+        apiFetch(`${API_BASE}/templates`),
+        apiFetch(`${API_BASE}/cv-files`),
+        apiFetch(`${API_BASE}/email-jobs`),
+        apiFetch(`${API_BASE}/gmail/status`),
       ]);
 
       if (!healthRes.ok) throw new Error('No se pudo conectar con la API');
@@ -204,7 +213,7 @@ function AppShell() {
     event.preventDefault();
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE}/contacts`, {
+      const response = await apiFetch(`${API_BASE}/contacts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -232,7 +241,7 @@ function AppShell() {
         total_contacts: contacts.length,
         notes: 'Corrida de prueba creada desde el panel local.',
       };
-      const response = await fetch(`${API_BASE}/imports/mock`, {
+      const response = await apiFetch(`${API_BASE}/imports/mock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -255,7 +264,7 @@ function AppShell() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('source', 'upload_ui');
-      const response = await fetch(`${API_BASE}/imports/preview`, {
+      const response = await apiFetch(`${API_BASE}/imports/preview`, {
         method: 'POST',
         body: formData,
       });
@@ -292,7 +301,7 @@ function AppShell() {
     if (!importPreview?.batch?.id) return;
     setConfirming(true);
     try {
-      const response = await fetch(`${API_BASE}/imports/${importPreview.batch.id}/confirm`, {
+      const response = await apiFetch(`${API_BASE}/imports/${importPreview.batch.id}/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -324,7 +333,7 @@ function AppShell() {
     setExecutingId(contact.id);
     try {
       const details = actionDetails[contact.id] || {};
-      const response = await fetch(`${API_BASE}/contacts/${contact.id}/execute`, {
+      const response = await apiFetch(`${API_BASE}/contacts/${contact.id}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,7 +367,7 @@ function AppShell() {
     const follow_up_date = editingFollowUp[contact.id] ?? contact.follow_up_date ?? '';
     setExecutingId(contact.id);
     try {
-      const response = await fetch(`${API_BASE}/contacts/${contact.id}/execute`, {
+      const response = await apiFetch(`${API_BASE}/contacts/${contact.id}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ follow_up_date }),
@@ -380,7 +389,7 @@ function AppShell() {
   async function loadContactHistory(contactId) {
     setLoadingHistory(true);
     try {
-      const response = await fetch(`${API_BASE}/contacts/${contactId}/history`);
+      const response = await apiFetch(`${API_BASE}/contacts/${contactId}/history`);
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         throw new Error(errorBody.detail || 'No se pudo cargar el historial');
@@ -495,7 +504,7 @@ function AppShell() {
             onReset={() => setForm(defaultForm)}
             saving={saving}
             onDelete={async (id) => {
-              await fetch(`${API_BASE}/contacts/${id}`, { method: 'DELETE' });
+              await apiFetch(`${API_BASE}/contacts/${id}`, { method: 'DELETE' });
               await refreshData();
             }}
           />

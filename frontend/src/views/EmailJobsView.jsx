@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { API_BASE } from '../AppShell';
+import { API_BASE, apiFetch } from '../AppShell';
 import { ConfirmModal, InfoModal } from '../components/ConfirmModal';
 
 const STATUS_LABEL = {
@@ -44,7 +44,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
       const fd = new FormData();
       fd.append('file', pendingFile);
       fd.append('comment', pendingComment.trim());
-      await fetch(`${API_BASE}/cv-files`, { method: 'POST', body: fd });
+      await apiFetch(`${API_BASE}/cv-files`, { method: 'POST', body: fd });
       await onRefresh();
     } finally {
       setUploadingCv(false);
@@ -54,7 +54,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   }
 
   async function setDefaultCv(id) {
-    await fetch(`${API_BASE}/cv-files/${id}/default`, { method: 'PUT' });
+    await apiFetch(`${API_BASE}/cv-files/${id}/default`, { method: 'PUT' });
     await onRefresh();
   }
 
@@ -62,7 +62,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   async function confirmDeleteCv() {
     const id = confirmCv;
     setConfirmCv(null);
-    await fetch(`${API_BASE}/cv-files/${id}`, { method: 'DELETE' });
+    await apiFetch(`${API_BASE}/cv-files/${id}`, { method: 'DELETE' });
     await onRefresh();
   }
 
@@ -70,12 +70,12 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   async function confirmDeleteJob() {
     const id = confirmJob;
     setConfirmJob(null);
-    await fetch(`${API_BASE}/email-jobs/${id}`, { method: 'DELETE' });
+    await apiFetch(`${API_BASE}/email-jobs/${id}`, { method: 'DELETE' });
     await onRefresh();
   }
 
   async function runNow() {
-    const res = await fetch(`${API_BASE}/email-jobs/run-now`, { method: 'POST' });
+    const res = await apiFetch(`${API_BASE}/email-jobs/run-now`, { method: 'POST' });
     const data = res.ok ? await res.json() : { sent: 0, failed: 0 };
     await onRefresh();
     setRunResult(data);
@@ -83,7 +83,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
 
   async function authorize() {
     try {
-      const res = await fetch(`${API_BASE}/gmail/auth-url`);
+      const res = await apiFetch(`${API_BASE}/gmail/auth-url`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         alert(`Error al obtener URL de autorización: ${body.detail || res.status}`);
@@ -278,7 +278,7 @@ function CvRow({ cv, onSetDefault, onDelete, onRefresh }) {
   async function saveComment() {
     setSaving(true);
     try {
-      await fetch(`${API_BASE}/cv-files/${cv.id}`, {
+      await apiFetch(`${API_BASE}/cv-files/${cv.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ comment }),

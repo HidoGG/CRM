@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { API_BASE } from '../AppShell';
+import { API_BASE, apiFetch } from '../AppShell';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export function TemplatesView({ templates, onRefresh }) {
@@ -35,13 +35,13 @@ export function TemplatesView({ templates, onRefresh }) {
     setError('');
     try {
       if (editing === 'new') {
-        await fetch(`${API_BASE}/templates`, {
+        await apiFetch(`${API_BASE}/templates`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(form),
         });
       } else {
-        await fetch(`${API_BASE}/templates/${editing.id}`, {
+        await apiFetch(`${API_BASE}/templates/${editing.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(form),
@@ -57,7 +57,7 @@ export function TemplatesView({ templates, onRefresh }) {
   }
 
   async function setDefault(id) {
-    await fetch(`${API_BASE}/templates/${id}/default`, { method: 'PUT' });
+    await apiFetch(`${API_BASE}/templates/${id}/default`, { method: 'PUT' });
     await onRefresh();
   }
 
@@ -68,7 +68,7 @@ export function TemplatesView({ templates, onRefresh }) {
   async function confirmRemove() {
     const id = confirmDelete;
     setConfirmDelete(null);
-    const res = await fetch(`${API_BASE}/templates/${id}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API_BASE}/templates/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setError(body.detail || 'No se pudo eliminar.');

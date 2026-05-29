@@ -6,6 +6,7 @@ load_dotenv()
 
 import io
 import os
+import secrets
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -15,7 +16,7 @@ import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 
 import modules.crm_service as crm_service
 import modules.ocr_service as ocr_service
@@ -26,6 +27,12 @@ CV_UPLOAD_DIR = Path(__file__).parent / "uploads" / "cv"
 CV_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 _scheduler = BackgroundScheduler()
+
+# Paths that bypass API key auth (Google OAuth callback + health check)
+_AUTH_EXEMPT = {"/health", "/gmail/callback"}
+
+# API key leída una sola vez al iniciar. Si no está definida, auth desactivada (dev local).
+_CRM_API_KEY = os.getenv("CRM_API_KEY", "").strip()
 
 
 @asynccontextmanager
@@ -45,15 +52,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-_origins = [
+# ---------------------------------------------------------------------------
+# CORS: en producción sólo permite el frontend de Vercel.
+# En desarrollo (sin FRONTEND_URL) permite localhost.
+# ---------------------------------------------------------------------------
+_frontend_url = os.getenv("FRONTEND_URL", "").strip()
+_origins = [_frontend_url] if _frontend_url else [
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:3000",
 ]
-_frontend_url = os.getenv("FRONTEND_URL", "")
-if _frontend_url:
-    _origins.append(_frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,6 +71,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Middleware de autenticación por API Key
+# Se agrega DESPUÉS de CORSMiddleware, por lo que corre como capa exterior.
+# OPTIONS (preflight CORS) y las rutas exentas pasan sin validación.
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    # Dejar pasar preflight CORS y rutas exentas sin verificar key
+    if request.method == "OPTIONS" or request.url.path in _AUTH_EXEMPT:
+        return await call_next(request)
+
+    # Si no hay key configurada (entorno local sin .env), omitir verificación
+    if not _CRM_API_KEY:
+        return await call_next(request)
+
+    provided = request.headers.get("X-API-Key", "")
+    if not provided or not secrets.compare_digest(provided, _CRM_API_KEY):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Unauthorized: X-API-Key inválida o ausente."},
+        )
+
+    return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 def health():
@@ -241,9 +279,11 @@ async def upload_cv(file: UploadFile = File(...), comment: str = Form("")):
 
 
 @app.patch("/cv-files/{cv_id}")
-def update_cv_comment(cv_id: int, body: dict):
+async def update_cv_comment(cv_id: int, request: Request):
+    body = await request.json()
+    comment = str(body.get("comment", "")).strip()
     try:
-        return crm_service.update_cv_comment(cv_id, body.get("comment", ""))
+        return crm_service.update_cv_comment(cv_id, comment)
     except ServiceError as exc:
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
@@ -296,25 +336,37 @@ def run_email_jobs_now():
 
 
 # ---------------------------------------------------------------------------
-# Gmail OAuth
+# Gmail OAuth — los errores internos se capturan aquí para no exponer trazas
 # ---------------------------------------------------------------------------
 
 @app.get("/gmail/status")
 def gmail_status():
-    from modules import gmail_service
-    return gmail_service.get_status()
+    try:
+        from modules import gmail_service
+        return gmail_service.get_status()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error al obtener estado de Gmail: {exc}")
 
 
 @app.get("/gmail/auth-url")
 def gmail_auth_url():
-    from modules import gmail_service
-    return {"url": gmail_service.get_auth_url()}
+    try:
+        from modules import gmail_service
+        return {"url": gmail_service.get_auth_url()}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error interno al generar URL de autorización: {exc}")
 
 
 @app.get("/gmail/callback")
 def gmail_callback(code: str):
-    from modules import gmail_service
-    gmail_service.exchange_code(code)
+    try:
+        from modules import gmail_service
+        gmail_service.exchange_code(code)
+    except Exception as exc:
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        return RedirectResponse(url=f"{frontend_url}?gmail=error&reason={exc}")
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     return RedirectResponse(url=f"{frontend_url}?gmail=authorized")
 

@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import re
+import time
 from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from urllib.parse import quote, urlencode
@@ -1482,10 +1483,13 @@ def process_pending_email_jobs() -> dict:
     from modules import gmail_service
     from pathlib import Path
 
-    now = now_iso()
+    JOBS_PER_CYCLE = 25
+    DELAY_BETWEEN_SENDS = 2  # segundos entre envíos para evitar rate limiting de Gmail
+
     sent = 0
     failed = 0
 
+    # 1. Leer los jobs pendientes en su propia sesión (lectura aislada)
     with get_session() as session:
         jobs = session.execute(text("""
             SELECT ej.id, ej.contact_id, ej.template_id, ej.cv_file_id,
@@ -1496,44 +1500,62 @@ def process_pending_email_jobs() -> dict:
             LEFT JOIN contacts c ON ej.contact_id = c.id
             LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
             WHERE ej.status = 'pending' AND ej.scheduled_at <= :now
-        """), {"now": now}).fetchall()
+            ORDER BY ej.scheduled_at ASC
+            LIMIT :limit
+        """), {"now": now_iso(), "limit": JOBS_PER_CYCLE}).fetchall()
 
-        for job in jobs:
-            j = row_to_dict(job)
-            try:
-                tmpl_row = session.execute(
-                    text("SELECT * FROM message_templates WHERE id = :id"),
-                    {"id": j["template_id"]}
-                ).fetchone() if j["template_id"] else None
-
-                contact = {"name": j["name"], "company": j["company"], "email": j["email"]}
-                if tmpl_row:
-                    rendered = render_template(row_to_dict(tmpl_row), contact)
-                else:
-                    rendered = {
-                        "subject": f"Postulacion y CV - {j['company'] or j['email']}",
-                        "body": f"{j['name'] or 'Hola'},\n\nTe comparto mi CV.\n\nGracias,\nGabriel",
-                    }
-
-                msg_id = gmail_service.send_email(
-                    to=j["email"],
-                    subject=rendered["subject"],
-                    body=rendered["body"],
-                    cv_path=j.get("file_path"),
-                    cv_filename=j.get("original_name"),
+    # 2. Procesar cada job con su propia sesión de DB independiente.
+    #    Si falla la actualización de un job, no arrastra ni revierte los anteriores.
+    for job in jobs:
+        j = row_to_dict(job)
+        try:
+            # Validar que el CV existe en disco antes de enviar
+            cv_path = j.get("file_path")
+            cv_filename = j.get("original_name")
+            if j.get("cv_file_id") and cv_path and not Path(cv_path).exists():
+                raise FileNotFoundError(
+                    f"CV '{cv_filename}' no encontrado en disco. "
+                    "Re-subí el archivo desde la sección Envíos en producción."
                 )
 
-                session.execute(text("""
+            # Obtener plantilla (sesión propia de lectura)
+            tmpl_row = None
+            if j["template_id"]:
+                with get_session() as s:
+                    tmpl_row = s.execute(
+                        text("SELECT * FROM message_templates WHERE id = :id"),
+                        {"id": j["template_id"]}
+                    ).fetchone()
+
+            contact = {"name": j["name"], "company": j["company"], "email": j["email"]}
+            if tmpl_row:
+                rendered = render_template(row_to_dict(tmpl_row), contact)
+            else:
+                rendered = {
+                    "subject": f"Postulacion y CV - {j['company'] or j['email']}",
+                    "body": f"{j['name'] or 'Hola'},\n\nTe comparto mi CV.\n\nGracias,\nGabriel",
+                }
+
+            msg_id = gmail_service.send_email(
+                to=j["email"],
+                subject=rendered["subject"],
+                body=rendered["body"],
+                cv_path=cv_path,
+                cv_filename=cv_filename,
+            )
+
+            # Commit del éxito en sesión independiente
+            with get_session() as s:
+                s.execute(text("""
                     UPDATE email_jobs SET status = 'sent', sent_at = :now,
                         gmail_message_id = :msg_id WHERE id = :id
                 """), {"now": now_iso(), "msg_id": msg_id, "id": j["id"]})
 
                 if j["frequency_days"] and int(j["frequency_days"]) > 0:
-                    from datetime import datetime, timedelta, timezone
                     next_send = (
                         datetime.now(timezone.utc) + timedelta(days=int(j["frequency_days"]))
                     ).isoformat(timespec="seconds")
-                    session.execute(text("""
+                    s.execute(text("""
                         INSERT INTO email_jobs (contact_id, template_id, cv_file_id,
                             frequency_days, scheduled_at, status, created_at)
                         VALUES (:contact_id, :template_id, :cv_file_id,
@@ -1543,15 +1565,27 @@ def process_pending_email_jobs() -> dict:
                         "cv_file_id": j["cv_file_id"], "frequency_days": j["frequency_days"],
                         "scheduled_at": next_send, "now": now_iso(),
                     })
-
-                insert_history(session, event_type="email.sent", entity_type="contact",
+                insert_history(s, event_type="email.sent", entity_type="contact",
                                entity_id=str(j["contact_id"]),
                                message=f"Email enviado a {j['email']}")
-                sent += 1
-            except Exception as exc:
-                session.execute(text("""
-                    UPDATE email_jobs SET status = 'failed', error_message = :err WHERE id = :id
-                """), {"err": str(exc)[:300], "id": j["id"]})
-                failed += 1
+            sent += 1
+            print(f"[email_jobs] Enviado a {j['email']} (job {j['id']})")
 
+        except Exception as exc:
+            # Registrar el fallo en sesión independiente para que no afecte otros jobs
+            err_msg = str(exc)[:500]
+            print(f"[email_jobs] Fallo job {j['id']} ({j.get('email')}): {err_msg}")
+            try:
+                with get_session() as s:
+                    s.execute(text("""
+                        UPDATE email_jobs SET status = 'failed', error_message = :err WHERE id = :id
+                    """), {"err": err_msg, "id": j["id"]})
+            except Exception as db_exc:
+                print(f"[email_jobs] No se pudo registrar fallo en DB: {db_exc}")
+            failed += 1
+
+        # Rate limiting: pausa entre envíos para no saturar la API de Gmail
+        time.sleep(DELAY_BETWEEN_SENDS)
+
+    print(f"[email_jobs] Ciclo completado: {sent} enviados, {failed} fallidos")
     return {"sent": sent, "failed": failed}

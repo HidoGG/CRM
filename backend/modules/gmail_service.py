@@ -45,12 +45,10 @@ def _get_client_config() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Token persistido en DB (para produccion) o en archivo (local)
+# Token persistido en DB (produccion) o en archivo (local)
 # ---------------------------------------------------------------------------
 
 def _load_token_str() -> str | None:
-    """Carga el token desde DB o desde archivo local."""
-    # Primero intenta desde la DB
     try:
         from modules.database import get_session
         from sqlalchemy import text
@@ -62,14 +60,12 @@ def _load_token_str() -> str | None:
                 return row[0]
     except Exception:
         pass
-    # Fallback: archivo local
     if TOKEN_FILE.exists():
         return TOKEN_FILE.read_text()
     return None
 
 
 def _save_token_str(token_json: str) -> None:
-    """Guarda el token en DB y en archivo local si es posible."""
     try:
         from modules.database import get_session
         from sqlalchemy import text
@@ -80,11 +76,28 @@ def _save_token_str(token_json: str) -> None:
             """), {"v": token_json})
     except Exception:
         pass
-    # También guarda en archivo local como respaldo
     try:
         TOKEN_FILE.write_text(token_json)
     except Exception:
         pass
+
+
+def _clear_token() -> None:
+    """Elimina el token de la DB y del archivo local. Fuerza re-autorización."""
+    try:
+        from modules.database import get_session
+        from sqlalchemy import text
+        with get_session() as session:
+            session.execute(
+                text("DELETE FROM system_settings WHERE key = 'gmail_token'")
+            )
+    except Exception:
+        pass
+    if TOKEN_FILE.exists():
+        try:
+            TOKEN_FILE.unlink()
+        except Exception:
+            pass
 
 
 def _generate_pkce() -> tuple[str, str]:
@@ -96,7 +109,6 @@ def _generate_pkce() -> tuple[str, str]:
 
 
 def _load_verifier() -> str | None:
-    """Carga el PKCE verifier desde DB o archivo."""
     try:
         from modules.database import get_session
         from sqlalchemy import text
@@ -148,6 +160,7 @@ def _delete_verifier() -> None:
 
 
 def _get_credentials():
+    """Carga y refresca credenciales. Si el refresh falla, limpia el token."""
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
 
@@ -155,13 +168,26 @@ def _get_credentials():
     if not token_str:
         return None
 
-    creds = Credentials.from_authorized_user_info(json.loads(token_str), SCOPES)
+    try:
+        creds = Credentials.from_authorized_user_info(json.loads(token_str), SCOPES)
+    except Exception:
+        _clear_token()
+        return None
+
     if creds and creds.valid:
         return creds
+
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        _save_token_str(creds.to_json())
-        return creds
+        try:
+            creds.refresh(Request())
+            _save_token_str(creds.to_json())
+            return creds
+        except Exception as exc:
+            # Token revocado o vencido sin posibilidad de refresh
+            print(f"[gmail_service] Token refresh fallido, limpiando: {exc}")
+            _clear_token()
+            return None
+
     return None
 
 
@@ -215,13 +241,36 @@ def send_email(
     cv_path: str | None = None,
     cv_filename: str | None = None,
 ) -> str:
+    """Envía un email via Gmail API.
+
+    Lanza RuntimeError si no hay credenciales.
+    Lanza FileNotFoundError si cv_path está definido pero no existe en disco —
+    el caller debe capturarlo y marcar el job como fallido.
+    """
     from googleapiclient.discovery import build
 
     creds = _get_credentials()
     if not creds:
-        raise RuntimeError("Gmail no está autorizado. Completá el flujo OAuth primero.")
+        raise RuntimeError(
+            "Gmail no está autorizado. Completá el flujo OAuth desde la sección Envíos."
+        )
 
     service = build("gmail", "v1", credentials=creds)
+
+    # Obtener email del remitente para el header From
+    sender_email = ""
+    try:
+        profile = service.users().getProfile(userId="me").execute()
+        sender_email = profile.get("emailAddress", "")
+    except Exception as exc:
+        print(f"[gmail_service] No se pudo obtener perfil del remitente: {exc}")
+
+    # Validar que el CV existe antes de intentar adjuntarlo
+    if cv_path and not Path(cv_path).exists():
+        raise FileNotFoundError(
+            f"Archivo CV no encontrado en disco: '{cv_filename or cv_path}'. "
+            "Re-subí el CV desde la sección Envíos en la app de producción."
+        )
 
     msg = MIMEMultipart()
     msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -232,6 +281,8 @@ def send_email(
         part["Content-Disposition"] = f'attachment; filename="{cv_filename or Path(cv_path).name}"'
         msg.attach(part)
 
+    if sender_email:
+        msg["From"] = sender_email
     msg["To"] = to
     msg["Subject"] = subject
 
