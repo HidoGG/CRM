@@ -1,0 +1,16 @@
+name: Keep Render Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # cada 10 minutos, las 24 horas
+  workflow_dispatch:           # también se puede disparar manualmente
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend
+        run: |
+          echo "Pinging Render backend..."
+          curl -s -o /dev/null -w "%{http_code}" https://crm-backend-e0n4.onrender.com/health
+          echo " - OK"
