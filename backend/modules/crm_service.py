@@ -1734,15 +1734,26 @@ def process_pending_email_jobs() -> dict:
         j = row_to_dict(job)
 
         # --- Validación de ventana horaria ART ---
+        # Usamos la hora del scheduled_at (no la hora actual) para decidir si el job
+        # cae dentro de la ventana. Esto permite que jobs cuyo slot fue durante la
+        # ventana se envíen aunque el scheduler haya estado dormido y lo procese tarde.
         if j.get("schedule_id") is not None and j.get("start_hour_art") is not None:
             s_h = int(j["start_hour_art"])
             e_h = int(j["end_hour_art"])
-            if not _is_within_art_window(s_h, e_h):
+            try:
+                sched_utc = datetime.fromisoformat(
+                    str(j["scheduled_at"]).replace("Z", "+00:00")
+                ).astimezone(timezone.utc)
+                sched_art_hour = (sched_utc + ART_OFFSET).hour
+            except Exception:
+                sched_art_hour = now_art().hour
+
+            if not (s_h <= sched_art_hour < e_h):
                 skipped += 1
                 print(
-                    f"[email_jobs] Job {j['id']} fuera de ventana "
+                    f"[email_jobs] Job {j['id']} con scheduled_at fuera de ventana "
                     f"({s_h}:00–{e_h}:00 ART, schedule: '{j.get('schedule_name')}') "
-                    f"— hora ART actual: {now_art().strftime('%H:%M')}. Saltando."
+                    f"— scheduled_at ART: {sched_art_hour:02d}:xx. Saltando."
                 )
                 continue  # Queda pending, sin modificar, sin dormir
 
