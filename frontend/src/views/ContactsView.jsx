@@ -153,7 +153,7 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
           <label className="detail-field">
             <span>Notas</span>
             <textarea
-              rows="5"
+              rows="3"
               value={form.notes}
               onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
             />
