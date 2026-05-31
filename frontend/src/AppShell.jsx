@@ -10,6 +10,7 @@ import { ImportsView } from './views/ImportsView';
 import { TemplatesView } from './views/TemplatesView';
 import { SchedulesView } from './views/SchedulesView';
 import { EmailJobsView } from './views/EmailJobsView';
+import { EnviosView } from './views/EnviosView';
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 const _API_KEY = import.meta.env.VITE_API_KEY || '';
@@ -81,15 +82,12 @@ function AppShell() {
   const [gmailStatus, setGmailStatus] = useState({ authorized: false });
 
   const pageTitle = useMemo(() => {
-    if (activeView === 'tendencias') return 'Tendencias operativas';
-    if (activeView === 'pipeline') return 'Pipeline operativo';
+    if (activeView === 'operaciones' || activeView === 'bandeja' || activeView === 'pipeline') return 'Operaciones';
+    if (activeView === 'estadisticas' || activeView === 'tendencias') return 'Estadísticas';
     if (activeView === 'contactos') return 'Contactos';
     if (activeView === 'importaciones') return 'Importaciones';
-    if (activeView === 'bandeja') return 'Bandeja de trabajo';
-    if (activeView === 'plantillas') return 'Plantillas de mensaje';
-    if (activeView === 'cronogramas') return 'Cronogramas de envío';
-    if (activeView === 'envios') return 'Envíos automáticos';
-    return 'Dashboard';
+    if (activeView === 'envios' || activeView === 'plantillas' || activeView === 'cronogramas') return 'Envíos';
+    return 'Hoy';
   }, [activeView]);
 
   useEffect(() => {
@@ -418,7 +416,7 @@ function AppShell() {
     setActiveActionFilter(nextAction);
     setActiveTimingFilter('todos');
     setSelectedWorktrayId(contact.id);
-    setActiveView('bandeja');
+    setActiveView('operaciones');
   }
 
   return (
@@ -437,7 +435,12 @@ function AppShell() {
         </div>
       )}
 
-      <Sidebar activeView={activeView} setActiveView={setActiveView} statusMessage={statusMessage} />
+      <Sidebar
+        activeView={activeView}
+        setActiveView={setActiveView}
+        statusMessage={statusMessage}
+        overdueCount={reporting.queue.overdue}
+      />
 
       <main className="p-6 flex flex-col gap-6">
         <Topbar
@@ -460,7 +463,7 @@ function AppShell() {
           />
         )}
 
-        {activeView === 'bandeja' && (
+        {(activeView === 'operaciones' || activeView === 'bandeja') && (
           <Worktray
             contacts={actionableContacts}
             activeActionFilter={activeActionFilter}
@@ -499,7 +502,9 @@ function AppShell() {
           />
         )}
 
-        {activeView === 'tendencias' && <TrendsView reporting={reporting} />}
+        {(activeView === 'estadisticas' || activeView === 'tendencias') && (
+          <TrendsView reporting={reporting} />
+        )}
 
         {activeView === 'contactos' && (
           <ContactsView
@@ -540,27 +545,14 @@ function AppShell() {
           />
         )}
 
-        {activeView === 'plantillas' && (
-          <TemplatesView
-            templates={templates}
-            onRefresh={refreshData}
-          />
-        )}
-
-        {activeView === 'cronogramas' && (
-          <SchedulesView
-            schedules={schedules}
-            onRefresh={refreshData}
-          />
-        )}
-
-        {activeView === 'envios' && (
-          <EmailJobsView
+        {(activeView === 'envios' || activeView === 'plantillas' || activeView === 'cronogramas') && (
+          <EnviosView
             contacts={contacts}
             templates={templates}
             emailJobs={emailJobs}
             cvFiles={cvFiles}
             gmailStatus={gmailStatus}
+            schedules={schedules}
             onRefresh={refreshData}
           />
         )}
