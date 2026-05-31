@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
-import { Dashboard } from './components/views/Dashboard';
-import { TrendsView } from './components/views/TrendsView';
-import { Worktray } from './components/views/Worktray';
-import { PipelineView } from './views/PipelineView';
+import { HoyView } from './views/HoyView';
+import { EstadisticasView } from './views/EstadisticasView';
+import { OperacionesView } from './views/OperacionesView';
 import { ContactsView } from './views/ContactsView';
 import { ImportsView } from './views/ImportsView';
-import { TemplatesView } from './views/TemplatesView';
-import { SchedulesView } from './views/SchedulesView';
 import { EmailJobsView } from './views/EmailJobsView';
 import { EnviosView } from './views/EnviosView';
 
@@ -453,19 +450,19 @@ function AppShell() {
         />
 
         {activeView === 'dashboard' && (
-          <Dashboard
+          <HoyView
             summary={summary}
-            imports={imports}
             contacts={contacts}
-            worktrayCounts={worktrayCounts}
             reporting={reporting}
+            imports={imports}
+            emailJobs={emailJobs}
             onOpenInWorktray={openInWorktray}
           />
         )}
 
-        {(activeView === 'operaciones' || activeView === 'bandeja') && (
-          <Worktray
-            contacts={actionableContacts}
+        {(activeView === 'operaciones' || activeView === 'bandeja' || activeView === 'pipeline') && (
+          <OperacionesView
+            actionableContacts={actionableContacts}
             activeActionFilter={activeActionFilter}
             onActionFilterChange={setActiveActionFilter}
             activeTimingFilter={activeTimingFilter}
@@ -485,25 +482,20 @@ function AppShell() {
             selectedContact={actionableContacts.find((contact) => contact.id === selectedWorktrayId) || null}
             historyItems={selectedHistory}
             loadingHistory={loadingHistory}
-          />
-        )}
-
-        {activeView === 'pipeline' && (
-          <PipelineView
             contacts={contacts}
-            reporting={reporting}
-            activeActionFilter={activePipelineActionFilter}
-            onActionFilterChange={setActivePipelineActionFilter}
-            actionDetails={actionDetails}
-            onActionDetailsChange={setActionDetails}
-            executingId={executingId}
-            onExecuteAction={executeContactAction}
+            activePipelineActionFilter={activePipelineActionFilter}
+            onPipelineActionFilterChange={setActivePipelineActionFilter}
             onOpenInWorktray={openInWorktray}
           />
         )}
 
         {(activeView === 'estadisticas' || activeView === 'tendencias') && (
-          <TrendsView reporting={reporting} />
+          <EstadisticasView
+            reporting={reporting}
+            imports={imports}
+            emailJobs={emailJobs}
+            contacts={contacts}
+          />
         )}
 
         {activeView === 'contactos' && (
@@ -730,19 +722,6 @@ function matchesTimingFilter(value, filter) {
   if (filter === 'hoy') return diffDays === 0;
   if (filter === 'esta_semana') return diffDays >= 0 && diffDays <= 6;
   return true;
-}
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      const [, base64 = ''] = result.split(',');
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo seleccionado.'));
-    reader.readAsDataURL(file);
-  });
 }
 
 export default AppShell;

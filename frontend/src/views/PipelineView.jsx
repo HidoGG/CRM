@@ -12,6 +12,7 @@ export function PipelineView({
   executingId,
   onExecuteAction,
   onOpenInWorktray,
+  mode = 'kanban',
 }) {
   const statusOrder = ['prioridad', 'mantener', 'revisar', 'seguimiento', 'portal', 'sacar'];
   const visibleContacts = contacts
@@ -94,6 +95,7 @@ export function PipelineView({
         </div>
       </section>
 
+      {mode === 'agenda' && (
       <section className="card">
         <div className="section-head">
           <div>
@@ -178,7 +180,9 @@ export function PipelineView({
           </article>
         </div>
       </section>
+      )}
 
+      {mode === 'kanban' && (
       <section className="pipeline-board">
         {columns.map((column) => (
           <article key={column.status} className="pipeline-column">
@@ -319,6 +323,7 @@ export function PipelineView({
           </article>
         ))}
       </section>
+      )}
     </section>
   );
 }

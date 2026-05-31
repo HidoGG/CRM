@@ -33,6 +33,7 @@ export function Worktray({
   selectedContact,
   historyItems,
   loadingHistory,
+  compact = false, // en true oculta stats duplicadas (Seguimientos, Actividad, Resultado)
 }) {
   return (
     <section className="grid gap-[20px]">
@@ -61,50 +62,52 @@ export function Worktray({
         </div>
       </section>
 
-      <section className="flex gap-[18px] flex-wrap mb-[4px]">
-        <article className="flex-1 min-w-[300px] bg-[radial-gradient(circle_at_top_right,rgba(75,179,253,0.12),transparent_34%),rgba(255,255,255,0.9)] rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold mb-[14px]">Seguimientos</span>
-          <div className="grid grid-cols-4 gap-[10px]">
-            <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.overdue}</strong><span className="text-[#597189] text-[0.88rem]">Vencidos</span></div>
-            <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.due_today}</strong><span className="text-[#597189] text-[0.88rem]">Para hoy</span></div>
-            <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.due_this_week}</strong><span className="text-[#597189] text-[0.88rem]">Esta semana</span></div>
-            <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.without_date}</strong><span className="text-[#597189] text-[0.88rem]">Sin fecha</span></div>
-          </div>
-        </article>
-
-        <article className="flex-1 min-w-[280px] bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-          <div className="flex justify-between gap-[12px] items-start mb-[14px]">
-            <h3 className="m-0 text-xl font-bold">Actividad</h3>
-            <span className="text-[#597189] text-[0.9rem]">Real</span>
-          </div>
-          <div className="grid gap-[12px]">
-            <div className="flex justify-between items-center gap-[12px] bg-[#f6f9fc] rounded-[16px] px-[14px] py-[12px]">
-              <strong className="text-[#142433]">24h</strong>
-              <span className="text-[#597189] text-[0.9rem]">
-                {reporting.activity.last_24h.enviar} enviados · {reporting.activity.last_24h.seguir} seguimientos
-              </span>
+      {!compact && (
+        <section className="flex gap-[18px] flex-wrap mb-[4px]">
+          <article className="flex-1 min-w-[300px] bg-[radial-gradient(circle_at_top_right,rgba(75,179,253,0.12),transparent_34%),rgba(255,255,255,0.9)] rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
+            <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold mb-[14px]">Seguimientos</span>
+            <div className="grid grid-cols-4 gap-[10px]">
+              <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.overdue}</strong><span className="text-[#597189] text-[0.88rem]">Vencidos</span></div>
+              <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.due_today}</strong><span className="text-[#597189] text-[0.88rem]">Para hoy</span></div>
+              <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.due_this_week}</strong><span className="text-[#597189] text-[0.88rem]">Esta semana</span></div>
+              <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.without_date}</strong><span className="text-[#597189] text-[0.88rem]">Sin fecha</span></div>
             </div>
-            <div className="flex justify-between items-center gap-[12px] bg-[#f6f9fc] rounded-[16px] px-[14px] py-[12px]">
-              <strong className="text-[#142433]">7 dias</strong>
-              <span className="text-[#597189] text-[0.9rem]">
-                {reporting.activity.last_7d.portal} portales · {reporting.activity.last_7d.descartar} descartes
-              </span>
-            </div>
-          </div>
-        </article>
+          </article>
 
-        <article className="flex-1 min-w-[280px] bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-          <div className="flex justify-between gap-[12px] items-start mb-[14px]">
-            <h3 className="m-0 text-xl font-bold">Resultado</h3>
-            <span className="text-[#597189] text-[0.9rem]">Cierre</span>
-          </div>
-          <div className="grid gap-[10px]">
-            <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#2d7b55]/14 text-[#1a5437] font-medium">Portales aplicados: {reporting.outcomes.portal.aplicado}</span>
-            <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#142433]/6 text-[#142433] font-medium">Pendientes portal: {reporting.outcomes.portal.pendiente}</span>
-            <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#142433]/6 text-[#142433] font-medium">Descartes: {reporting.outcomes.discard.total}</span>
-          </div>
-        </article>
-      </section>
+          <article className="flex-1 min-w-[280px] bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
+            <div className="flex justify-between gap-[12px] items-start mb-[14px]">
+              <h3 className="m-0 text-xl font-bold">Actividad</h3>
+              <span className="text-[#597189] text-[0.9rem]">Real</span>
+            </div>
+            <div className="grid gap-[12px]">
+              <div className="flex justify-between items-center gap-[12px] bg-[#f6f9fc] rounded-[16px] px-[14px] py-[12px]">
+                <strong className="text-[#142433]">24h</strong>
+                <span className="text-[#597189] text-[0.9rem]">
+                  {reporting.activity.last_24h.enviar} enviados · {reporting.activity.last_24h.seguir} seguimientos
+                </span>
+              </div>
+              <div className="flex justify-between items-center gap-[12px] bg-[#f6f9fc] rounded-[16px] px-[14px] py-[12px]">
+                <strong className="text-[#142433]">7 dias</strong>
+                <span className="text-[#597189] text-[0.9rem]">
+                  {reporting.activity.last_7d.portal} portales · {reporting.activity.last_7d.descartar} descartes
+                </span>
+              </div>
+            </div>
+          </article>
+
+          <article className="flex-1 min-w-[280px] bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
+            <div className="flex justify-between gap-[12px] items-start mb-[14px]">
+              <h3 className="m-0 text-xl font-bold">Resultado</h3>
+              <span className="text-[#597189] text-[0.9rem]">Cierre</span>
+            </div>
+            <div className="grid gap-[10px]">
+              <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#2d7b55]/14 text-[#1a5437] font-medium">Portales aplicados: {reporting.outcomes.portal.aplicado}</span>
+              <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#142433]/6 text-[#142433] font-medium">Pendientes portal: {reporting.outcomes.portal.pendiente}</span>
+              <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#142433]/6 text-[#142433] font-medium">Descartes: {reporting.outcomes.discard.total}</span>
+            </div>
+          </article>
+        </section>
+      )}
 
       <section className="grid grid-cols-[minmax(0,1.45fr)_minmax(300px,0.72fr)] items-start gap-[20px]">
         <div className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)] grid gap-[16px]">
@@ -252,23 +255,24 @@ export function Worktray({
         </div>
 
         <aside className="sticky top-[24px] grid gap-[16px]">
-          <div className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)] grid gap-[14px]">
-            <div className="flex justify-between gap-[12px] items-start mb-[4px]">
-              <div>
-                <h3 className="m-0 text-xl font-bold">Pipeline actual</h3>
-                <p className="m-0 mt-1 text-[#597189] text-[0.9rem]">Foto de estados y motivos para decidir la pasada.</p>
+          {!compact && (
+            <div className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)] grid gap-[14px]">
+              <div className="flex justify-between gap-[12px] items-start mb-[4px]">
+                <div>
+                  <h3 className="m-0 text-xl font-bold">Pipeline actual</h3>
+                  <p className="m-0 mt-1 text-[#597189] text-[0.9rem]">Foto de estados y motivos para decidir la pasada.</p>
+                </div>
+              </div>
+              <div className="grid gap-[6px]">
+                {reporting.pipeline.by_status.slice(0, 4).map((item) => (
+                  <div key={item.key} className="flex justify-between p-[12px] rounded-[14px] bg-[#f4f8fc]">
+                    <strong className="text-[#102538]">{capitalize(item.label)}</strong>
+                    <span className="text-[#597189] font-medium">{item.count}</span>
+                  </div>
+                ))}
               </div>
             </div>
-
-            <div className="grid gap-[6px]">
-              {reporting.pipeline.by_status.slice(0, 4).map((item) => (
-                <div key={item.key} className="flex justify-between p-[12px] rounded-[14px] bg-[#f4f8fc]">
-                  <strong className="text-[#102538]">{capitalize(item.label)}</strong>
-                  <span className="text-[#597189] font-medium">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
 
           <div className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)] grid gap-[14px]">
             <div className="flex justify-between gap-[12px] items-start mb-[4px]">
