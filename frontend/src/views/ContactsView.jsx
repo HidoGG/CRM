@@ -65,14 +65,23 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
           </div>
 
           {/* Tabla full-width */}
-          <div className="w-full overflow-x-auto rounded-[24px] border border-[#142433]/8 bg-white/90 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-            <table className="w-full border-collapse">
+          <div className="w-full rounded-[24px] border border-[#142433]/8 bg-white/90 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
+            <table className="w-full table-fixed border-collapse text-sm">
+              <colgroup>
+                <col className="w-[18%]" />
+                <col className="w-[16%]" />
+                <col className="w-[22%]" />
+                <col className="w-[11%]" />
+                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[7%]" />
+              </colgroup>
               <thead>
                 <tr>
                   {['Contacto', 'Empresa', 'Email', 'Estado', 'Acción', 'Origen', ''].map((col) => (
                     <th
                       key={col}
-                      className="bg-[#f4f8fc] text-[#597189] text-[0.84rem] uppercase tracking-[0.07em] px-[18px] py-[14px] text-left border-b border-[#142433]/8 font-semibold whitespace-nowrap"
+                      className="bg-[#f4f8fc] text-[#597189] text-[0.75rem] uppercase tracking-[0.07em] px-3 py-2.5 text-left border-b border-[#142433]/8 font-semibold"
                     >
                       {col}
                     </th>
@@ -83,25 +92,29 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                 {contacts.length ? (
                   contacts.map((contact) => (
                     <tr key={contact.id} className="border-b border-[#142433]/6 hover:bg-[#f9fbfd] transition-colors">
-                      <td className="px-[18px] py-[14px]">
-                        <strong className="text-[#102538] text-[0.95rem]">{contact.name || '—'}</strong>
+                      <td className="px-3 py-2.5 truncate">
+                        <strong className="text-[#102538] text-[0.85rem]">{contact.name || '—'}</strong>
                       </td>
-                      <td className="px-[18px] py-[14px] text-[#597189]">{contact.company || '—'}</td>
-                      <td className="px-[18px] py-[14px] text-[#597189]">{contact.email}</td>
-                      <td className="px-[18px] py-[14px]">
-                        <span className={`status-badge status-${String(contact.status || '').toLowerCase()}`}>
+                      <td className="px-3 py-2.5 text-[#597189] text-[0.85rem] truncate">{contact.company || '—'}</td>
+                      <td className="px-3 py-2.5 text-[#597189] text-[0.85rem] truncate">{contact.email}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`inline-flex rounded-[6px] px-[7px] py-[3px] text-[0.75rem] font-bold border ${
+                          String(contact.status || '').toLowerCase() === 'prioridad' ? 'bg-[#5b2b2b]/10 text-[#5b2b2b] border-[#5b2b2b]/15' :
+                          String(contact.status || '').toLowerCase() === 'mantener'  ? 'bg-[#1f5c3a]/10 text-[#1f5c3a] border-[#1f5c3a]/15' :
+                          'bg-[#495764]/10 text-[#495764] border-[#495764]/15'
+                        }`}>
                           {contact.status}
                         </span>
                       </td>
-                      <td className="px-[18px] py-[14px] text-[#597189]">
+                      <td className="px-3 py-2.5 text-[#597189] text-[0.85rem] truncate">
                         {prettifyAction(contact.next_action || 'revisar_manual')}
                       </td>
-                      <td className="px-[18px] py-[14px] text-[#597189] text-[0.9rem]">{contact.source || '—'}</td>
-                      <td className="px-[18px] py-[14px]">
+                      <td className="px-3 py-2.5 text-[#597189] text-[0.85rem] truncate">{contact.source || '—'}</td>
+                      <td className="px-3 py-2.5">
                         <button
                           type="button"
                           onClick={() => setConfirmId(contact.id)}
-                          className="text-[#ef4444] text-[0.82rem] font-medium bg-transparent border-0 cursor-pointer hover:text-[#c53030] transition-colors"
+                          className="text-[#ef4444] text-[0.78rem] font-medium bg-transparent border-0 cursor-pointer hover:text-[#c53030] transition-colors"
                         >
                           Eliminar
                         </button>
