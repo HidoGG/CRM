@@ -30,21 +30,36 @@ def now_art() -> datetime:
     return datetime.now(timezone.utc) + ART_OFFSET
 
 
+def _is_sending_day(dt: datetime) -> bool:
+    """Lunes (0) a Sábado (5) son días hábiles. Domingo (6) no."""
+    return dt.weekday() != 6
+
+
+def _next_working_day(dt: datetime) -> datetime:
+    """Avanza al siguiente día hábil (salta domingos)."""
+    nxt = dt + timedelta(days=1)
+    while not _is_sending_day(nxt):
+        nxt += timedelta(days=1)
+    return nxt
+
+
 def _next_slot_start_art(start_h: int, end_h: int) -> datetime:
     """
-    Retorna el próximo momento válido para enviar un job en hora ART.
-    - Si estamos antes de la ventana: hoy a start_h:00
-    - Si estamos dentro de la ventana: ahora mismo
-    - Si ya cerró la ventana: mañana a start_h:00
+    Retorna el próximo momento válido para enviar un job en hora ART,
+    saltando domingos automáticamente.
     """
     now = now_art()
-    today_start = now.replace(hour=start_h, minute=0, second=0, microsecond=0)
-    today_end = now.replace(hour=end_h, minute=0, second=0, microsecond=0)
-    if now < today_start:
+    # Si hoy es domingo, empezar el lunes
+    base = now if _is_sending_day(now) else _next_working_day(now)
+    today_start = base.replace(hour=start_h, minute=0, second=0, microsecond=0)
+    today_end = base.replace(hour=end_h, minute=0, second=0, microsecond=0)
+    if base <= today_start:
         return today_start
-    if now < today_end:
-        return now
-    return (now + timedelta(days=1)).replace(hour=start_h, minute=0, second=0, microsecond=0)
+    if base < today_end:
+        return base
+    # Ventana cerrada — avanzar al siguiente día hábil
+    next_day = _next_working_day(base)
+    return next_day.replace(hour=start_h, minute=0, second=0, microsecond=0)
 
 
 def calc_job_scheduled_at(schedule: dict, job_index: int = 0) -> str:
@@ -68,10 +83,9 @@ def calc_job_scheduled_at(schedule: dict, job_index: int = 0) -> str:
             current = current + timedelta(minutes=remaining)
             remaining = 0
         else:
-            # El lote supera la ventana del día — avanzar al siguiente día
-            current = (current + timedelta(days=1)).replace(
-                hour=start_h, minute=0, second=0, microsecond=0
-            )
+            # El lote supera la ventana del día — avanzar al siguiente día hábil
+            next_day = _next_working_day(current)
+            current = next_day.replace(hour=start_h, minute=0, second=0, microsecond=0)
             remaining -= mins_left
 
     # Convertir ART → UTC para almacenar en DB
@@ -1705,6 +1719,11 @@ def process_pending_email_jobs() -> dict:
 
     JOBS_PER_CYCLE = 25
     DELAY_BETWEEN_SENDS = 2
+
+    # Domingos: suspender todos los envíos
+    if not _is_sending_day(now_art()):
+        print(f"[email_jobs] Domingo — envíos suspendidos hasta el lunes.")
+        return {"sent": 0, "failed": 0, "skipped": 0}
 
     sent = 0
     failed = 0
