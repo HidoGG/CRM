@@ -1859,6 +1859,25 @@ def process_pending_email_jobs() -> dict:
     return {"sent": sent, "failed": failed, "skipped": skipped}
 
 
+def assign_default_cv_to_jobs() -> dict:
+    """Asigna el CV por defecto a todos los jobs pendientes/fallidos sin adjunto."""
+    with get_session() as session:
+        cv_row = session.execute(text(
+            "SELECT id FROM cv_files WHERE is_default = 1 ORDER BY id DESC LIMIT 1"
+        )).fetchone()
+        if not cv_row:
+            raise ServiceError("No hay CV marcado como por defecto.")
+        cv_id = cv_row[0]
+        result = session.execute(text("""
+            UPDATE email_jobs
+            SET cv_file_id = :cv_id
+            WHERE cv_file_id IS NULL AND status IN ('pending', 'failed')
+        """), {"cv_id": cv_id})
+        updated = result.rowcount
+    print(f"[email_jobs] Asignado CV id={cv_id} a {updated} jobs sin adjunto.")
+    return {"updated": updated, "cv_id": cv_id}
+
+
 def retry_failed_email_jobs() -> dict:
     """Resetea todos los jobs con status='failed' a 'pending' con scheduled_at=ahora."""
     with get_session() as session:

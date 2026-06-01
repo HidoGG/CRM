@@ -340,6 +340,14 @@ def retry_failed_email_jobs():
     return crm_service.retry_failed_email_jobs()
 
 
+@app.post("/email-jobs/assign-default-cv")
+def assign_default_cv_to_jobs():
+    try:
+        return crm_service.assign_default_cv_to_jobs()
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
 # ---------------------------------------------------------------------------
 # Delivery schedules
 # ---------------------------------------------------------------------------
