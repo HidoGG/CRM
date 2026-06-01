@@ -1857,3 +1857,16 @@ def process_pending_email_jobs() -> dict:
         f"hora ART: {now_art().strftime('%H:%M')}"
     )
     return {"sent": sent, "failed": failed, "skipped": skipped}
+
+
+def retry_failed_email_jobs() -> dict:
+    """Resetea todos los jobs con status='failed' a 'pending' con scheduled_at=ahora."""
+    with get_session() as session:
+        result = session.execute(text("""
+            UPDATE email_jobs
+            SET status = 'pending', scheduled_at = :now, error_message = NULL
+            WHERE status = 'failed'
+        """), {"now": now_iso()})
+        retried = result.rowcount
+    print(f"[email_jobs] Retry: {retried} jobs fallidos reseteados a pending.")
+    return {"retried": retried}

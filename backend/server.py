@@ -335,6 +335,11 @@ def run_email_jobs_now():
     return crm_service.process_pending_email_jobs()
 
 
+@app.post("/email-jobs/retry-failed")
+def retry_failed_email_jobs():
+    return crm_service.retry_failed_email_jobs()
+
+
 # ---------------------------------------------------------------------------
 # Delivery schedules
 # ---------------------------------------------------------------------------

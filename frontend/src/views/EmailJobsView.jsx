@@ -81,6 +81,13 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     setRunResult(data);
   }
 
+  async function retryFailed() {
+    const res = await apiFetch(`${API_BASE}/email-jobs/retry-failed`, { method: 'POST' });
+    const data = res.ok ? await res.json() : { retried: 0 };
+    await onRefresh();
+    setRunResult({ sent: 0, failed: 0, retried: data.retried });
+  }
+
   async function authorize() {
     try {
       const res = await apiFetch(`${API_BASE}/gmail/auth-url`);
@@ -104,12 +111,18 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
       <InfoModal
         open={runResult !== null}
         title={
+          runResult?.retried > 0 ? '↺ Jobs reactivados' :
+          runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0 ? 'Sin fallidos para reintentar' :
           runResult?.sent > 0 && runResult?.failed === 0 ? '✓ Correos enviados' :
           runResult?.sent === 0 && runResult?.failed === 0 ? 'Sin envíos pendientes' :
           runResult?.sent > 0 ? 'Envíos completados con errores' : '⚠ Falló el envío'
         }
         message={
-          runResult?.sent > 0 && runResult?.failed === 0
+          runResult?.retried > 0
+            ? <><p className="m-0"><strong>{runResult.retried}</strong> {runResult.retried === 1 ? 'job reseteado' : 'jobs reseteados'} a pendiente.</p><p className="m-0 mt-2 text-xs">El scheduler los va a procesar en el próximo ciclo. También podés presionar "Enviar ahora".</p></>
+            : runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0
+            ? <p className="m-0">No hay jobs fallidos para reintentar.</p>
+            : runResult?.sent > 0 && runResult?.failed === 0
             ? <><p className="m-0">Se enviaron correctamente <strong>{runResult.sent}</strong> {runResult.sent === 1 ? 'correo' : 'correos'}.</p><p className="m-0 mt-2 text-xs">Revisá tu bandeja de entrada para confirmarlo.</p></>
             : runResult?.sent === 0 && runResult?.failed === 0
             ? <p className="m-0">No había correos pendientes de envío en este momento.</p>
@@ -241,10 +254,18 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
               Los envíos se crean automáticamente al confirmar contactos con acción <em>Enviar</em> o <em>Seguir</em>. El sistema revisa cada 10 minutos.
             </p>
           </div>
-          <button type="button" onClick={runNow}
-            className="border border-[#184e77]/30 text-[#184e77] rounded-[12px] px-4 py-2 font-semibold text-sm hover:bg-[#184e77]/5 cursor-pointer bg-white">
-            Enviar ahora
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={runNow}
+              className="border border-[#184e77]/30 text-[#184e77] rounded-[12px] px-4 py-2 font-semibold text-sm hover:bg-[#184e77]/5 cursor-pointer bg-white">
+              Enviar ahora
+            </button>
+            {emailJobs.some(j => j.status === 'failed') && (
+              <button type="button" onClick={retryFailed}
+                className="border border-[#bc4749]/30 text-[#9c2730] rounded-[12px] px-4 py-2 font-semibold text-sm hover:bg-[#bc4749]/5 cursor-pointer bg-white">
+                Reintentar fallidos ({emailJobs.filter(j => j.status === 'failed').length})
+              </button>
+            )}
+          </div>
         </div>
 
         {emailJobs.length === 0 ? (
