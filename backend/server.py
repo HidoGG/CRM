@@ -7,7 +7,6 @@ load_dotenv()
 import io
 import os
 import secrets
-import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,9 +21,6 @@ import modules.crm_service as crm_service
 import modules.ocr_service as ocr_service
 from modules.crm_service import ServiceError
 from modules.database import init_db
-
-CV_UPLOAD_DIR = Path(__file__).parent / "uploads" / "cv"
-CV_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 _scheduler = BackgroundScheduler()
 
@@ -270,12 +266,12 @@ def list_cv_files():
 
 @app.post("/cv-files", status_code=201)
 async def upload_cv(file: UploadFile = File(...), comment: str = Form("")):
+    from modules import supabase_storage
     ext = Path(file.filename or "cv.pdf").suffix or ".pdf"
-    unique_name = f"{uuid.uuid4().hex}{ext}"
-    dest = CV_UPLOAD_DIR / unique_name
-    with dest.open("wb") as f:
-        shutil.copyfileobj(file.file, f)
-    return crm_service.save_cv_file(file.filename or unique_name, str(dest), comment)
+    object_key = f"{uuid.uuid4().hex}{ext}"
+    file_bytes = await file.read()
+    supabase_storage.upload(file_bytes, object_key)
+    return crm_service.save_cv_file(file.filename or object_key, object_key, comment)
 
 
 @app.patch("/cv-files/{cv_id}")

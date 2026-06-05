@@ -27,5 +27,8 @@ google-api-python-client>=2.0.0
 # Scheduler
 apscheduler>=3.10.0
 
+# Supabase Storage (CVs en la nube)
+supabase>=2.0.0
+
 # Linting y formato (dev)
 ruff>=0.4.0

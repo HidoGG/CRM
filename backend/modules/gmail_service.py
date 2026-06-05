@@ -238,14 +238,13 @@ def send_email(
     to: str,
     subject: str,
     body: str,
-    cv_path: str | None = None,
+    cv_bytes: bytes | None = None,
     cv_filename: str | None = None,
 ) -> str:
     """Envía un email via Gmail API.
 
     Lanza RuntimeError si no hay credenciales.
-    Lanza FileNotFoundError si cv_path está definido pero no existe en disco —
-    el caller debe capturarlo y marcar el job como fallido.
+    cv_bytes: contenido binario del PDF adjunto, descargado previamente de Supabase Storage.
     """
     from googleapiclient.discovery import build
 
@@ -265,20 +264,13 @@ def send_email(
     except Exception as exc:
         print(f"[gmail_service] No se pudo obtener perfil del remitente: {exc}")
 
-    # Validar que el CV existe antes de intentar adjuntarlo
-    if cv_path and not Path(cv_path).exists():
-        raise FileNotFoundError(
-            f"Archivo CV no encontrado en disco: '{cv_filename or cv_path}'. "
-            "Re-subí el CV desde la sección Envíos en la app de producción."
-        )
-
     msg = MIMEMultipart()
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
-    if cv_path and Path(cv_path).exists():
-        with open(cv_path, "rb") as f:
-            part = MIMEApplication(f.read(), Name=cv_filename or Path(cv_path).name)
-        part["Content-Disposition"] = f'attachment; filename="{cv_filename or Path(cv_path).name}"'
+    if cv_bytes:
+        name = cv_filename or "cv.pdf"
+        part = MIMEApplication(cv_bytes, Name=name)
+        part["Content-Disposition"] = f'attachment; filename="{name}"'
         msg.attach(part)
 
     if sender_email:

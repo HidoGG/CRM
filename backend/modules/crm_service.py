@@ -1497,9 +1497,11 @@ def delete_cv_file(cv_id: int) -> dict:
         if not row:
             raise ServiceError("CV no encontrado.", HTTPStatus.NOT_FOUND)
         cv = row_to_dict(row)
-        import os as _os
-        if _os.path.exists(cv["file_path"]):
-            _os.remove(cv["file_path"])
+        try:
+            from modules import supabase_storage
+            supabase_storage.delete(cv["file_path"])
+        except Exception:
+            pass
         session.execute(text("DELETE FROM cv_files WHERE id = :id"), {"id": cv_id})
         return {"deleted": cv_id}
 
@@ -1777,13 +1779,11 @@ def process_pending_email_jobs() -> dict:
                 continue  # Queda pending, sin modificar, sin dormir
 
         try:
-            cv_path = j.get("file_path")
+            cv_bytes: bytes | None = None
             cv_filename = j.get("original_name")
-            if j.get("cv_file_id") and cv_path and not Path(cv_path).exists():
-                raise FileNotFoundError(
-                    f"CV '{cv_filename}' no encontrado en disco. "
-                    "Re-subí el archivo desde la sección Envíos en producción."
-                )
+            if j.get("cv_file_id") and j.get("file_path"):
+                from modules import supabase_storage
+                cv_bytes = supabase_storage.download(j["file_path"])
 
             tmpl_row = None
             if j["template_id"]:
@@ -1806,7 +1806,7 @@ def process_pending_email_jobs() -> dict:
                 to=j["email"],
                 subject=rendered["subject"],
                 body=rendered["body"],
-                cv_path=cv_path,
+                cv_bytes=cv_bytes,
                 cv_filename=cv_filename,
             )
 
