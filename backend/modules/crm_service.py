@@ -1770,13 +1770,19 @@ def process_pending_email_jobs() -> dict:
                 sched_art_hour = now_art().hour
 
             if not (s_h <= sched_art_hour < e_h):
+                # Reprogramar al próximo slot válido en vez de ignorar indefinidamente
+                next_slot = _next_slot_start_art(s_h, e_h).replace(tzinfo=None)
+                next_slot_utc = (next_slot + timedelta(hours=3)).isoformat(timespec="seconds")
+                with get_session() as s:
+                    s.execute(text(
+                        "UPDATE email_jobs SET scheduled_at = :t WHERE id = :id"
+                    ), {"t": next_slot_utc, "id": j["id"]})
                 skipped += 1
                 print(
-                    f"[email_jobs] Job {j['id']} con scheduled_at fuera de ventana "
-                    f"({s_h}:00–{e_h}:00 ART, schedule: '{j.get('schedule_name')}') "
-                    f"— scheduled_at ART: {sched_art_hour:02d}:xx. Saltando."
+                    f"[email_jobs] Job {j['id']} fuera de ventana "
+                    f"({s_h}:00–{e_h}:00 ART) — reprogramado para {next_slot_utc}"
                 )
-                continue  # Queda pending, sin modificar, sin dormir
+                continue
 
         try:
             cv_bytes: bytes | None = None
