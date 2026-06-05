@@ -88,6 +88,13 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     setRunResult({ sent: 0, failed: 0, retried: data.retried });
   }
 
+  async function assignDefaultCv() {
+    const res = await apiFetch(`${API_BASE}/email-jobs/assign-default-cv`, { method: 'POST' });
+    const data = res.ok ? await res.json() : { updated: 0 };
+    await onRefresh();
+    setRunResult({ sent: 0, failed: 0, assigned: data.updated });
+  }
+
   async function authorize() {
     try {
       const res = await apiFetch(`${API_BASE}/gmail/auth-url`);
@@ -111,6 +118,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
       <InfoModal
         open={runResult !== null}
         title={
+          runResult?.assigned != null ? (runResult.assigned > 0 ? '✓ CV asignado' : 'Sin jobs para actualizar') :
           runResult?.retried > 0 ? '↺ Jobs reactivados' :
           runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0 ? 'Sin fallidos para reintentar' :
           runResult?.sent > 0 && runResult?.failed === 0 ? '✓ Correos enviados' :
@@ -118,7 +126,11 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
           runResult?.sent > 0 ? 'Envíos completados con errores' : '⚠ Falló el envío'
         }
         message={
-          runResult?.retried > 0
+          runResult?.assigned != null
+            ? runResult.assigned > 0
+              ? <><p className="m-0">CV por defecto asignado a <strong>{runResult.assigned}</strong> {runResult.assigned === 1 ? 'job' : 'jobs'}.</p><p className="m-0 mt-2 text-xs">Ahora presioná "Reintentar fallidos" o "Enviar ahora" para procesarlos.</p></>
+              : <p className="m-0">Todos los jobs ya tienen un CV válido asignado.</p>
+            : runResult?.retried > 0
             ? <><p className="m-0"><strong>{runResult.retried}</strong> {runResult.retried === 1 ? 'job reseteado' : 'jobs reseteados'} a pendiente.</p><p className="m-0 mt-2 text-xs">El scheduler los va a procesar en el próximo ciclo. También podés presionar "Enviar ahora".</p></>
             : runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0
             ? <p className="m-0">No hay jobs fallidos para reintentar.</p>
@@ -263,6 +275,12 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
               <button type="button" onClick={retryFailed}
                 className="border border-[#bc4749]/30 text-[#9c2730] rounded-[12px] px-4 py-2 font-semibold text-sm hover:bg-[#bc4749]/5 cursor-pointer bg-white">
                 Reintentar fallidos ({emailJobs.filter(j => j.status === 'failed').length})
+              </button>
+            )}
+            {emailJobs.some(j => j.status === 'pending' || j.status === 'failed') && (
+              <button type="button" onClick={assignDefaultCv}
+                className="border border-[#597189]/30 text-[#597189] rounded-[12px] px-4 py-2 font-semibold text-sm hover:bg-[#597189]/5 cursor-pointer bg-white">
+                Adjuntar CV por defecto
               </button>
             )}
           </div>

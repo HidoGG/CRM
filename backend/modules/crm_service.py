@@ -1860,7 +1860,9 @@ def process_pending_email_jobs() -> dict:
 
 
 def assign_default_cv_to_jobs() -> dict:
-    """Asigna el CV por defecto a todos los jobs pendientes/fallidos sin adjunto."""
+    """Asigna el CV por defecto a todos los jobs pendientes/fallidos sin CV válido.
+    Cubre tanto cv_file_id IS NULL como referencias huérfanas a CVs ya eliminados.
+    """
     with get_session() as session:
         cv_row = session.execute(text(
             "SELECT id FROM cv_files WHERE is_default = 1 ORDER BY id DESC LIMIT 1"
@@ -1871,10 +1873,14 @@ def assign_default_cv_to_jobs() -> dict:
         result = session.execute(text("""
             UPDATE email_jobs
             SET cv_file_id = :cv_id
-            WHERE cv_file_id IS NULL AND status IN ('pending', 'failed')
+            WHERE status IN ('pending', 'failed')
+            AND (
+                cv_file_id IS NULL
+                OR cv_file_id NOT IN (SELECT id FROM cv_files)
+            )
         """), {"cv_id": cv_id})
         updated = result.rowcount
-    print(f"[email_jobs] Asignado CV id={cv_id} a {updated} jobs sin adjunto.")
+    print(f"[email_jobs] Asignado CV id={cv_id} a {updated} jobs sin adjunto válido.")
     return {"updated": updated, "cv_id": cv_id}
 
 
