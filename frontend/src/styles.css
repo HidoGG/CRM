@@ -24,7 +24,7 @@
   /* ── Text ── */
   --text-primary:   oklch(93% 0.005 258);
   --text-secondary: oklch(61% 0.015 258);
-  --text-muted:     oklch(45% 0.011 258);
+  --text-muted:     oklch(55% 0.011 258);
   --text-inverse:   oklch(11% 0.008 258);
 
   /* ── Accent — Gold (única identidad de marca) ── */
@@ -210,7 +210,7 @@ button {
   margin: 0 0 6px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-family: 'Barlow Condensed', ui-sans-serif, system-ui, sans-serif;
   font-weight: 600;
   color: var(--text-muted);

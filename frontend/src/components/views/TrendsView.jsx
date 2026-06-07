@@ -57,6 +57,7 @@ function SparklineCard({ label, value, delta, data }) {
 export function TrendsView({ reporting }) {
   const [activeRange, setActiveRange] = useState(7);
   const filteredSnapshots = reporting.recent_snapshots.slice(0, activeRange);
+  const multiSeries = buildMultiSparklineSeries(filteredSnapshots);
 
   return (
     <section className="grid gap-5">
@@ -213,9 +214,9 @@ export function TrendsView({ reporting }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'flex-end', height: 76 }} aria-hidden="true">
-            {buildMultiSparklineSeries(filteredSnapshots) ? (
+            {multiSeries ? (
               <svg viewBox="0 0 100 64" preserveAspectRatio="none" style={{ width: '100%', height: 76 }}>
-                {Object.entries(buildMultiSparklineSeries(filteredSnapshots)).map(([key, points]) => {
+                {Object.entries(multiSeries).map(([key, points]) => {
                   const strokeColor =
                     key === 'active'       ? 'var(--green-text)'
                     : key === 'overdue'    ? 'var(--red-text)'

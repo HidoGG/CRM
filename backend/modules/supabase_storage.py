@@ -3,13 +3,18 @@ from __future__ import annotations
 import os
 import time
 
-from supabase import create_client
+from supabase import Client, create_client
+
+_supabase: Client | None = None
 
 
-def _client():
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ["SUPABASE_SERVICE_KEY"]
-    return create_client(url, key)
+def _client() -> Client:
+    global _supabase
+    if _supabase is None:
+        url = os.environ["SUPABASE_URL"]
+        key = os.environ["SUPABASE_SERVICE_KEY"]
+        _supabase = create_client(url, key)
+    return _supabase
 
 
 def _bucket() -> str:

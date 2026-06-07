@@ -3,7 +3,7 @@ import { buildTodayInbox, prettifyAction } from '../AppShell';
 
 export function HoyView({ summary, contacts, reporting, imports, emailJobs, onOpenInWorktray }) {
   const kpis  = useMemo(() => buildKpis(contacts, reporting, emailJobs), [contacts, reporting, emailJobs]);
-  const inbox = buildTodayInbox(contacts);
+  const inbox = useMemo(() => buildTodayInbox(contacts), [contacts]);
 
   return (
     <section className="grid gap-5">

@@ -272,7 +272,7 @@ function AppShell() {
       }
       setForm(defaultForm);
       setStatusMessage('Contacto guardado correctamente.');
-      await refreshData();
+      await refreshData('contacts');
       setActiveView('contactos');
     } catch (error) {
       setStatusMessage(error.message || 'Error al guardar el contacto.');
@@ -404,7 +404,7 @@ function AppShell() {
         }
       }
       setStatusMessage(result.message || `Accion ${prettifyAction(action)} ejecutada.`);
-      await refreshData();
+      await refreshData('contacts');
     } catch (error) {
       setStatusMessage(error.message || 'Error al ejecutar la accion.');
     } finally {
@@ -427,7 +427,7 @@ function AppShell() {
       }
       setStatusMessage(`Seguimiento actualizado para ${formatFollowUpLabel(follow_up_date)}.`);
       setEditingFollowUp((current) => ({ ...current, [contact.id]: follow_up_date }));
-      await refreshData();
+      await refreshData('contacts');
     } catch (error) {
       setStatusMessage(error.message || 'Error al guardar la fecha de seguimiento.');
     } finally {
@@ -619,7 +619,7 @@ function AppShell() {
 }
 
 // ---------------------------------------------------------------------------
-// Exported utilities (usadas por Dashboard, Worktray, TrendsView, vistas)
+// Exported utilities (usadas por Worktray, TrendsView, vistas)
 // ---------------------------------------------------------------------------
 
 export function createEmptyReporting() {
