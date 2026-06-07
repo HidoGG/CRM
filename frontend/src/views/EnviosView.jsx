@@ -4,56 +4,86 @@ import { TemplatesView } from './TemplatesView';
 import { SchedulesView } from './SchedulesView';
 
 const TABS = [
-  { id: 'cola', label: 'Cola de envíos' },
-  { id: 'plantillas', label: 'Plantillas' },
-  { id: 'cronogramas', label: 'Cronogramas' },
+  { id: 'cola',       label: 'Cola de envíos' },
+  { id: 'plantillas', label: 'Plantillas'      },
+  { id: 'cronogramas',label: 'Cronogramas'     },
 ];
 
-export function EnviosView({
-  contacts,
-  templates,
-  emailJobs,
-  cvFiles,
-  gmailStatus,
-  schedules,
-  onRefresh,
-}) {
+export function EnviosView({ contacts, templates, emailJobs, cvFiles, gmailStatus, schedules, onRefresh }) {
   const [activeTab, setActiveTab] = useState('cola');
 
   return (
     <div className="flex flex-col gap-5">
-
-      {/* Gmail status chip — siempre visible arriba */}
-      <div className="flex items-center gap-3">
-        <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border ${
-          gmailStatus.authorized
-            ? 'bg-green-50 border-green-200 text-green-700'
-            : 'bg-amber-50 border-amber-200 text-amber-700'
-        }`}>
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-            gmailStatus.authorized ? 'bg-green-500' : 'bg-amber-400'
-          }`} />
-          Gmail: {gmailStatus.authorized ? 'Conectado y listo para enviar' : 'Sin autorizar — ir a Cola para conectar'}
+      {/* Gmail status chip — visible en todos los tabs */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            borderRadius: 999,
+            padding: '6px 16px',
+            fontSize: '0.87rem',
+            fontWeight: 600,
+            border: `1px solid ${gmailStatus.authorized ? 'var(--green-text)' : 'var(--amber-text)'}`,
+            background: gmailStatus.authorized ? 'var(--green-bg)' : 'var(--amber-bg)',
+            color: gmailStatus.authorized ? 'var(--green-text)' : 'var(--amber-text)',
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              flexShrink: 0,
+              background: gmailStatus.authorized ? 'var(--green-text)' : 'var(--amber-text)',
+            }}
+            aria-hidden="true"
+          />
+          Gmail: {gmailStatus.authorized ? 'Conectado · listo para enviar' : 'Sin autorizar — abrí "Cola" para conectar'}
         </div>
         {gmailStatus.authorized && (
-          <span className="text-xs text-[#597189]">
-            El scheduler revisa la cola cada 10 minutos · Lunes a Sábado
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            Scheduler cada 10 min · Lun–Sáb
           </span>
         )}
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 bg-[#f4f8fc] rounded-[18px] p-1.5 w-fit">
+      <div
+        style={{
+          display: 'flex',
+          gap: 4,
+          background: 'var(--surface-subtle)',
+          borderRadius: 14,
+          padding: 6,
+          width: 'fit-content',
+          border: '1px solid var(--border-faint)',
+        }}
+        role="tablist"
+        aria-label="Secciones de envíos"
+      >
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`rounded-[12px] px-5 py-2 text-sm font-semibold transition-all cursor-pointer border-0 ${
-              activeTab === tab.id
-                ? 'bg-white text-[#184e77] shadow-sm'
-                : 'text-[#597189] bg-transparent hover:text-[#142433]'
-            }`}
+            style={{
+              borderRadius: 10,
+              padding: '7px 18px',
+              fontSize: '0.87rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: activeTab === tab.id ? '1px solid var(--border)' : '1px solid transparent',
+              background: activeTab === tab.id ? 'var(--surface-raised)' : 'transparent',
+              color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+              transition: 'all 0.15s ease',
+              boxShadow: activeTab === tab.id ? '0 1px 4px rgba(0,0,0,0.18)' : 'none',
+            }}
           >
             {tab.label}
           </button>

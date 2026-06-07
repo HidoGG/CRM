@@ -1,4 +1,3 @@
-// frontend/src/components/views/TrendsView.jsx
 import React, { useState } from 'react';
 import {
   API_BASE,
@@ -10,39 +9,45 @@ import {
   buildSparklinePoints,
 } from '../../AppShell';
 
-function SparklineCard({ label, value, delta, data }) {
-  const points = buildSparklinePoints(data);
+function DeltaBadge({ value }) {
+  const cls = getDeltaClassName(value);
+  const style =
+    cls === 'is-positive' ? { background: 'var(--green-bg)', color: 'var(--green-text)' }
+    : cls === 'is-negative' ? { background: 'var(--red-bg)', color: 'var(--red-text)' }
+    : { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
 
   return (
-    <article className="bg-[#f6f9fc] rounded-[22px] p-[18px] grid gap-[14px]">
-      <div className="flex justify-between items-start gap-3">
-        <div>
-          <span className="text-[#597189] text-[0.9rem] block">{label}</span>
-          <strong className="block text-[#102538] text-[1.45rem] mt-1">{value}</strong>
-        </div>
-        <span
-          className={`rounded-full px-[10px] py-[6px] text-[0.84rem] font-bold ${
-            getDeltaClassName(delta) === 'is-positive'
-              ? 'bg-[#308a5a]/14 text-[#1f6b45]'
-              : getDeltaClassName(delta) === 'is-negative'
-              ? 'bg-[#bc4749]/14 text-[#9c2730]'
-              : 'bg-[#76828f]/16 text-[#495764]'
-          }`}
-        >
-          {formatDelta(delta)}
-        </span>
-      </div>
+    <span style={{ ...style, borderRadius: 999, padding: '4px 10px', fontSize: '0.83rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+      {formatDelta(value)}
+    </span>
+  );
+}
 
-      <div className="flex items-end h-[44px]" aria-hidden="true">
+function SparklineCard({ label, value, delta, data }) {
+  const points = buildSparklinePoints(data);
+  return (
+    <article style={{ background: 'var(--surface-subtle)', borderRadius: 22, padding: 18, display: 'grid', gap: 14, border: '1px solid var(--border-faint)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.87rem', display: 'block' }}>{label}</span>
+          <strong style={{ display: 'block', color: 'var(--text-primary)', fontSize: '1.45rem', marginTop: 4, lineHeight: 1 }}>{value}</strong>
+        </div>
+        <DeltaBadge value={delta} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', height: 44 }} aria-hidden="true">
         {points ? (
-          <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="w-full h-[44px]">
+          <svg viewBox="0 0 100 32" preserveAspectRatio="none" style={{ width: '100%', height: 44 }}>
             <polyline
               points={points}
-              className="fill-none stroke-[#184e77] stroke-[2.4px] strokeLinecap-round strokeLinejoin-round"
+              fill="none"
+              style={{ stroke: 'var(--accent)' }}
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
         ) : (
-          <div className="text-[#597189] text-[0.9rem]">Sin serie suficiente</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.87rem' }}>Sin serie suficiente</div>
         )}
       </div>
     </article>
@@ -54,97 +59,83 @@ export function TrendsView({ reporting }) {
   const filteredSnapshots = reporting.recent_snapshots.slice(0, activeRange);
 
   return (
-    <section className="grid gap-[20px]">
-      <section className="grid grid-cols-[minmax(0,1.35fr)_minmax(280px,0.8fr)] gap-[20px]">
-        <article className="bg-[#ffffff]/90 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)] bg-[radial-gradient(circle_at_top_right,rgba(75,179,253,0.12),transparent_34%),rgba(255,255,255,0.9)]">
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#184e77]/10 text-[#184e77] text-[0.84rem] font-bold">Tendencias</span>
-          <h2 className="m-0 mt-3 text-2xl font-bold">Lectura historica para entender ritmo, acumulacion y calidad del pipeline.</h2>
-          <p className="mt-2 mb-0 text-[#142433]/70 leading-relaxed">
-            Esta vista separa el analisis del trabajo diario y concentra snapshots, comparativas y
-            evolucion de stock en un solo lugar.
+    <section className="grid gap-5">
+
+      {/* ── Hero + corte actual ── */}
+      <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(280px,0.8fr)', gap: 20 }}>
+        <article className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span className="eyebrow">Tendencias</span>
+          <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35 }}>
+            Lectura histórica para entender ritmo, acumulación y calidad del pipeline.
+          </h2>
+          <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.65, fontSize: '0.9rem' }}>
+            Esta vista separa el análisis del trabajo diario y concentra snapshots, comparativas y
+            evolución de stock en un solo lugar.
           </p>
         </article>
 
-        <article className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#e6a340]/16 text-[#9a6111] text-[0.84rem] font-bold">Corte actual</span>
-          <div className="mt-[18px] grid grid-cols-2 gap-[12px]">
-            <div className="p-[14px] rounded-[18px] bg-[#f4f8fc]">
-              <strong className="block text-[1.4rem] text-[#142433]">{reporting.stock_comparison.current.total_contacts}</strong>
-              <span className="text-[#597189]">Contactos</span>
-            </div>
-            <div className="p-[14px] rounded-[18px] bg-[#f4f8fc]">
-              <strong className="block text-[1.4rem] text-[#142433]">{reporting.stock_comparison.current.active_total}</strong>
-              <span className="text-[#597189]">Cola activa</span>
-            </div>
-            <div className="p-[14px] rounded-[18px] bg-[#f4f8fc]">
-              <strong className="block text-[1.4rem] text-[#142433]">{reporting.stock_comparison.current.overdue_count}</strong>
-              <span className="text-[#597189]">Vencidos</span>
-            </div>
-            <div className="p-[14px] rounded-[18px] bg-[#f4f8fc]">
-              <strong className="block text-[1.4rem] text-[#142433]">{reporting.stock_comparison.current.without_date_count}</strong>
-              <span className="text-[#597189]">Sin fecha</span>
-            </div>
+        <article className="card">
+          <span className="eyebrow">Corte actual</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
+            {[
+              { label: 'Contactos',   value: reporting.stock_comparison.current.total_contacts      },
+              { label: 'Cola activa', value: reporting.stock_comparison.current.active_total        },
+              { label: 'Vencidos',    value: reporting.stock_comparison.current.overdue_count       },
+              { label: 'Sin fecha',   value: reporting.stock_comparison.current.without_date_count  },
+            ].map(({ label, value }) => (
+              <div key={label} style={{ padding: 14, borderRadius: 18, background: 'var(--surface-subtle)', border: '1px solid var(--border-faint)' }}>
+                <strong style={{ display: 'block', fontSize: '1.4rem', color: 'var(--text-primary)', lineHeight: 1 }}>{value}</strong>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.87rem', marginTop: 4, display: 'block' }}>{label}</span>
+              </div>
+            ))}
           </div>
         </article>
       </section>
 
-      <section className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        <div className="flex justify-between gap-[12px] items-start mb-[14px]">
+      {/* ── Actividad semanal ── */}
+      <section className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
-            <h3 className="m-0 text-xl font-bold">Actividad semanal</h3>
-            <p className="mt-[4px] mb-0 text-[#597189] text-[0.9rem] leading-[1.5]">Comparacion entre los ultimos 7 dias y la ventana anterior.</p>
+            <span className="eyebrow">Ritmo</span>
+            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Actividad semanal</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+              Comparación entre los últimos 7 días y la ventana anterior.
+            </p>
           </div>
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold">Ritmo</span>
         </div>
 
-        <div className="grid gap-[14px] mb-[16px]">
-          {['enviar', 'seguir', 'portal', 'descartar'].map((action) => (
-            <div key={`bar-${action}`} className="grid gap-[8px]">
-              <div className="flex justify-between gap-[12px] items-baseline">
-                <strong className="text-[#102538]">{prettifyAction(action)}</strong>
-                <span className="text-[#597189] text-[0.9rem]">
+        <div style={{ display: 'grid', gap: 14, marginBottom: 16 }}>
+          {['enviar', 'seguir', 'portal', 'descartar'].map(action => (
+            <div key={`bar-${action}`} style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+                <strong style={{ color: 'var(--text-primary)' }}>{prettifyAction(action)}</strong>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
                   {reporting.activity.last_7d[action]} vs {reporting.activity.previous_7d[action]}
                 </span>
               </div>
-              <div className="relative h-[16px] rounded-full bg-[#142433]/8 overflow-hidden">
-                <div
-                  className="absolute left-0 top-0 bottom-0 rounded-full bg-[#184e77]/78"
-                  style={{ width: `${getRelativeBarWidth(reporting.activity.last_7d[action], reporting.activity.previous_7d[action])}%` }}
-                />
-                <div
-                  className="absolute left-0 top-0 bottom-0 rounded-full bg-[#5c7189]/42"
-                  style={{ width: `${getRelativeBarWidth(reporting.activity.previous_7d[action], reporting.activity.last_7d[action])}%` }}
-                />
+              <div style={{ position: 'relative', height: 16, borderRadius: 999, background: 'var(--surface-subtle)', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 999, background: 'var(--accent)', opacity: 0.85, width: `${getRelativeBarWidth(reporting.activity.last_7d[action], reporting.activity.previous_7d[action])}%` }} />
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 999, background: 'var(--text-muted)', opacity: 0.35, width: `${getRelativeBarWidth(reporting.activity.previous_7d[action], reporting.activity.last_7d[action])}%` }} />
               </div>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-4 gap-[16px]">
-          {['enviar', 'seguir', 'portal', 'descartar'].map((action) => (
-            <article key={action} className="bg-[#f6f9fc] rounded-[22px] p-[18px] grid gap-[14px]">
-              <div className="flex justify-between gap-[12px] items-start">
-                <strong className="text-[#102538]">{prettifyAction(action)}</strong>
-                <span
-                  className={`rounded-full px-[10px] py-[6px] text-[0.84rem] font-bold ${
-                    getDeltaClassName(reporting.activity.deltas_7d[action]) === 'is-positive'
-                      ? 'bg-[#308a5a]/14 text-[#1f6b45]'
-                      : getDeltaClassName(reporting.activity.deltas_7d[action]) === 'is-negative'
-                      ? 'bg-[#bc4749]/14 text-[#9c2730]'
-                      : 'bg-[#76828f]/16 text-[#495764]'
-                  }`}
-                >
-                  {formatDelta(reporting.activity.deltas_7d[action])}
-                </span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+          {['enviar', 'seguir', 'portal', 'descartar'].map(action => (
+            <article key={action} style={{ background: 'var(--surface-subtle)', borderRadius: 22, padding: 18, display: 'grid', gap: 14, border: '1px solid var(--border-faint)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{prettifyAction(action)}</strong>
+                <DeltaBadge value={reporting.activity.deltas_7d[action]} />
               </div>
-              <div className="grid grid-cols-2 gap-[10px]">
-                <div className="bg-white/88 rounded-[16px] p-[12px] grid gap-[6px]">
-                  <span className="text-[#597189] text-[0.88rem]">Ultimos 7 dias</span>
-                  <strong className="text-[#102538] text-[1.3rem]">{reporting.activity.last_7d[action]}</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ background: 'var(--surface-raised)', borderRadius: 16, padding: 12, display: 'grid', gap: 6, border: '1px solid var(--border-faint)' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Últimos 7d</span>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '1.3rem', lineHeight: 1 }}>{reporting.activity.last_7d[action]}</strong>
                 </div>
-                <div className="bg-white/88 rounded-[16px] p-[12px] grid gap-[6px]">
-                  <span className="text-[#597189] text-[0.88rem]">7 previos</span>
-                  <strong className="text-[#102538] text-[1.3rem]">{reporting.activity.previous_7d[action]}</strong>
+                <div style={{ background: 'var(--surface-raised)', borderRadius: 16, padding: 12, display: 'grid', gap: 6, border: '1px solid var(--border-faint)' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>7d previos</span>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '1.3rem', lineHeight: 1 }}>{reporting.activity.previous_7d[action]}</strong>
                 </div>
               </div>
             </article>
@@ -152,119 +143,122 @@ export function TrendsView({ reporting }) {
         </div>
       </section>
 
-      <section className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        <div className="flex justify-between gap-[12px] items-start mb-[14px]">
+      {/* ── Evolución de snapshots ── */}
+      <section className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
-            <h3 className="m-0 text-xl font-bold">Evolucion de snapshots</h3>
-            <p className="mt-[4px] mb-0 text-[#597189] text-[0.9rem] leading-[1.5]">Serie corta de stock para seguir contactos, cola activa, vencidos y sin fecha.</p>
+            <span className="eyebrow">Stock histórico</span>
+            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Evolución de snapshots</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+              Serie de contactos, cola activa, vencidos y sin fecha en la ventana elegida.
+            </p>
           </div>
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold">{filteredSnapshots.length} cortes visibles</span>
+          <span
+            style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}
+          >
+            {filteredSnapshots.length} cortes
+          </span>
         </div>
 
-        <div className="flex flex-wrap gap-[12px] mb-[16px]">
+        {/* Acciones exportar + filtros */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
           <button
             type="button"
-            className="border border-[#142433]/12 rounded-[14px] px-4 py-3 font-bold bg-white/75 text-[#173047] hover:bg-white/90 transition-colors"
+            className="ghost-button"
+            style={{ fontSize: '0.88rem' }}
             onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=overview`, '_blank', 'noopener,noreferrer')}
           >
-            Exportar resumen CSV
+            ↓ Exportar resumen CSV
           </button>
           <button
             type="button"
-            className="border border-[#142433]/12 rounded-[14px] px-4 py-3 font-bold bg-white/75 text-[#173047] hover:bg-white/90 transition-colors"
+            className="ghost-button"
+            style={{ fontSize: '0.88rem' }}
             onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=snapshots&limit=${activeRange}`, '_blank', 'noopener,noreferrer')}
           >
-            Exportar snapshots CSV
+            ↓ Exportar snapshots CSV
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-[10px] mb-[16px]">
-          {[7, 14, 30].map((range) => (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+          {[7, 14, 30].map(range => (
             <button
               key={range}
               type="button"
-              className={`rounded-full border border-[#142433]/12 px-[14px] py-[10px] cursor-pointer font-medium text-[0.95rem] transition-colors ${
-                activeRange === range ? 'bg-[#184e77] text-white border-[#184e77]' : 'bg-white/84 text-[#173047] hover:bg-white'
-              }`}
+              aria-pressed={activeRange === range}
               onClick={() => setActiveRange(range)}
+              style={{
+                borderRadius: 999,
+                padding: '6px 18px',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: activeRange === range ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: activeRange === range ? 'var(--accent)' : 'transparent',
+                color: activeRange === range ? 'var(--accent-text)' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
             >
-              {range} dias
+              {range} días
             </button>
           ))}
         </div>
 
-        <article className="bg-[#f6f9fc] rounded-[22px] p-[18px] grid gap-[14px] mb-[16px]">
-          <div className="flex justify-between gap-[12px] items-start mb-[14px]">
-            <div>
-              <h3 className="m-0 text-[1.1rem] font-bold">Stock historico</h3>
-              <p className="mt-[4px] mb-0 text-[#597189] text-[0.9rem] leading-[1.5]">Lectura conjunta de contactos, cola activa, vencidos y sin fecha en la ventana elegida.</p>
-            </div>
+        <article style={{ background: 'var(--surface-subtle)', borderRadius: 22, padding: 18, display: 'grid', gap: 14, marginBottom: 16, border: '1px solid var(--border-faint)' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>Stock histórico</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
+              Lectura conjunta de contactos, cola activa, vencidos y sin fecha.
+            </p>
           </div>
 
-          <div className="flex items-end h-[76px]" aria-hidden="true">
+          <div style={{ display: 'flex', alignItems: 'flex-end', height: 76 }} aria-hidden="true">
             {buildMultiSparklineSeries(filteredSnapshots) ? (
-              <svg viewBox="0 0 100 64" preserveAspectRatio="none" className="w-full h-[76px]">
+              <svg viewBox="0 0 100 64" preserveAspectRatio="none" style={{ width: '100%', height: 76 }}>
                 {Object.entries(buildMultiSparklineSeries(filteredSnapshots)).map(([key, points]) => {
-                  let strokeClass = 'stroke-[#184e77]';
-                  if (key === 'active') strokeClass = 'stroke-[#2d7b55]';
-                  else if (key === 'overdue') strokeClass = 'stroke-[#bc4749]';
-                  else if (key === 'withoutDate') strokeClass = 'stroke-[#b5761a]';
-
+                  const strokeColor =
+                    key === 'active'       ? 'var(--green-text)'
+                    : key === 'overdue'    ? 'var(--red-text)'
+                    : key === 'withoutDate'? 'var(--amber-text)'
+                    : 'var(--accent)';
                   return (
                     <polyline
                       key={key}
                       points={points}
-                      className={`fill-none stroke-[2.4px] strokeLinecap-round strokeLinejoin-round ${strokeClass}`}
+                      fill="none"
+                      style={{ stroke: strokeColor }}
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     />
                   );
                 })}
               </svg>
             ) : (
-              <div className="text-[#597189] text-[0.9rem]">Sin serie suficiente</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Sin serie suficiente para graficar.</div>
             )}
           </div>
 
-          <div className="flex flex-wrap gap-[10px]">
-            <span className="inline-flex items-center gap-[8px] text-[#597189] text-[0.9rem]">
-              <span className="w-[10px] h-[10px] rounded-full bg-[#184e77]" /> Contactos
-            </span>
-            <span className="inline-flex items-center gap-[8px] text-[#597189] text-[0.9rem]">
-              <span className="w-[10px] h-[10px] rounded-full bg-[#2d7b55]" /> Cola activa
-            </span>
-            <span className="inline-flex items-center gap-[8px] text-[#597189] text-[0.9rem]">
-              <span className="w-[10px] h-[10px] rounded-full bg-[#bc4749]" /> Vencidos
-            </span>
-            <span className="inline-flex items-center gap-[8px] text-[#597189] text-[0.9rem]">
-              <span className="w-[10px] h-[10px] rounded-full bg-[#b5761a]" /> Sin fecha
-            </span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {[
+              { color: 'var(--accent)',     label: 'Contactos'   },
+              { color: 'var(--green-text)', label: 'Cola activa' },
+              { color: 'var(--red-text)',   label: 'Vencidos'    },
+              { color: 'var(--amber-text)', label: 'Sin fecha'   },
+            ].map(({ color, label }) => (
+              <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                {label}
+              </span>
+            ))}
           </div>
         </article>
 
-        <div className="grid grid-cols-4 gap-[16px]">
-          <SparklineCard
-            label="Contactos"
-            value={reporting.stock_comparison.current.total_contacts}
-            delta={reporting.stock_comparison.deltas.total_contacts}
-            data={filteredSnapshots.map((snapshot) => snapshot.total_contacts).reverse()}
-          />
-          <SparklineCard
-            label="Cola activa"
-            value={reporting.stock_comparison.current.active_total}
-            delta={reporting.stock_comparison.deltas.active_total}
-            data={filteredSnapshots.map((snapshot) => snapshot.active_total).reverse()}
-          />
-          <SparklineCard
-            label="Vencidos"
-            value={reporting.stock_comparison.current.overdue_count}
-            delta={reporting.stock_comparison.deltas.overdue_count}
-            data={filteredSnapshots.map((snapshot) => snapshot.overdue_count).reverse()}
-          />
-          <SparklineCard
-            label="Sin fecha"
-            value={reporting.stock_comparison.current.without_date_count}
-            delta={reporting.stock_comparison.deltas.without_date_count}
-            data={filteredSnapshots.map((snapshot) => snapshot.without_date_count).reverse()}
-          />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+          <SparklineCard label="Contactos"   value={reporting.stock_comparison.current.total_contacts}     delta={reporting.stock_comparison.deltas.total_contacts}     data={filteredSnapshots.map(s => s.total_contacts).reverse()}     />
+          <SparklineCard label="Cola activa" value={reporting.stock_comparison.current.active_total}       delta={reporting.stock_comparison.deltas.active_total}       data={filteredSnapshots.map(s => s.active_total).reverse()}       />
+          <SparklineCard label="Vencidos"    value={reporting.stock_comparison.current.overdue_count}      delta={reporting.stock_comparison.deltas.overdue_count}      data={filteredSnapshots.map(s => s.overdue_count).reverse()}      />
+          <SparklineCard label="Sin fecha"   value={reporting.stock_comparison.current.without_date_count} delta={reporting.stock_comparison.deltas.without_date_count} data={filteredSnapshots.map(s => s.without_date_count).reverse()} />
         </div>
       </section>
     </section>

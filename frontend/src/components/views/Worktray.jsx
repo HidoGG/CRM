@@ -1,4 +1,3 @@
-// frontend/src/components/views/Worktray.jsx
 import React from 'react';
 import {
   worktrayActions,
@@ -9,8 +8,16 @@ import {
   isFollowUpDue,
   prettifyEvent,
   formatDate,
-  capitalize,
 } from '../../AppShell';
+
+const STATUS_STYLE = {
+  prioridad:   { background: 'var(--red-bg)',    color: 'var(--red-text)'   },
+  mantener:    { background: 'var(--green-bg)',  color: 'var(--green-text)' },
+  seguimiento: { background: 'var(--blue-subtle)', color: 'var(--blue)'    },
+  revisar:     { background: 'var(--amber-bg)',  color: 'var(--amber-text)' },
+  sacar:       { background: 'var(--gray-bg)',   color: 'var(--gray-text)'  },
+  portal:      { background: 'var(--purple-bg)', color: 'var(--purple-text)'},
+};
 
 export function Worktray({
   contacts,
@@ -35,38 +42,36 @@ export function Worktray({
   loadingHistory,
   compact = false,
 }) {
-  const card = 'bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]';
-
   return (
-    <section className="grid gap-[20px]">
+    <section className="grid gap-5">
 
-      {/* ── FILA SUPERIOR: 3 tarjetas iguales ── */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-[18px]">
+      {/* ── Fila superior: 3 cards ── */}
+      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18 }}>
 
-        {/* Tarjeta 1 — Bandeja operativa */}
-        <div className={card}>
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#184e77]/10 text-[#184e77] text-[0.84rem] font-bold">Operación directa</span>
-          <h2 className="m-0 mt-3 text-2xl font-bold">Bandeja operativa</h2>
-          <p className="mt-2 mb-0 text-[#142433]/70 leading-relaxed">Filtrá por acción, escaneá rápido y ejecutá el siguiente paso sin volver al preview.</p>
+        {/* Card 1 — Descripción */}
+        <div className="card">
+          <span className="eyebrow">Operación directa</span>
+          <h2 style={{ margin: '6px 0 0', fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>Bandeja operativa</h2>
+          <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', lineHeight: 1.65, fontSize: '0.9rem' }}>
+            Filtrá por acción, escaneá rápido y ejecutá el siguiente paso sin volver al preview.
+          </p>
         </div>
 
-        {/* Tarjeta 2 — Métricas / contadores */}
-        <div className={`${card} grid gap-[10px]`}>
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold w-fit">Métricas</span>
-          <div className="grid grid-cols-2 gap-[10px]">
-            {worktrayActions.map((action) => (
+        {/* Card 2 — Métricas / contadores */}
+        <div className="card" style={{ display: 'grid', gap: 12 }}>
+          <span className="eyebrow">Métricas</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {worktrayActions.map(action => (
               <button
                 key={action}
                 type="button"
-                className={`p-[14px] rounded-[18px] grid gap-[4px] text-left transition-colors cursor-pointer border ${
-                  activeActionFilter === action
-                    ? 'bg-gradient-to-br from-[#4bb3fd]/20 to-[#5ce1e6]/12 border-[#5ce1e6]/35'
-                    : 'bg-[#f4f8fc] border-transparent hover:bg-white'
-                }`}
+                aria-pressed={activeActionFilter === action}
                 onClick={() => onActionFilterChange(action)}
+                className={`worktray-metric${activeActionFilter === action ? ' is-active' : ''}`}
+                style={{ textAlign: 'left' }}
               >
-                <strong className="block text-[1.4rem] text-[#142433]">{counts[action] || 0}</strong>
-                <span className={`text-[0.88rem] ${activeActionFilter === action ? 'text-[#184e77] font-semibold' : 'text-[#597189]'}`}>
+                <strong style={{ display: 'block', fontSize: '1.4rem', color: 'var(--text-primary)', lineHeight: 1 }}>{counts[action] || 0}</strong>
+                <span style={{ fontSize: '0.85rem', color: activeActionFilter === action ? 'var(--blue)' : 'var(--text-secondary)', fontWeight: activeActionFilter === action ? 600 : 400, marginTop: 4, display: 'block' }}>
                   {prettifyAction(action)}
                 </span>
               </button>
@@ -74,148 +79,197 @@ export function Worktray({
           </div>
         </div>
 
-        {/* Tarjeta 3 — Historial del contacto seleccionado */}
-        <div className={`${card} grid gap-[12px]`}>
+        {/* Card 3 — Historial del contacto */}
+        <div className="card" style={{ display: 'grid', gap: 12 }}>
           <div>
-            <h3 className="m-0 text-xl font-bold">{selectedContact?.name || 'Historial'}</h3>
-            <p className="m-0 mt-1 text-[#597189] text-[0.9rem]">
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{selectedContact?.name || 'Historial'}</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
               {selectedContact ? 'Trazabilidad del contacto seleccionado.' : 'Seleccioná un contacto de la tabla para ver su actividad.'}
             </p>
           </div>
 
           {selectedContact ? (
             <>
-              <div className="flex gap-[8px] items-center flex-wrap">
-                <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold">
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '4px 12px', background: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontSize: '0.83rem', fontWeight: 600 }}>
                   {selectedContact.company || 'Sin empresa'}
                 </span>
-                <span className="inline-flex rounded-[8px] px-[10px] py-[4px] text-[0.85rem] font-bold border bg-[#495764]/10 text-[#495764] border-[#495764]/15">
-                  {selectedContact.status}
-                </span>
+                {(() => {
+                  const sk = String(selectedContact.status || '').toLowerCase();
+                  const ss = STATUS_STYLE[sk] || STATUS_STYLE.revisar;
+                  return (
+                    <span style={{ ...ss, display: 'inline-flex', borderRadius: 8, padding: '3px 10px', fontSize: '0.83rem', fontWeight: 700 }}>
+                      {selectedContact.status}
+                    </span>
+                  );
+                })()}
               </div>
-              <div className="grid gap-[12px] relative pl-[18px] before:content-[''] before:absolute before:left-[4px] before:top-0 before:bottom-0 before:w-[2px] before:bg-[#142433]/8 overflow-y-auto max-h-[220px]">
+              <div
+                style={{ display: 'grid', gap: 12, position: 'relative', paddingLeft: 18, overflowY: 'auto', maxHeight: 220 }}
+                role="log"
+                aria-label="Historial de actividad"
+              >
+                <div style={{ position: 'absolute', left: 4, top: 0, bottom: 0, width: 2, background: 'var(--border-faint)' }} aria-hidden="true" />
                 {loadingHistory ? (
-                  <div className="text-[#597189] text-[0.95rem]">Cargando historial...</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.92rem' }}>Cargando historial…</div>
                 ) : historyItems.length ? (
-                  historyItems.map((item) => (
-                    <article
-                      key={item.id}
-                      className="relative grid gap-[3px] before:content-[''] before:absolute before:left-[-19px] before:top-[6px] before:w-[10px] before:h-[10px] before:rounded-full before:bg-[#184e77] before:border-[2px] before:border-white"
-                    >
-                      <strong className="text-[#102538] text-[0.92rem]">{prettifyEvent(item.event_type)}</strong>
-                      <p className="m-0 text-[#142433]/80 text-[0.88rem] leading-[1.4]">{item.message}</p>
-                      <span className="text-[#597189] text-[0.78rem] uppercase tracking-wide">{formatDate(item.created_at)}</span>
+                  historyItems.map(item => (
+                    <article key={item.id} style={{ position: 'relative', display: 'grid', gap: 3 }}>
+                      <span style={{ position: 'absolute', left: -19, top: 6, width: 10, height: 10, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--surface-raised)' }} aria-hidden="true" />
+                      <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{prettifyEvent(item.event_type)}</strong>
+                      <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.45 }}>{item.message}</p>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{formatDate(item.created_at)}</span>
                     </article>
                   ))
                 ) : (
-                  <div className="text-[#597189] text-[0.95rem]">Todavía no hay eventos...</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.92rem' }}>Todavía no hay eventos…</div>
                 )}
               </div>
             </>
           ) : (
-            <div className="text-[#597189] text-[0.95rem]">No hay contacto seleccionado.</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.92rem' }}>No hay contacto seleccionado.</div>
           )}
         </div>
       </section>
 
       {/* ── Stats opcionales (solo en modo no-compact) ── */}
       {!compact && (
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-[18px]">
-          <article className={`${card} bg-[radial-gradient(circle_at_top_right,rgba(75,179,253,0.12),transparent_34%),rgba(255,255,255,0.9)]`}>
-            <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold mb-[14px]">Seguimientos</span>
-            <div className="grid grid-cols-2 gap-[10px]">
-              <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.overdue}</strong><span className="text-[#597189] text-[0.88rem]">Vencidos</span></div>
-              <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.due_today}</strong><span className="text-[#597189] text-[0.88rem]">Para hoy</span></div>
-              <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.due_this_week}</strong><span className="text-[#597189] text-[0.88rem]">Esta semana</span></div>
-              <div className="grid gap-[4px]"><strong className="text-[1.3rem] text-[#142433]">{reporting.queue.without_date}</strong><span className="text-[#597189] text-[0.88rem]">Sin fecha</span></div>
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18 }}>
+          <article className="card">
+            <span className="eyebrow mb-3 block">Seguimientos</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {[
+                { label: 'Vencidos',     value: reporting.queue.overdue       },
+                { label: 'Para hoy',     value: reporting.queue.due_today     },
+                { label: 'Esta semana',  value: reporting.queue.due_this_week },
+                { label: 'Sin fecha',    value: reporting.queue.without_date  },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ display: 'grid', gap: 4 }}>
+                  <strong style={{ fontSize: '1.3rem', color: 'var(--text-primary)', lineHeight: 1 }}>{value}</strong>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{label}</span>
+                </div>
+              ))}
             </div>
           </article>
 
-          <article className={card}>
-            <div className="flex justify-between gap-[12px] items-start mb-[14px]">
-              <h3 className="m-0 text-xl font-bold">Actividad</h3>
-              <span className="text-[#597189] text-[0.9rem]">Real</span>
+          <article className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>Actividad</h3>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Real</span>
             </div>
-            <div className="grid gap-[10px]">
-              <div className="flex justify-between items-center gap-[12px] bg-[#f6f9fc] rounded-[16px] px-[14px] py-[12px]">
-                <strong className="text-[#142433]">24h</strong>
-                <span className="text-[#597189] text-[0.9rem]">{reporting.activity.last_24h.enviar} enviados · {reporting.activity.last_24h.seguir} seguimientos</span>
-              </div>
-              <div className="flex justify-between items-center gap-[12px] bg-[#f6f9fc] rounded-[16px] px-[14px] py-[12px]">
-                <strong className="text-[#142433]">7 días</strong>
-                <span className="text-[#597189] text-[0.9rem]">{reporting.activity.last_7d.portal} portales · {reporting.activity.last_7d.descartar} descartes</span>
-              </div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {[
+                { label: '24h',    text: `${reporting.activity.last_24h.enviar} enviados · ${reporting.activity.last_24h.seguir} seguimientos` },
+                { label: '7 días', text: `${reporting.activity.last_7d.portal} portales · ${reporting.activity.last_7d.descartar} descartes` },
+              ].map(({ label, text }) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, background: 'var(--surface-subtle)', borderRadius: 16, padding: '12px 14px', border: '1px solid var(--border-faint)' }}>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{label}</strong>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.87rem' }}>{text}</span>
+                </div>
+              ))}
             </div>
           </article>
 
-          <article className={card}>
-            <div className="flex justify-between gap-[12px] items-start mb-[14px]">
-              <h3 className="m-0 text-xl font-bold">Resultado</h3>
-              <span className="text-[#597189] text-[0.9rem]">Cierre</span>
+          <article className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>Resultado</h3>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Cierre</span>
             </div>
-            <div className="grid gap-[10px]">
-              <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#2d7b55]/14 text-[#1a5437] font-medium">Portales aplicados: {reporting.outcomes.portal.aplicado}</span>
-              <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#142433]/6 text-[#142433] font-medium">Pendientes portal: {reporting.outcomes.portal.pendiente}</span>
-              <span className="inline-flex rounded-full px-[12px] py-[6px] text-[0.88rem] bg-[#142433]/6 text-[#142433] font-medium">Descartes: {reporting.outcomes.discard.total}</span>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <span style={{ display: 'inline-flex', borderRadius: 999, padding: '6px 14px', fontSize: '0.87rem', background: 'var(--green-bg)', color: 'var(--green-text)', fontWeight: 600 }}>
+                Portales aplicados: {reporting.outcomes.portal.aplicado}
+              </span>
+              <span style={{ display: 'inline-flex', borderRadius: 999, padding: '6px 14px', fontSize: '0.87rem', background: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontWeight: 600, border: '1px solid var(--border-faint)' }}>
+                Pendientes portal: {reporting.outcomes.portal.pendiente}
+              </span>
+              <span style={{ display: 'inline-flex', borderRadius: 999, padding: '6px 14px', fontSize: '0.87rem', background: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontWeight: 600, border: '1px solid var(--border-faint)' }}>
+                Descartes: {reporting.outcomes.discard.total}
+              </span>
             </div>
           </article>
         </section>
       )}
 
-      {/* ── FILA INFERIOR: tabla a ancho completo ── */}
-      <section className={`${card} grid gap-[16px]`}>
+      {/* ── Tabla a ancho completo ── */}
+      <section className="card" style={{ display: 'grid', gap: 16 }}>
 
         {/* Header */}
-        <div className="flex justify-between gap-[12px] items-start">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
           <div>
-            <h3 className="m-0 text-xl font-bold">{prettifyAction(activeActionFilter)}</h3>
-            <p className="mt-[4px] mb-0 text-[#597189] text-[0.9rem]">Contactos listos para resolver en esta pasada.</p>
+            <span className="eyebrow">Contactos pendientes</span>
+            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {prettifyAction(activeActionFilter)}
+            </h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
+              Contactos listos para resolver en esta pasada.
+            </p>
           </div>
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold shrink-0">
+          <span
+            style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}
+            aria-live="polite"
+          >
             {contacts.length} pendientes
           </span>
         </div>
 
-        {/* Filtros de acción + timing en una fila */}
-        <div className="flex flex-wrap gap-[8px]">
-          {worktrayActions.map((action) => (
+        {/* Filtros acción + timing */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} role="group" aria-label="Filtros de acción y tiempo">
+          {worktrayActions.map(action => (
             <button
               key={action}
               type="button"
-              className={`rounded-full border px-[14px] py-[8px] text-[0.9rem] cursor-pointer transition-colors ${
-                activeActionFilter === action
-                  ? 'bg-[#184e77] text-white border-[#184e77]'
-                  : 'bg-white/84 text-[#173047] border-[#142433]/12 hover:bg-white'
-              }`}
+              aria-pressed={activeActionFilter === action}
               onClick={() => onActionFilterChange(action)}
+              style={{
+                borderRadius: 999,
+                padding: '6px 16px',
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: activeActionFilter === action ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: activeActionFilter === action ? 'var(--accent)' : 'transparent',
+                color: activeActionFilter === action ? 'var(--accent-text)' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
             >
               {prettifyAction(action)} ({counts[action] || 0})
             </button>
           ))}
-          <span className="w-px bg-[#142433]/10 mx-[4px] self-stretch" />
-          {timingFilters.map((filter) => (
+          <span style={{ width: 1, background: 'var(--border-faint)', margin: '0 4px', alignSelf: 'stretch' }} aria-hidden="true" />
+          {timingFilters.map(filter => (
             <button
               key={filter}
               type="button"
-              className={`rounded-full border px-[14px] py-[8px] text-[0.9rem] cursor-pointer transition-colors ${
-                activeTimingFilter === filter
-                  ? 'bg-[#184e77] text-white border-[#184e77]'
-                  : 'bg-white/84 text-[#173047] border-[#142433]/12 hover:bg-white'
-              }`}
+              aria-pressed={activeTimingFilter === filter}
               onClick={() => onTimingFilterChange(filter)}
+              style={{
+                borderRadius: 999,
+                padding: '6px 16px',
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: activeTimingFilter === filter ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: activeTimingFilter === filter ? 'var(--accent)' : 'transparent',
+                color: activeTimingFilter === filter ? 'var(--accent-text)' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
             >
               {prettifyTimingFilter(filter)} ({timingCounts[filter] || 0})
             </button>
           ))}
         </div>
 
-        {/* Tabla full-width */}
-        <div className="overflow-x-auto rounded-[18px] border border-[#142433]/8 bg-white/90">
-          <table className="w-full border-collapse min-w-[800px]">
+        {/* Tabla */}
+        <div style={{ overflowX: 'auto', borderRadius: 18, border: '1px solid var(--border-faint)', background: 'var(--surface-raised)' }}>
+          <table className="w-full border-collapse" style={{ minWidth: 800 }}>
             <thead>
               <tr>
-                {['Contacto', 'Empresa', 'Estado', 'Seguimiento', 'Lectura operativa', 'Ejecutar'].map((col) => (
-                  <th key={col} className="bg-[#f4f8fc] text-[#597189] text-[0.84rem] uppercase tracking-[0.07em] px-[18px] py-[14px] text-left border-b border-[#142433]/8 font-semibold whitespace-nowrap">
+                {['Contacto', 'Empresa', 'Estado', 'Seguimiento', 'Lectura operativa', 'Ejecutar'].map(col => (
+                  <th
+                    key={col}
+                    scope="col"
+                    style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '12px 18px', textAlign: 'left', borderBottom: '1px solid var(--border-faint)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}
+                  >
                     {col}
                   </th>
                 ))}
@@ -223,82 +277,87 @@ export function Worktray({
             </thead>
             <tbody>
               {contacts.length ? (
-                contacts.map((contact) => {
+                contacts.map(contact => {
                   const action = String(contact.next_action || '').toLowerCase();
+                  const sk = String(contact.status || '').toLowerCase();
+                  const ss = STATUS_STYLE[sk] || { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
+                  const isSelected = selectedContactId === contact.id;
+                  const followUpDue = isFollowUpDue(contact.follow_up_date);
+
                   return (
                     <tr
                       key={contact.id}
-                      className={`cursor-pointer transition-colors border-b border-[#142433]/8 ${
-                        selectedContactId === contact.id ? 'bg-[#f4f8fc]' : 'hover:bg-[#f9fbfd]'
-                      }`}
                       onClick={() => onSelectContact(contact.id)}
+                      style={{
+                        cursor: 'pointer',
+                        borderBottom: '1px solid var(--border-faint)',
+                        background: isSelected ? 'var(--blue-subtle)' : 'transparent',
+                        transition: 'background 0.12s ease',
+                      }}
+                      aria-selected={isSelected}
                     >
-                      <td className="px-[18px] py-[14px]">
-                        <div className="grid gap-[3px]">
-                          <strong className="text-[#102538]">{contact.name || 'Sin nombre'}</strong>
-                          <span className="text-[#597189] text-[0.88rem]">{contact.email || '-'}</span>
+                      <td style={{ padding: '14px 18px' }}>
+                        <div style={{ display: 'grid', gap: 3 }}>
+                          <strong style={{ color: 'var(--text-primary)' }}>{contact.name || 'Sin nombre'}</strong>
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{contact.email || '—'}</span>
                         </div>
                       </td>
-                      <td className="px-[18px] py-[14px]">
-                        <div className="grid gap-[3px]">
-                          <strong className="text-[#102538]">{contact.company || '-'}</strong>
-                          <span className="text-[#597189] text-[0.88rem]">{prettifyAction(action)}</span>
+                      <td style={{ padding: '14px 18px' }}>
+                        <div style={{ display: 'grid', gap: 3 }}>
+                          <strong style={{ color: 'var(--text-primary)' }}>{contact.company || '—'}</strong>
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{prettifyAction(action)}</span>
                         </div>
                       </td>
-                      <td className="px-[18px] py-[14px]">
-                        <span className={`inline-flex rounded-[8px] px-[10px] py-[4px] text-[0.85rem] font-bold border ${
-                          String(contact.status).toLowerCase() === 'prioridad' ? 'bg-[#5b2b2b]/10 text-[#5b2b2b] border-[#5b2b2b]/15' :
-                          String(contact.status).toLowerCase() === 'mantener'  ? 'bg-[#1f5c3a]/10 text-[#1f5c3a] border-[#1f5c3a]/15' :
-                          'bg-[#495764]/10 text-[#495764] border-[#495764]/15'
-                        }`}>
+                      <td style={{ padding: '14px 18px' }}>
+                        <span style={{ ...ss, display: 'inline-flex', borderRadius: 8, padding: '3px 10px', fontSize: '0.82rem', fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                           {contact.status}
                         </span>
                       </td>
-                      <td className="px-[18px] py-[14px]">
-                        <div className="grid gap-[6px]">
-                          <span className={`inline-flex rounded-full px-[10px] py-[4px] text-[0.85rem] font-medium ${
-                            isFollowUpDue(contact.follow_up_date) ? 'bg-[#bc4749]/14 text-[#9c2730]' : 'bg-[#142433]/6 text-[#142433]'
-                          }`}>
+                      <td style={{ padding: '14px 18px' }}>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <span style={{ display: 'inline-flex', borderRadius: 999, padding: '3px 10px', fontSize: '0.83rem', fontWeight: 600, background: followUpDue ? 'var(--red-bg)' : 'var(--surface-subtle)', color: followUpDue ? 'var(--red-text)' : 'var(--text-secondary)' }}>
                             {formatFollowUpLabel(contact.follow_up_date)}
                           </span>
-                          <div className="flex gap-[6px]">
+                          <div style={{ display: 'flex', gap: 6 }}>
                             <input
                               type="date"
-                              className="flex-1 rounded-[8px] border border-[#142433]/12 bg-white px-2 py-1.5 text-[0.85rem]"
+                              onClick={e => e.stopPropagation()}
+                              style={{ flex: 1, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-input)', color: 'var(--text-primary)', padding: '5px 8px', fontSize: '0.83rem' }}
                               value={editingFollowUp[contact.id] ?? contact.follow_up_date ?? ''}
-                              onChange={(event) =>
-                                onFollowUpChange((current) => ({ ...current, [contact.id]: event.target.value }))
-                              }
+                              onChange={event => onFollowUpChange(current => ({ ...current, [contact.id]: event.target.value }))}
                             />
                             <button
                               type="button"
-                              className="border border-[#142433]/12 rounded-[8px] px-2 py-1.5 font-bold bg-white/75 text-[#173047] hover:bg-white/90 text-[0.82rem] whitespace-nowrap"
-                              onClick={() => onSaveFollowUp(contact)}
+                              onClick={e => { e.stopPropagation(); onSaveFollowUp(contact); }}
                               disabled={executingId === contact.id}
+                              className="ghost-button"
+                              style={{ padding: '5px 10px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
                             >
                               Guardar
                             </button>
                           </div>
                         </div>
                       </td>
-                      <td className="px-[18px] py-[14px]">
-                        <div className="grid gap-[6px]">
-                          <span className="inline-flex rounded-full px-[10px] py-[4px] text-[0.85rem] bg-[#142433]/6 text-[#142433] font-medium w-fit">
+                      <td style={{ padding: '14px 18px' }}>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <span style={{ display: 'inline-flex', width: 'fit-content', borderRadius: 999, padding: '3px 10px', fontSize: '0.83rem', background: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontWeight: 600, border: '1px solid var(--border-faint)' }}>
                             {prettifyAction(action)}
                           </span>
-                          <p className="m-0 text-[#597189] text-[0.88rem] leading-[1.4] max-w-[260px]">
+                          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.4, maxWidth: 260 }}>
                             {contact.suggested_message || 'Sin sugerencia disponible.'}
                           </p>
                         </div>
                       </td>
-                      <td className="px-[18px] py-[14px]">
+                      <td style={{ padding: '14px 18px' }}>
                         <button
                           type="button"
-                          className="bg-gradient-to-br from-[#184e77] to-[#1d70a2] text-white border-0 rounded-[12px] px-3 py-2 font-bold cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap"
-                          onClick={() => onExecuteAction(contact, action)}
+                          className="primary-button"
+                          style={{ whiteSpace: 'nowrap', fontSize: '0.87rem', padding: '8px 14px' }}
+                          onClick={e => { e.stopPropagation(); onExecuteAction(contact, action); }}
                           disabled={executingId === contact.id}
+                          aria-label={`Ejecutar ${prettifyAction(action)} para ${contact.name || 'contacto'}`}
                         >
-                          {executingId === contact.id ? 'Ejecutando...' : prettifyAction(action)}
+                          {executingId === contact.id ? 'Ejecutando…' : prettifyAction(action)}
                         </button>
                       </td>
                     </tr>
@@ -306,7 +365,7 @@ export function Worktray({
                 })
               ) : (
                 <tr>
-                  <td colSpan="6" className="text-center text-[#597189] py-[36px]">
+                  <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: '0.9rem' }}>
                     No hay contactos pendientes para esta acción.
                   </td>
                 </tr>
@@ -315,7 +374,6 @@ export function Worktray({
           </table>
         </div>
       </section>
-
     </section>
   );
 }

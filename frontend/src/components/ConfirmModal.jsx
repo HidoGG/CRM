@@ -1,5 +1,38 @@
 import { useEffect } from 'react';
 
+const modalStyle = {
+  background: 'var(--surface-raised)',
+  border: '1px solid var(--border)',
+  borderRadius: 20,
+  boxShadow: '0 24px 48px rgba(0,0,0,0.45)',
+  padding: 32,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 20,
+  width: '100%',
+  maxWidth: 384,
+  margin: '0 16px',
+  animation: 'modalIn 0.18s cubic-bezier(.4,0,.2,1)',
+};
+
+const backdropStyle = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 50,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'rgba(0,0,0,0.60)',
+  backdropFilter: 'blur(3px)',
+};
+
+const MODAL_KEYFRAMES = `
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.94) translateY(8px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0);    }
+  }
+`;
+
 export function InfoModal({ open, title, message, onClose }) {
   useEffect(() => {
     if (!open) return;
@@ -11,34 +44,30 @@ export function InfoModal({ open, title, message, onClose }) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(10,22,33,0.45)', backdropFilter: 'blur(2px)' }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-[20px] shadow-2xl p-8 flex flex-col gap-5 w-full max-w-sm mx-4"
-        style={{ animation: 'modalIn 0.18s cubic-bezier(.4,0,.2,1)' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {title && <h2 className="m-0 text-lg font-bold text-[#142433]">{title}</h2>}
-        {message && <div className="text-[#597189] text-sm leading-relaxed">{message}</div>}
-        <div className="flex justify-end mt-1">
+    <div style={backdropStyle} onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="info-modal-title">
+      <div style={modalStyle} onClick={e => e.stopPropagation()}>
+        {title && (
+          <h2 id="info-modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            {title}
+          </h2>
+        )}
+        {message && (
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+            {message}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
           <button
             type="button"
             onClick={onClose}
-            className="bg-[#184e77] text-white rounded-[12px] px-6 py-2.5 font-semibold text-sm hover:opacity-90 cursor-pointer border-0"
+            className="primary-button"
+            aria-label="Cerrar"
           >
             Entendido
           </button>
         </div>
       </div>
-      <style>{`
-        @keyframes modalIn {
-          from { opacity: 0; transform: scale(0.94) translateY(8px); }
-          to   { opacity: 1; transform: scale(1)   translateY(0);    }
-        }
-      `}</style>
+      <style>{MODAL_KEYFRAMES}</style>
     </div>
   );
 }
@@ -54,45 +83,37 @@ export function ConfirmModal({ open, title, message, confirmLabel = 'Eliminar', 
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(10,22,33,0.45)', backdropFilter: 'blur(2px)' }}
-      onClick={onCancel}
-    >
-      <div
-        className="bg-white rounded-[20px] shadow-2xl p-8 flex flex-col gap-5 w-full max-w-sm mx-4"
-        style={{ animation: 'modalIn 0.18s cubic-bezier(.4,0,.2,1)' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {title && <h2 className="m-0 text-lg font-bold text-[#142433]">{title}</h2>}
-        {message && <p className="m-0 text-[#597189] text-sm leading-relaxed">{message}</p>}
-        <div className="flex gap-3 justify-end mt-1">
+    <div style={backdropStyle} onClick={onCancel} role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+      <div style={modalStyle} onClick={e => e.stopPropagation()}>
+        {title && (
+          <h2 id="confirm-modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            {title}
+          </h2>
+        )}
+        {message && (
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+            {message}
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 4 }}>
           <button
             type="button"
             onClick={onCancel}
-            className="border border-[#142433]/15 text-[#142433] bg-white rounded-[12px] px-5 py-2.5 font-semibold text-sm hover:bg-[#f4f8fc] cursor-pointer"
+            className="ghost-button"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`rounded-[12px] px-5 py-2.5 font-semibold text-sm cursor-pointer border-0 ${
-              confirmDanger
-                ? 'bg-red-500 text-white hover:bg-red-600'
-                : 'bg-[#184e77] text-white hover:opacity-90'
-            }`}
+            className={confirmDanger ? 'ghost-button' : 'primary-button'}
+            style={confirmDanger ? { color: 'var(--red-text)', borderColor: 'var(--red-text)' } : {}}
           >
             {confirmLabel}
           </button>
         </div>
       </div>
-      <style>{`
-        @keyframes modalIn {
-          from { opacity: 0; transform: scale(0.94) translateY(8px); }
-          to   { opacity: 1; transform: scale(1)   translateY(0);    }
-        }
-      `}</style>
+      <style>{MODAL_KEYFRAMES}</style>
     </div>
   );
 }

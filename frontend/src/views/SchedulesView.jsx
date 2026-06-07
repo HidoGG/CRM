@@ -3,7 +3,7 @@ import { API_BASE, apiFetch } from '../AppShell';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 function formatWindow(startH, endH) {
-  const pad = (h) => String(h).padStart(2, '0');
+  const pad = h => String(h).padStart(2, '0');
   return `${pad(startH)}:00 – ${pad(endH)}:00 ART`;
 }
 
@@ -15,42 +15,28 @@ function slotsPerDay(startH, endH, interval) {
 const emptyForm = { name: '', interval_minutes: 30, start_hour_art: 8, end_hour_art: 18 };
 
 export function SchedulesView({ schedules, onRefresh }) {
-  const [editing, setEditing] = useState(null); // null | 'new' | schedule object
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [editing, setEditing]         = useState(null);
+  const [form, setForm]               = useState(emptyForm);
+  const [saving, setSaving]           = useState(false);
+  const [error, setError]             = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  function openNew() {
-    setForm(emptyForm);
-    setEditing('new');
-    setError('');
-  }
+  function openNew() { setForm(emptyForm); setEditing('new'); setError(''); }
 
   function openEdit(s) {
-    setForm({
-      name: s.name,
-      interval_minutes: s.interval_minutes,
-      start_hour_art: s.start_hour_art,
-      end_hour_art: s.end_hour_art,
-    });
+    setForm({ name: s.name, interval_minutes: s.interval_minutes, start_hour_art: s.start_hour_art, end_hour_art: s.end_hour_art });
     setEditing(s);
     setError('');
   }
 
-  function cancel() {
-    setEditing(null);
-    setError('');
-  }
+  function cancel() { setEditing(null); setError(''); }
 
-  function field(key) {
-    return (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-  }
+  function field(key) { return e => setForm(f => ({ ...f, [key]: e.target.value })); }
 
   async function save() {
     if (!form.name.trim()) { setError('El nombre es obligatorio.'); return; }
     if (Number(form.start_hour_art) >= Number(form.end_hour_art)) {
-      setError('La hora de inicio debe ser menor a la hora de fin.');
+      setError('La hora de inicio debe ser menor a la de fin.');
       return;
     }
     setSaving(true);
@@ -62,9 +48,7 @@ export function SchedulesView({ schedules, onRefresh }) {
         start_hour_art: Number(form.start_hour_art),
         end_hour_art: Number(form.end_hour_art),
       });
-      const url = editing === 'new'
-        ? `${API_BASE}/schedules`
-        : `${API_BASE}/schedules/${editing.id}`;
+      const url    = editing === 'new' ? `${API_BASE}/schedules` : `${API_BASE}/schedules/${editing.id}`;
       const method = editing === 'new' ? 'POST' : 'PUT';
       const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body });
       if (!res.ok) {
@@ -72,7 +56,7 @@ export function SchedulesView({ schedules, onRefresh }) {
         setError(b.detail || 'Error al guardar.');
         return;
       }
-      await onRefresh();
+      await onRefresh('schedules');
       setEditing(null);
     } catch {
       setError('Error de conexión al guardar.');
@@ -83,7 +67,7 @@ export function SchedulesView({ schedules, onRefresh }) {
 
   async function setDefault(id) {
     await apiFetch(`${API_BASE}/schedules/${id}/default`, { method: 'PUT' });
-    await onRefresh();
+    await onRefresh('schedules');
   }
 
   async function confirmRemove() {
@@ -95,178 +79,182 @@ export function SchedulesView({ schedules, onRefresh }) {
       setError(b.detail || 'No se pudo eliminar.');
       return;
     }
-    await onRefresh();
+    await onRefresh('schedules');
   }
 
+  const previewReady = Number(form.start_hour_art) < Number(form.end_hour_art) && Number(form.interval_minutes) > 0;
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <ConfirmModal
         open={confirmDelete !== null}
         title="Eliminar cronograma"
-        message="¿Seguro que querés eliminar este cronograma? Los jobs pendientes vinculados quedarán sin ventana horaria asignada."
+        message="¿Seguro que querés eliminar este cronograma? Los jobs pendientes vinculados quedarán sin ventana horaria."
         confirmLabel="Eliminar"
         onConfirm={confirmRemove}
         onCancel={() => setConfirmDelete(null)}
       />
 
-      <div className="bg-white rounded-[24px] p-6 border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-5">
+      <section aria-labelledby="schedules-heading" className="card">
+        <div className="section-head">
           <div>
-            <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#184e77]/10 text-[#184e77] text-[0.84rem] font-bold">
-              Cronogramas de envío
-            </span>
-            <h2 className="m-0 mt-2 text-2xl font-bold text-[#142433]">Gestión de cronogramas</h2>
-            <p className="mt-1 text-[#142433]/60 text-sm max-w-lg">
-              Creá perfiles de envío con ventana horaria en hora argentina (ART / UTC−3).
-              Al importar contactos, asignales un cronograma para controlar cuándo y cada cuánto se mandan los correos.
+            <span className="eyebrow">Cronogramas de envío · ART / UTC−3</span>
+            <h3 id="schedules-heading" className="m-0 font-bold" style={{ color: 'var(--text-primary)', fontSize: '1.05rem', marginTop: 4 }}>
+              Ventanas horarias
+            </h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
+              Controlá cuándo y cada cuánto se envían los correos al importar contactos.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={openNew}
-            className="bg-[#184e77] text-white rounded-[14px] px-5 py-2.5 font-semibold text-sm hover:opacity-90 transition-opacity cursor-pointer border-0 flex-shrink-0"
-          >
+          <button type="button" onClick={openNew} className="primary-button" aria-label="Crear nuevo cronograma">
             + Nuevo cronograma
           </button>
         </div>
 
         {/* Formulario inline */}
         {editing && (
-          <div className="bg-[#f4f8fc] rounded-[18px] p-5 mb-5 flex flex-col gap-4 border border-[#184e77]/10">
-            <h3 className="m-0 font-bold text-[#142433] text-base">
+          <div
+            style={{ background: 'var(--surface-subtle)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 16 }}
+            role="form"
+            aria-label={editing === 'new' ? 'Nuevo cronograma' : `Editar cronograma: ${editing.name}`}
+          >
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.97rem' }}>
               {editing === 'new' ? 'Nuevo cronograma' : `Editando: ${editing.name}`}
             </h3>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#597189] uppercase tracking-wide">
-                Nombre del cronograma
-              </label>
+            <div className="detail-field">
+              <span>Nombre del cronograma</span>
               <input
-                className="border border-[#142433]/15 rounded-[10px] px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#184e77]/30"
                 placeholder="Ej: Envío Comercial Mañana"
                 value={form.name}
                 onChange={field('name')}
+                aria-label="Nombre del cronograma"
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-[#597189] uppercase tracking-wide">
-                  Intervalo (min)
-                </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              <div className="detail-field">
+                <span>Intervalo (min)</span>
                 <input
                   type="number" min="1" max="1440"
-                  className="border border-[#142433]/15 rounded-[10px] px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#184e77]/30"
                   value={form.interval_minutes}
                   onChange={field('interval_minutes')}
+                  aria-label="Intervalo en minutos entre envíos"
                 />
-                <span className="text-[11px] text-[#597189]">Pausa entre envíos</span>
+                <small style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Pausa entre envíos</small>
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-[#597189] uppercase tracking-wide">
-                  Hora inicio ART
-                </label>
+              <div className="detail-field">
+                <span>Hora inicio ART</span>
                 <input
                   type="number" min="0" max="22"
-                  className="border border-[#142433]/15 rounded-[10px] px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#184e77]/30"
                   value={form.start_hour_art}
                   onChange={field('start_hour_art')}
+                  aria-label="Hora de inicio en ART"
                 />
-                <span className="text-[11px] text-[#597189]">0 = medianoche</span>
+                <small style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>0 = medianoche</small>
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-[#597189] uppercase tracking-wide">
-                  Hora fin ART
-                </label>
+              <div className="detail-field">
+                <span>Hora fin ART</span>
                 <input
                   type="number" min="1" max="23"
-                  className="border border-[#142433]/15 rounded-[10px] px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#184e77]/30"
                   value={form.end_hour_art}
                   onChange={field('end_hour_art')}
+                  aria-label="Hora de fin en ART"
                 />
-                <span className="text-[11px] text-[#597189]">23 = 23:00 hs</span>
+                <small style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>23 = 23:00 hs</small>
               </div>
             </div>
 
-            {/* Preview en tiempo real */}
-            {Number(form.start_hour_art) < Number(form.end_hour_art) && Number(form.interval_minutes) > 0 && (
-              <div className="bg-white rounded-[10px] px-4 py-3 border border-[#184e77]/15 text-sm text-[#142433]">
-                <span className="font-semibold text-[#184e77]">Vista previa:</span>{' '}
+            {/* Vista previa en tiempo real */}
+            {previewReady && (
+              <div
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px', fontSize: '0.87rem', color: 'var(--text-secondary)' }}
+                aria-live="polite"
+              >
+                <span style={{ fontWeight: 700, color: 'var(--accent)', marginRight: 6 }}>Vista previa:</span>
                 Ventana {formatWindow(Number(form.start_hour_art), Number(form.end_hour_art))},
-                cada <strong>{form.interval_minutes} min</strong> →{' '}
+                cada <strong style={{ color: 'var(--text-primary)' }}>{form.interval_minutes} min</strong>{' '}→{' '}
                 máximo{' '}
-                <strong>
+                <strong style={{ color: 'var(--text-primary)' }}>
                   {slotsPerDay(Number(form.start_hour_art), Number(form.end_hour_art), Number(form.interval_minutes))} envíos/día
                 </strong>
               </div>
             )}
 
-            {error && <p className="text-red-600 text-sm m-0">{error}</p>}
+            {error && <p style={{ margin: 0, color: 'var(--red-text)', fontSize: '0.87rem' }}>{error}</p>}
 
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={save}
-                disabled={saving}
-                className="bg-[#184e77] text-white rounded-[10px] px-5 py-2 font-semibold text-sm hover:opacity-90 disabled:opacity-50 cursor-pointer border-0"
-              >
-                {saving ? 'Guardando...' : 'Guardar cronograma'}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={save} disabled={saving} className="primary-button">
+                {saving ? 'Guardando…' : 'Guardar cronograma'}
               </button>
-              <button
-                type="button"
-                onClick={cancel}
-                className="bg-white border border-[#142433]/15 text-[#142433] rounded-[10px] px-5 py-2 font-semibold text-sm hover:bg-[#f4f8fc] cursor-pointer"
-              >
-                Cancelar
-              </button>
+              <button type="button" onClick={cancel} className="ghost-button">Cancelar</button>
             </div>
           </div>
         )}
 
-        {error && !editing && <p className="text-red-600 text-sm mb-3">{error}</p>}
+        {error && !editing && (
+          <p style={{ margin: '0 0 16px', color: 'var(--red-text)', fontSize: '0.87rem' }}>{error}</p>
+        )}
 
-        {/* Lista de cronogramas */}
+        {/* Lista */}
         {schedules.length === 0 ? (
-          <div className="text-center py-12 text-[#142433]/40 text-sm flex flex-col items-center gap-2">
-            <span className="text-3xl">🕐</span>
-            <p className="m-0">No hay cronogramas creados aún.</p>
-            <p className="m-0">Creá uno para asignarlo al importar contactos.</p>
+          <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            <p style={{ margin: '0 0 6px' }}>No hay cronogramas creados aún.</p>
+            <p style={{ margin: 0 }}>Creá uno para asignarlo al importar contactos.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {schedules.map((s) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} role="list" aria-label="Lista de cronogramas">
+            {schedules.map(s => (
               <div
                 key={s.id}
-                className="border border-[#142433]/10 rounded-[18px] p-4 flex items-center justify-between gap-4 bg-white hover:border-[#184e77]/20 transition-colors"
+                role="listitem"
+                style={{
+                  border: '1px solid var(--border-faint)',
+                  borderRadius: 14,
+                  padding: '14px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 14,
+                  background: 'var(--surface-raised)',
+                  flexWrap: 'wrap',
+                }}
               >
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <strong className="text-[#142433] text-[15px]">{s.name}</strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <strong style={{ color: 'var(--text-primary)', fontSize: '0.93rem' }}>{s.name}</strong>
                     {s.is_default === 1 && (
-                      <span className="text-xs bg-[#4bb3fd]/15 text-[#184e77] px-2 py-0.5 rounded-full font-semibold">
+                      <span
+                        style={{ fontSize: '0.77rem', background: 'var(--accent-subtle)', color: 'var(--accent)', padding: '2px 10px', borderRadius: 999, fontWeight: 700 }}
+                        aria-label="Cronograma por defecto"
+                      >
                         Por defecto
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#597189]">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
                     <span>
-                      🕐 <strong className="text-[#142433]">{formatWindow(s.start_hour_art, s.end_hour_art)}</strong>
+                      Ventana{' '}
+                      <strong style={{ color: 'var(--text-primary)' }}>{formatWindow(s.start_hour_art, s.end_hour_art)}</strong>
                     </span>
                     <span>
-                      ⏱ cada <strong className="text-[#142433]">{s.interval_minutes} min</strong>
+                      Cada{' '}
+                      <strong style={{ color: 'var(--text-primary)' }}>{s.interval_minutes} min</strong>
                     </span>
-                    <span className="text-[#142433]/40 text-xs">
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                       ≤ {slotsPerDay(s.start_hour_art, s.end_hour_art, s.interval_minutes)} envíos/día
                     </span>
                   </div>
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
+
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   {!s.is_default && (
                     <button
                       type="button"
                       onClick={() => setDefault(s.id)}
-                      className="text-xs border border-[#184e77]/30 text-[#184e77] rounded-[8px] px-3 py-1.5 hover:bg-[#184e77]/5 cursor-pointer bg-white"
+                      className="ghost-button"
+                      style={{ fontSize: '0.82rem', padding: '5px 12px' }}
+                      aria-label={`Usar ${s.name} como cronograma por defecto`}
                     >
                       Usar por defecto
                     </button>
@@ -274,7 +262,9 @@ export function SchedulesView({ schedules, onRefresh }) {
                   <button
                     type="button"
                     onClick={() => openEdit(s)}
-                    className="text-xs border border-[#142433]/15 text-[#142433] rounded-[8px] px-3 py-1.5 hover:bg-[#f4f8fc] cursor-pointer bg-white"
+                    className="ghost-button"
+                    style={{ fontSize: '0.82rem', padding: '5px 12px' }}
+                    aria-label={`Editar cronograma ${s.name}`}
                   >
                     Editar
                   </button>
@@ -282,7 +272,9 @@ export function SchedulesView({ schedules, onRefresh }) {
                     <button
                       type="button"
                       onClick={() => setConfirmDelete(s.id)}
-                      className="text-xs border border-red-200 text-red-500 rounded-[8px] px-3 py-1.5 hover:bg-red-50 cursor-pointer bg-white"
+                      className="ghost-button"
+                      style={{ fontSize: '0.82rem', padding: '5px 12px', color: 'var(--red-text)', borderColor: 'var(--red-text)' }}
+                      aria-label={`Eliminar cronograma ${s.name}`}
                     >
                       Eliminar
                     </button>
@@ -292,7 +284,7 @@ export function SchedulesView({ schedules, onRefresh }) {
             ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

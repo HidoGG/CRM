@@ -2,32 +2,29 @@ import { useRef, useState } from 'react';
 import { API_BASE, apiFetch } from '../AppShell';
 import { ConfirmModal, InfoModal } from '../components/ConfirmModal';
 
-const STATUS_LABEL = {
-  pending: 'Pendiente',
-  sent: 'Enviado',
-  failed: 'Fallido',
-};
-const STATUS_COLOR = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  sent: 'bg-green-100 text-green-800',
-  failed: 'bg-red-100 text-red-700',
+const STATUS_LABEL = { pending: 'Pendiente', sent: 'Enviado', failed: 'Fallido', processing: 'Procesando' };
+
+const STATUS_STYLE = {
+  pending:    { background: 'var(--amber-bg)',  color: 'var(--amber-text)' },
+  sent:       { background: 'var(--green-bg)',  color: 'var(--green-text)' },
+  failed:     { background: 'var(--red-bg)',    color: 'var(--red-text)'   },
+  processing: { background: 'var(--blue-subtle)', color: 'var(--blue)'    },
 };
 
 function formatDate(iso) {
   if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch { return iso; }
+  try { return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
+  catch { return iso; }
 }
 
 export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailStatus, onRefresh }) {
-  const [uploadingCv, setUploadingCv] = useState(false);
-  const [pendingFile, setPendingFile] = useState(null);
+  const [uploadingCv, setUploadingCv]   = useState(false);
+  const [pendingFile, setPendingFile]   = useState(null);
   const [pendingComment, setPendingComment] = useState('');
   const cvInputRef = useRef(null);
-  const [confirmCv, setConfirmCv] = useState(null);    // cv id | null
-  const [confirmJob, setConfirmJob] = useState(null);  // job id | null
-  const [runResult, setRunResult] = useState(null);    // {sent, failed} | null
+  const [confirmCv, setConfirmCv]   = useState(null);
+  const [confirmJob, setConfirmJob] = useState(null);
+  const [runResult, setRunResult]   = useState(null);
 
   function handleFileSelected(e) {
     const file = e.target.files?.[0];
@@ -45,7 +42,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
       fd.append('file', pendingFile);
       fd.append('comment', pendingComment.trim());
       await apiFetch(`${API_BASE}/cv-files`, { method: 'POST', body: fd });
-      await onRefresh();
+      await onRefresh('cvs');
     } finally {
       setUploadingCv(false);
       setPendingFile(null);
@@ -55,7 +52,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
 
   async function setDefaultCv(id) {
     await apiFetch(`${API_BASE}/cv-files/${id}/default`, { method: 'PUT' });
-    await onRefresh();
+    await onRefresh('cvs');
   }
 
   function deleteCv(id) { setConfirmCv(id); }
@@ -63,7 +60,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     const id = confirmCv;
     setConfirmCv(null);
     await apiFetch(`${API_BASE}/cv-files/${id}`, { method: 'DELETE' });
-    await onRefresh();
+    await onRefresh('cvs');
   }
 
   function deleteJob(id) { setConfirmJob(id); }
@@ -71,27 +68,27 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     const id = confirmJob;
     setConfirmJob(null);
     await apiFetch(`${API_BASE}/email-jobs/${id}`, { method: 'DELETE' });
-    await onRefresh();
+    await onRefresh('jobs');
   }
 
   async function runNow() {
-    const res = await apiFetch(`${API_BASE}/email-jobs/run-now`, { method: 'POST' });
+    const res  = await apiFetch(`${API_BASE}/email-jobs/run-now`, { method: 'POST' });
     const data = res.ok ? await res.json() : { sent: 0, failed: 0 };
-    await onRefresh();
+    await onRefresh('jobs');
     setRunResult(data);
   }
 
   async function retryFailed() {
-    const res = await apiFetch(`${API_BASE}/email-jobs/retry-failed`, { method: 'POST' });
+    const res  = await apiFetch(`${API_BASE}/email-jobs/retry-failed`, { method: 'POST' });
     const data = res.ok ? await res.json() : { retried: 0 };
-    await onRefresh();
+    await onRefresh('jobs');
     setRunResult({ sent: 0, failed: 0, retried: data.retried });
   }
 
   async function assignDefaultCv() {
-    const res = await apiFetch(`${API_BASE}/email-jobs/assign-default-cv`, { method: 'POST' });
+    const res  = await apiFetch(`${API_BASE}/email-jobs/assign-default-cv`, { method: 'POST' });
     const data = res.ok ? await res.json() : { updated: 0 };
-    await onRefresh();
+    await onRefresh('jobs');
     setRunResult({ sent: 0, failed: 0, assigned: data.updated });
   }
 
@@ -110,41 +107,49 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     }
   }
 
-  const pendingJobs = emailJobs.filter(j => j.status === 'pending');
-  const doneJobs = emailJobs.filter(j => j.status !== 'pending');
+  const pendingJobs = emailJobs.filter(j => j.status === 'pending' || j.status === 'processing');
+  const doneJobs    = emailJobs.filter(j => j.status !== 'pending' && j.status !== 'processing');
+  const failedCount = emailJobs.filter(j => j.status === 'failed').length;
+  const hasPendingOrFailed = emailJobs.some(j => j.status === 'pending' || j.status === 'failed');
+
+  /* ─── Textos de resultado ─── */
+  function resultTitle() {
+    if (runResult?.assigned != null) return runResult.assigned > 0 ? 'CV asignado' : 'Sin jobs para actualizar';
+    if (runResult?.retried > 0)      return 'Jobs reactivados';
+    if (runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0) return 'Sin fallidos';
+    if (runResult?.sent > 0 && runResult?.failed === 0) return 'Correos enviados';
+    if (runResult?.sent === 0 && runResult?.failed === 0) return 'Sin envíos pendientes';
+    if (runResult?.sent > 0) return 'Envíos con errores';
+    return 'Fallo en el envío';
+  }
+
+  function resultMessage() {
+    if (runResult?.assigned != null)
+      return runResult.assigned > 0
+        ? `CV por defecto asignado a ${runResult.assigned} job(s). Ahora presioná "Reintentar fallidos" o "Enviar ahora".`
+        : 'Todos los jobs ya tienen un CV válido asignado.';
+    if (runResult?.retried > 0)
+      return `${runResult.retried} job(s) reseteados a pendiente. El scheduler los procesa en el próximo ciclo. También podés presionar "Enviar ahora".`;
+    if (runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0)
+      return 'No hay jobs fallidos para reintentar.';
+    if (runResult?.sent > 0 && runResult?.failed === 0)
+      return `Se enviaron correctamente ${runResult.sent} correo(s). Revisá tu bandeja de entrada.`;
+    if (runResult?.sent === 0 && runResult?.failed === 0)
+      return 'No había correos pendientes de envío ahora.';
+    if (runResult?.sent > 0)
+      return `Se enviaron ${runResult.sent} correos, pero ${runResult.failed} fallaron. Revisá los detalles en la cola.`;
+    return 'No se pudo enviar. Revisá el estado de Gmail o los detalles del error en la cola.';
+  }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
+      {/* Modales */}
       <InfoModal
         open={runResult !== null}
-        title={
-          runResult?.assigned != null ? (runResult.assigned > 0 ? '✓ CV asignado' : 'Sin jobs para actualizar') :
-          runResult?.retried > 0 ? '↺ Jobs reactivados' :
-          runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0 ? 'Sin fallidos para reintentar' :
-          runResult?.sent > 0 && runResult?.failed === 0 ? '✓ Correos enviados' :
-          runResult?.sent === 0 && runResult?.failed === 0 ? 'Sin envíos pendientes' :
-          runResult?.sent > 0 ? 'Envíos completados con errores' : '⚠ Falló el envío'
-        }
-        message={
-          runResult?.assigned != null
-            ? runResult.assigned > 0
-              ? <><p className="m-0">CV por defecto asignado a <strong>{runResult.assigned}</strong> {runResult.assigned === 1 ? 'job' : 'jobs'}.</p><p className="m-0 mt-2 text-xs">Ahora presioná "Reintentar fallidos" o "Enviar ahora" para procesarlos.</p></>
-              : <p className="m-0">Todos los jobs ya tienen un CV válido asignado.</p>
-            : runResult?.retried > 0
-            ? <><p className="m-0"><strong>{runResult.retried}</strong> {runResult.retried === 1 ? 'job reseteado' : 'jobs reseteados'} a pendiente.</p><p className="m-0 mt-2 text-xs">El scheduler los va a procesar en el próximo ciclo. También podés presionar "Enviar ahora".</p></>
-            : runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0
-            ? <p className="m-0">No hay jobs fallidos para reintentar.</p>
-            : runResult?.sent > 0 && runResult?.failed === 0
-            ? <><p className="m-0">Se enviaron correctamente <strong>{runResult.sent}</strong> {runResult.sent === 1 ? 'correo' : 'correos'}.</p><p className="m-0 mt-2 text-xs">Revisá tu bandeja de entrada para confirmarlo.</p></>
-            : runResult?.sent === 0 && runResult?.failed === 0
-            ? <p className="m-0">No había correos pendientes de envío en este momento.</p>
-            : runResult?.sent > 0
-            ? <p className="m-0">Se enviaron <strong>{runResult.sent}</strong> correos, pero <strong>{runResult.failed}</strong> fallaron. Revisá los detalles en la cola.</p>
-            : <p className="m-0">No se pudo enviar. Revisá el estado de Gmail o los detalles del error en la cola.</p>
-        }
+        title={resultTitle()}
+        message={<p className="m-0">{resultMessage()}</p>}
         onClose={() => setRunResult(null)}
       />
-
       <ConfirmModal
         open={confirmCv !== null}
         title="Eliminar CV"
@@ -162,14 +167,27 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
         onCancel={() => setConfirmJob(null)}
       />
 
-      {/* Estado Gmail */}
-      <div className={`rounded-[20px] p-5 flex items-center justify-between gap-4 ${gmailStatus?.authorized ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+      {/* ── Estado Gmail ── */}
+      <section
+        aria-label="Estado de Gmail"
+        style={{
+          background: gmailStatus?.authorized ? 'var(--green-bg)' : 'var(--amber-bg)',
+          border: `1px solid ${gmailStatus?.authorized ? 'var(--green-text)' : 'var(--amber-text)'}`,
+          borderRadius: 16,
+          padding: '14px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          opacity: 0.95,
+        }}
+      >
         <div>
-          <strong className={gmailStatus?.authorized ? 'text-green-800' : 'text-amber-800'}>
+          <strong style={{ color: gmailStatus?.authorized ? 'var(--green-text)' : 'var(--amber-text)', fontSize: '0.95rem' }}>
             {gmailStatus?.authorized ? '✓ Gmail autorizado — listo para enviar' : '⚠ Gmail no autorizado'}
           </strong>
           {!gmailStatus?.authorized && (
-            <p className="text-amber-700 text-sm m-0 mt-1">
+            <p style={{ color: 'var(--amber-text)', fontSize: '0.87rem', margin: '4px 0 0', opacity: 0.85 }}>
               Necesitás autorizar tu cuenta de Gmail para enviar emails automáticamente.
             </p>
           )}
@@ -178,27 +196,38 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
           <button
             type="button"
             onClick={authorize}
-            className="bg-[#184e77] text-white rounded-[12px] px-5 py-2.5 font-semibold text-sm hover:opacity-90 cursor-pointer border-0 flex-shrink-0"
+            className="primary-button flex-shrink-0"
+            aria-label="Autorizar cuenta de Gmail"
           >
             Autorizar Gmail
           </button>
         )}
-      </div>
+      </section>
 
-      {/* CVs */}
-      <div className="bg-white rounded-[24px] p-6 border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        <div className="flex items-center justify-between mb-4">
+      {/* ── CVs ── */}
+      <section aria-labelledby="cvs-heading" className="card">
+        <div className="section-head">
           <div>
-            <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#184e77]/10 text-[#184e77] text-[0.84rem] font-bold">CV</span>
-            <h3 className="m-0 mt-2 text-lg font-bold">Archivos de CV</h3>
+            <span className="eyebrow">Archivos</span>
+            <h3 id="cvs-heading" className="m-0 font-bold" style={{ color: 'var(--text-primary)', fontSize: '1.05rem' }}>
+              CVs subidos
+            </h3>
           </div>
           <div className="flex gap-2">
-            <input ref={cvInputRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleFileSelected} />
+            <input
+              ref={cvInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx"
+              className="hidden"
+              onChange={handleFileSelected}
+              aria-label="Seleccionar archivo de CV"
+            />
             {!pendingFile && (
               <button
                 type="button"
                 onClick={() => cvInputRef.current?.click()}
-                className="bg-[#184e77] text-white rounded-[12px] px-4 py-2 font-semibold text-sm hover:opacity-90 cursor-pointer border-0"
+                className="primary-button"
+                aria-label="Seleccionar CV para subir"
               >
                 + Subir CV
               </button>
@@ -206,23 +235,34 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
           </div>
         </div>
 
-        {/* Formulario de comentario al subir */}
+        {/* Formulario de confirmación de CV */}
         {pendingFile && (
-          <div className="bg-[#f4f8fc] rounded-[14px] p-4 mb-4 flex flex-col gap-3">
-            <p className="m-0 text-sm font-semibold text-[#142433]">
-              Archivo seleccionado: <span className="font-normal">{pendingFile.name}</span>
+          <div
+            style={{
+              background: 'var(--surface-subtle)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+            role="form"
+            aria-label="Confirmar subida de CV"
+          >
+            <p className="m-0 text-sm" style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+              Seleccionado: <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>{pendingFile.name}</span>
             </p>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#597189] uppercase tracking-wide">
-                Comentario (opcional)
-              </label>
+            <div className="detail-field">
+              <span>Comentario (opcional)</span>
               <input
                 type="text"
                 placeholder="Ej: Oil & Gas, Instrumentación, Versión corta..."
                 value={pendingComment}
                 onChange={e => setPendingComment(e.target.value)}
-                className="border border-[#142433]/15 rounded-[10px] px-3 py-2 text-sm"
                 onKeyDown={e => e.key === 'Enter' && confirmUpload()}
+                aria-label="Comentario del CV"
               />
             </div>
             <div className="flex gap-2">
@@ -230,14 +270,14 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
                 type="button"
                 onClick={confirmUpload}
                 disabled={uploadingCv}
-                className="bg-[#184e77] text-white rounded-[10px] px-4 py-2 font-semibold text-sm hover:opacity-90 disabled:opacity-50 cursor-pointer border-0"
+                className="primary-button"
               >
-                {uploadingCv ? 'Subiendo...' : 'Subir'}
+                {uploadingCv ? 'Subiendo…' : 'Confirmar subida'}
               </button>
               <button
                 type="button"
                 onClick={() => { setPendingFile(null); setPendingComment(''); }}
-                className="bg-white border border-[#142433]/15 text-[#142433] rounded-[10px] px-4 py-2 font-semibold text-sm hover:bg-[#f4f8fc] cursor-pointer"
+                className="ghost-button"
               >
                 Cancelar
               </button>
@@ -246,40 +286,54 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
         )}
 
         {cvFiles.length === 0 ? (
-          <p className="text-[#597189] text-sm">Aún no subiste ningún CV. Subí uno para adjuntarlo en los envíos.</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            No subiste ningún CV aún. Subí uno para adjuntarlo en los envíos.
+          </p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2" role="list" aria-label="Lista de CVs">
             {cvFiles.map(cv => (
-              <CvRow key={cv.id} cv={cv} onSetDefault={setDefaultCv} onDelete={deleteCv} onRefresh={onRefresh} />
+              <CvRow key={cv.id} cv={cv} onSetDefault={setDefaultCv} onDelete={deleteCv} onRefresh={() => onRefresh('cvs')} />
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Cola de envíos */}
-      <div className="bg-white rounded-[24px] p-6 border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        <div className="flex items-center justify-between mb-4">
+      {/* ── Cola de envíos ── */}
+      <section aria-labelledby="jobs-heading" className="card">
+        <div className="section-head" style={{ flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#184e77]/10 text-[#184e77] text-[0.84rem] font-bold">Envíos</span>
-            <h3 className="m-0 mt-2 text-lg font-bold">Cola de envíos</h3>
-            <p className="text-sm text-[#142433]/60 m-0 mt-1">
-              Los envíos se crean automáticamente al confirmar contactos con acción <em>Enviar</em> o <em>Seguir</em>. El sistema revisa cada 10 minutos.
-            </p>
+            <span className="eyebrow">Automático · cada 10 min · Lun–Sáb</span>
+            <h3 id="jobs-heading" className="m-0 font-bold" style={{ color: 'var(--text-primary)', fontSize: '1.05rem', marginTop: 4 }}>
+              Cola de envíos
+            </h3>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <button type="button" onClick={runNow}
-              className="border border-[#184e77]/30 text-[#184e77] rounded-[12px] px-4 py-2 font-semibold text-sm hover:bg-[#184e77]/5 cursor-pointer bg-white">
+          <div className="flex gap-2 flex-wrap" role="toolbar" aria-label="Acciones de envío">
+            <button
+              type="button"
+              onClick={runNow}
+              className="ghost-button"
+              aria-label="Procesar envíos pendientes ahora"
+            >
               Enviar ahora
             </button>
-            {emailJobs.some(j => j.status === 'failed') && (
-              <button type="button" onClick={retryFailed}
-                className="border border-[#bc4749]/30 text-[#9c2730] rounded-[12px] px-4 py-2 font-semibold text-sm hover:bg-[#bc4749]/5 cursor-pointer bg-white">
-                Reintentar fallidos ({emailJobs.filter(j => j.status === 'failed').length})
+            {failedCount > 0 && (
+              <button
+                type="button"
+                onClick={retryFailed}
+                className="ghost-button"
+                style={{ color: 'var(--red-text)', borderColor: 'var(--red-text)' }}
+                aria-label={`Reintentar los ${failedCount} envíos fallidos`}
+              >
+                Reintentar fallidos ({failedCount})
               </button>
             )}
-            {emailJobs.some(j => j.status === 'pending' || j.status === 'failed') && (
-              <button type="button" onClick={assignDefaultCv}
-                className="border border-[#597189]/30 text-[#597189] rounded-[12px] px-4 py-2 font-semibold text-sm hover:bg-[#597189]/5 cursor-pointer bg-white">
+            {hasPendingOrFailed && (
+              <button
+                type="button"
+                onClick={assignDefaultCv}
+                className="ghost-button"
+                aria-label="Asignar CV por defecto a todos los jobs pendientes y fallidos"
+              >
                 Adjuntar CV por defecto
               </button>
             )}
@@ -287,24 +341,30 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
         </div>
 
         {emailJobs.length === 0 ? (
-          <p className="text-[#597189] text-sm">No hay envíos en la cola aún.</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            No hay envíos en la cola. Se crean al confirmar contactos con acción <em>Enviar</em>.
+          </p>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4" role="list" aria-label="Cola de envíos">
             {pendingJobs.length > 0 && (
-              <>
-                <p className="text-xs font-semibold text-[#597189] uppercase tracking-wide m-0">Pendientes ({pendingJobs.length})</p>
-                {pendingJobs.map(j => <JobRow key={j.id} job={j} onDelete={deleteJob} />)}
-              </>
+              <div>
+                <p className="eyebrow mb-2">Pendientes ({pendingJobs.length})</p>
+                <div className="flex flex-col gap-2">
+                  {pendingJobs.map(j => <JobRow key={j.id} job={j} onDelete={deleteJob} />)}
+                </div>
+              </div>
             )}
             {doneJobs.length > 0 && (
-              <>
-                <p className="text-xs font-semibold text-[#597189] uppercase tracking-wide m-0 mt-2">Historial</p>
-                {doneJobs.map(j => <JobRow key={j.id} job={j} onDelete={deleteJob} />)}
-              </>
+              <div>
+                <p className="eyebrow mb-2">Historial</p>
+                <div className="flex flex-col gap-2">
+                  {doneJobs.map(j => <JobRow key={j.id} job={j} onDelete={deleteJob} />)}
+                </div>
+              </div>
             )}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
@@ -312,7 +372,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
 function CvRow({ cv, onSetDefault, onDelete, onRefresh }) {
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState(cv.comment || '');
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]   = useState(false);
 
   async function saveComment() {
     setSaving(true);
@@ -330,9 +390,24 @@ function CvRow({ cv, onSetDefault, onDelete, onRefresh }) {
   }
 
   return (
-    <div className="flex items-center justify-between bg-[#f4f8fc] rounded-[12px] px-4 py-3 gap-3">
-      <div className="flex items-center gap-2 flex-wrap min-w-0">
-        <span className="text-sm font-medium text-[#142433] truncate">{cv.original_name}</span>
+    <div
+      role="listitem"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: 'var(--surface-subtle)',
+        border: '1px solid var(--border-faint)',
+        borderRadius: 10,
+        padding: '10px 14px',
+        gap: 12,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
+        <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {cv.original_name}
+        </span>
+
         {editing ? (
           <input
             autoFocus
@@ -341,41 +416,61 @@ function CvRow({ cv, onSetDefault, onDelete, onRefresh }) {
             onChange={e => setComment(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') saveComment(); if (e.key === 'Escape') setEditing(false); }}
             placeholder="Agregar comentario..."
-            className="border border-[#184e77]/30 rounded-[8px] px-2 py-0.5 text-xs w-44"
+            style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', fontSize: '0.82rem', background: 'var(--surface-input)', color: 'var(--text-primary)', width: 180 }}
+            aria-label="Comentario del CV"
           />
         ) : (
           <button
             type="button"
             onClick={() => { setComment(cv.comment || ''); setEditing(true); }}
-            className="text-xs text-[#597189] italic hover:text-[#184e77] cursor-pointer bg-transparent border-0 p-0"
-            title="Editar comentario"
+            style={{ fontSize: '0.82rem', color: 'var(--text-muted)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontStyle: 'italic' }}
+            aria-label={cv.comment ? `Editar comentario: ${cv.comment}` : 'Agregar comentario'}
           >
-            {cv.comment ? cv.comment : '+ comentario'}
+            {cv.comment || '+ comentario'}
           </button>
         )}
+
         {editing && (
           <button
             type="button"
             onClick={saveComment}
             disabled={saving}
-            className="text-xs bg-[#184e77] text-white rounded-[6px] px-2 py-0.5 border-0 cursor-pointer disabled:opacity-50"
+            className="primary-button"
+            style={{ padding: '3px 10px', fontSize: '0.82rem' }}
           >
-            {saving ? '...' : 'OK'}
+            {saving ? '…' : 'OK'}
           </button>
         )}
+
         {cv.is_default === 1 && (
-          <span className="text-xs bg-[#4bb3fd]/15 text-[#184e77] px-2 py-0.5 rounded-full font-semibold">Por defecto</span>
+          <span
+            style={{ fontSize: '0.78rem', background: 'var(--accent-subtle)', color: 'var(--accent)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}
+            aria-label="CV por defecto"
+          >
+            Por defecto
+          </span>
         )}
       </div>
-      <div className="flex gap-2 flex-shrink-0">
+
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
         {!cv.is_default && (
-          <button type="button" onClick={() => onSetDefault(cv.id)}
-            className="text-xs border border-[#184e77]/30 text-[#184e77] rounded-[8px] px-3 py-1 hover:bg-[#184e77]/5 cursor-pointer bg-white">
+          <button
+            type="button"
+            onClick={() => onSetDefault(cv.id)}
+            className="ghost-button"
+            style={{ fontSize: '0.82rem', padding: '5px 12px' }}
+            aria-label={`Usar ${cv.original_name} como CV por defecto`}
+          >
             Usar por defecto
           </button>
         )}
-        <button type="button" onClick={() => onDelete(cv.id)}
-          className="text-xs border border-red-200 text-red-500 rounded-[8px] px-3 py-1 hover:bg-red-50 cursor-pointer bg-white">
+        <button
+          type="button"
+          onClick={() => onDelete(cv.id)}
+          className="ghost-button"
+          style={{ fontSize: '0.82rem', padding: '5px 12px', color: 'var(--red-text)', borderColor: 'var(--red-text)' }}
+          aria-label={`Eliminar CV ${cv.original_name}`}
+        >
           Eliminar
         </button>
       </div>
@@ -384,30 +479,59 @@ function CvRow({ cv, onSetDefault, onDelete, onRefresh }) {
 }
 
 function JobRow({ job, onDelete }) {
+  const statusStyle = STATUS_STYLE[job.status] || STATUS_STYLE.pending;
+
   return (
-    <div className="border border-[#142433]/10 rounded-[14px] px-4 py-3 flex items-center justify-between gap-3 bg-white">
-      <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="font-semibold text-sm text-[#142433] truncate">
-          {job.contact_name || '—'} <span className="text-[#597189] font-normal">— {job.contact_email}</span>
+    <div
+      role="listitem"
+      style={{
+        border: '1px solid var(--border-faint)',
+        borderRadius: 12,
+        padding: '12px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        background: 'var(--surface-raised)',
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {job.contact_name || '—'}{' '}
+          <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>— {job.contact_email}</span>
         </span>
-        <span className="text-xs text-[#597189]">
+        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
           Plantilla: {job.template_name || 'por defecto'} · CV: {job.cv_name || 'sin adjunto'} ·{' '}
           {job.frequency_days > 0 ? `Cada ${job.frequency_days} días` : 'Una vez'}
         </span>
         {job.status === 'failed' && job.error_message && (
-          <span className="text-xs text-red-600 truncate">{job.error_message}</span>
+          <span
+            style={{ fontSize: '0.8rem', color: 'var(--red-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 480 }}
+            title={job.error_message}
+          >
+            {job.error_message}
+          </span>
         )}
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-xs text-[#597189]">
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
           {job.status === 'sent' ? `Enviado ${formatDate(job.sent_at)}` : `Programado ${formatDate(job.scheduled_at)}`}
         </span>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[job.status] || 'bg-gray-100 text-gray-600'}`}>
+        <span
+          style={{ ...statusStyle, fontSize: '0.78rem', padding: '3px 10px', borderRadius: 999, fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}
+          aria-label={`Estado: ${STATUS_LABEL[job.status] || job.status}`}
+        >
           {STATUS_LABEL[job.status] || job.status}
         </span>
-        {job.status === 'pending' && (
-          <button type="button" onClick={() => onDelete(job.id)}
-            className="text-xs border border-red-200 text-red-500 rounded-[8px] px-2 py-1 hover:bg-red-50 cursor-pointer bg-white">
+        {(job.status === 'pending' || job.status === 'processing') && (
+          <button
+            type="button"
+            onClick={() => onDelete(job.id)}
+            className="ghost-button"
+            style={{ fontSize: '0.8rem', padding: '4px 10px', color: 'var(--red-text)', borderColor: 'var(--red-text)' }}
+            aria-label={`Cancelar envío a ${job.contact_email}`}
+          >
             Cancelar
           </button>
         )}

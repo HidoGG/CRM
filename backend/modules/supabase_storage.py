@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 from supabase import create_client
 
@@ -25,16 +26,30 @@ def upload(file_bytes: bytes, object_key: str) -> str:
     return object_key
 
 
-def download(object_key: str) -> bytes:
-    """Descarga un CV del bucket. Lanza RuntimeError si no existe."""
-    try:
-        data = _client().storage.from_(_bucket()).download(path=object_key)
-        return bytes(data)
-    except Exception as exc:
-        raise RuntimeError(
-            f"No se pudo descargar el CV '{object_key}' de Supabase Storage: {exc}. "
-            "Borrá el registro y volvé a subir el CV desde la sección Envíos."
-        ) from exc
+def download(object_key: str, *, retries: int = 3) -> bytes:
+    """Descarga un CV del bucket con retry + exponential backoff.
+
+    La Python SDK de Supabase v2 no tiene retry automático a diferencia de la JS SDK.
+    Errores transitorios de red fallan el job permanentemente sin este wrapper.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            data = _client().storage.from_(_bucket()).download(path=object_key)
+            return bytes(data)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                wait = 2 ** attempt  # 1s, 2s, 4s
+                print(
+                    f"[supabase_storage] Intento {attempt + 1}/{retries} falló "
+                    f"descargando '{object_key}': {exc}. Reintentando en {wait}s..."
+                )
+                time.sleep(wait)
+    raise RuntimeError(
+        f"No se pudo descargar el CV '{object_key}' tras {retries} intentos: {last_exc}. "
+        "Borrá el registro y volvé a subir el CV desde la sección Envíos."
+    ) from last_exc
 
 
 def delete(object_key: str) -> None:

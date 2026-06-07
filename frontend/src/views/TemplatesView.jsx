@@ -3,11 +3,11 @@ import { API_BASE, apiFetch } from '../AppShell';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export function TemplatesView({ templates, onRefresh }) {
-  const [editing, setEditing] = useState(null); // null | 'new' | template object
-  const [form, setForm] = useState({ name: '', subject: '', body: '' });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(null); // template id | null
+  const [editing, setEditing]       = useState(null);
+  const [form, setForm]             = useState({ name: '', subject: '', body: '' });
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   function openNew() {
     setForm({ name: '', subject: '', body: '' });
@@ -21,10 +21,7 @@ export function TemplatesView({ templates, onRefresh }) {
     setError('');
   }
 
-  function cancel() {
-    setEditing(null);
-    setError('');
-  }
+  function cancel() { setEditing(null); setError(''); }
 
   async function save() {
     if (!form.name.trim() || !form.subject.trim() || !form.body.trim()) {
@@ -47,7 +44,7 @@ export function TemplatesView({ templates, onRefresh }) {
           body: JSON.stringify(form),
         });
       }
-      await onRefresh();
+      await onRefresh('templates');
       setEditing(null);
     } catch {
       setError('Error al guardar.');
@@ -58,11 +55,7 @@ export function TemplatesView({ templates, onRefresh }) {
 
   async function setDefault(id) {
     await apiFetch(`${API_BASE}/templates/${id}/default`, { method: 'PUT' });
-    await onRefresh();
-  }
-
-  async function remove(id) {
-    setConfirmDelete(id);
+    await onRefresh('templates');
   }
 
   async function confirmRemove() {
@@ -74,11 +67,11 @@ export function TemplatesView({ templates, onRefresh }) {
       setError(body.detail || 'No se pudo eliminar.');
       return;
     }
-    await onRefresh();
+    await onRefresh('templates');
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <ConfirmModal
         open={confirmDelete !== null}
         title="Eliminar plantilla"
@@ -87,105 +80,105 @@ export function TemplatesView({ templates, onRefresh }) {
         onConfirm={confirmRemove}
         onCancel={() => setConfirmDelete(null)}
       />
-      <div className="bg-white rounded-[24px] p-6 border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        <div className="flex items-center justify-between mb-4">
+
+      <section aria-labelledby="templates-heading" className="card">
+        <div className="section-head">
           <div>
-            <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#184e77]/10 text-[#184e77] text-[0.84rem] font-bold">
-              Plantillas de mensaje
-            </span>
-            <h2 className="m-0 mt-2 text-2xl font-bold">Cuerpos de email</h2>
-            <p className="mt-1 text-[#142433]/60 text-sm">
-              Creá y administrá los textos que usás al contactar empresas. La plantilla por defecto se usa automáticamente.
+            <span className="eyebrow">Plantillas de mensaje</span>
+            <h3 id="templates-heading" className="m-0 font-bold" style={{ color: 'var(--text-primary)', fontSize: '1.05rem', marginTop: 4 }}>
+              Cuerpos de email
+            </h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
+              La plantilla por defecto se usa automáticamente en los envíos.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={openNew}
-            className="bg-[#184e77] text-white rounded-[14px] px-5 py-2.5 font-semibold text-sm hover:opacity-90 transition-opacity cursor-pointer border-0"
-          >
+          <button type="button" onClick={openNew} className="primary-button" aria-label="Crear nueva plantilla">
             + Nueva plantilla
           </button>
         </div>
 
+        {/* Formulario inline */}
         {editing && (
-          <div className="bg-[#f4f8fc] rounded-[18px] p-5 mb-5 flex flex-col gap-3">
-            <h3 className="m-0 font-bold text-[#142433]">
+          <div
+            style={{ background: 'var(--surface-subtle)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 16 }}
+            role="form"
+            aria-label={editing === 'new' ? 'Nueva plantilla' : `Editar plantilla: ${editing.name}`}
+          >
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.97rem' }}>
               {editing === 'new' ? 'Nueva plantilla' : `Editar: ${editing.name}`}
             </h3>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#597189] uppercase tracking-wide">Nombre (etiqueta)</label>
+            <div className="detail-field">
+              <span>Nombre (etiqueta)</span>
               <input
-                className="border border-[#142433]/15 rounded-[10px] px-3 py-2 text-sm"
                 placeholder="Ej: Presentación Oil & Gas"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                aria-label="Nombre de la plantilla"
               />
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#597189] uppercase tracking-wide">
-                Asunto — usá {'{company}'} y {'{name}'} como variables
-              </label>
+            <div className="detail-field">
+              <span>Asunto — usá {'{company}'} y {'{name}'} como variables</span>
               <input
-                className="border border-[#142433]/15 rounded-[10px] px-3 py-2 text-sm"
                 placeholder="Ej: Postulacion y CV - {company}"
                 value={form.subject}
                 onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
+                aria-label="Asunto del email"
               />
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[#597189] uppercase tracking-wide">
-                Cuerpo — usá {'{name}'} y {'{company}'}
-              </label>
+            <div className="detail-field">
+              <span>Cuerpo — usá {'{name}'} y {'{company}'}</span>
               <textarea
-                className="border border-[#142433]/15 rounded-[10px] px-3 py-2 text-sm resize-y"
                 rows={6}
                 placeholder="Escribí el cuerpo del email..."
                 value={form.body}
                 onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+                style={{ resize: 'vertical', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', background: 'var(--surface-input)', color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.6, fontFamily: 'inherit' }}
+                aria-label="Cuerpo del email"
               />
             </div>
-            {error && <p className="text-red-600 text-sm m-0">{error}</p>}
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={save}
-                disabled={saving}
-                className="bg-[#184e77] text-white rounded-[10px] px-5 py-2 font-semibold text-sm hover:opacity-90 disabled:opacity-50 cursor-pointer border-0"
-              >
-                {saving ? 'Guardando...' : 'Guardar'}
+            {error && <p style={{ margin: 0, color: 'var(--red-text)', fontSize: '0.87rem' }}>{error}</p>}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={save} disabled={saving} className="primary-button">
+                {saving ? 'Guardando…' : 'Guardar'}
               </button>
-              <button
-                type="button"
-                onClick={cancel}
-                className="bg-white border border-[#142433]/15 text-[#142433] rounded-[10px] px-5 py-2 font-semibold text-sm hover:bg-[#f4f8fc] cursor-pointer"
-              >
-                Cancelar
-              </button>
+              <button type="button" onClick={cancel} className="ghost-button">Cancelar</button>
             </div>
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
+        {/* Lista */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} role="list" aria-label="Lista de plantillas">
+          {templates.length === 0 && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+              No hay plantillas creadas. Creá una para personalizar tus emails.
+            </p>
+          )}
           {templates.map(t => (
             <div
               key={t.id}
-              className="border border-[#142433]/10 rounded-[18px] p-5 flex flex-col gap-2 bg-white"
+              role="listitem"
+              style={{ border: '1px solid var(--border-faint)', borderRadius: 16, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--surface-raised)' }}
             >
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <strong className="text-[#142433]">{t.name}</strong>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>{t.name}</strong>
                   {t.is_default === 1 && (
-                    <span className="text-xs bg-[#4bb3fd]/15 text-[#184e77] px-2 py-0.5 rounded-full font-semibold">
+                    <span
+                      style={{ fontSize: '0.78rem', background: 'var(--accent-subtle)', color: 'var(--accent)', padding: '2px 10px', borderRadius: 999, fontWeight: 700 }}
+                      aria-label="Plantilla por defecto"
+                    >
                       Por defecto
                     </span>
                   )}
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   {!t.is_default && (
                     <button
                       type="button"
                       onClick={() => setDefault(t.id)}
-                      className="text-xs border border-[#184e77]/30 text-[#184e77] rounded-[8px] px-3 py-1.5 hover:bg-[#184e77]/5 cursor-pointer bg-white"
+                      className="ghost-button"
+                      style={{ fontSize: '0.82rem', padding: '5px 12px' }}
+                      aria-label={`Usar ${t.name} como plantilla por defecto`}
                     >
                       Usar por defecto
                     </button>
@@ -193,31 +186,51 @@ export function TemplatesView({ templates, onRefresh }) {
                   <button
                     type="button"
                     onClick={() => openEdit(t)}
-                    className="text-xs border border-[#142433]/15 text-[#142433] rounded-[8px] px-3 py-1.5 hover:bg-[#f4f8fc] cursor-pointer bg-white"
+                    className="ghost-button"
+                    style={{ fontSize: '0.82rem', padding: '5px 12px' }}
+                    aria-label={`Editar plantilla ${t.name}`}
                   >
                     Editar
                   </button>
                   {!t.is_default && (
                     <button
                       type="button"
-                      onClick={() => remove(t.id)}
-                      className="text-xs border border-red-200 text-red-500 rounded-[8px] px-3 py-1.5 hover:bg-red-50 cursor-pointer bg-white"
+                      onClick={() => setConfirmDelete(t.id)}
+                      className="ghost-button"
+                      style={{ fontSize: '0.82rem', padding: '5px 12px', color: 'var(--red-text)', borderColor: 'var(--red-text)' }}
+                      aria-label={`Eliminar plantilla ${t.name}`}
                     >
                       Eliminar
                     </button>
                   )}
                 </div>
               </div>
-              <p className="text-xs text-[#597189] m-0">
-                <span className="font-semibold">Asunto:</span> {t.subject}
+
+              <p style={{ margin: 0, fontSize: '0.83rem', color: 'var(--text-secondary)' }}>
+                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Asunto:</span>{' '}{t.subject}
               </p>
-              <pre className="text-xs text-[#142433]/70 m-0 whitespace-pre-wrap font-sans bg-[#f4f8fc] rounded-[10px] px-4 py-3 leading-relaxed">
+
+              <pre
+                style={{
+                  margin: 0,
+                  fontSize: '0.82rem',
+                  color: 'var(--text-secondary)',
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'inherit',
+                  background: 'var(--surface-subtle)',
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  lineHeight: 1.65,
+                  maxHeight: 160,
+                  overflow: 'auto',
+                }}
+              >
                 {t.body}
               </pre>
             </div>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

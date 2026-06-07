@@ -199,6 +199,13 @@ def init_db() -> None:
                 SELECT 1 FROM delivery_schedules WHERE is_default = 1
             )
         """))
+        # Recovery: jobs que quedaron en 'processing' por un crash o restart anterior
+        # vuelven a 'pending' para ser reintentados en el próximo ciclo.
+        result = conn.execute(text(
+            "UPDATE email_jobs SET status = 'pending', error_message = NULL WHERE status = 'processing'"
+        ))
+        if result.rowcount > 0:
+            print(f"[startup] Recovery: {result.rowcount} job(s) 'processing' reseteados a 'pending'.")
         conn.commit()
 
 

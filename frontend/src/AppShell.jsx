@@ -165,8 +165,54 @@ function AppShell() {
     void loadContactHistory(selectedWorktrayId);
   }, [selectedWorktrayId]);
 
-  async function refreshData() {
+  async function refreshData(scope = 'all') {
     try {
+      if (scope === 'jobs') {
+        // Usado después de acciones de email: run-now, retry, assign-cv, cancelar job
+        const [jobsRes, gmailRes] = await Promise.all([
+          apiFetch(`${API_BASE}/email-jobs`),
+          apiFetch(`${API_BASE}/gmail/status`),
+        ]);
+        if (jobsRes.ok) setEmailJobs(await jobsRes.json());
+        if (gmailRes.ok) setGmailStatus(await gmailRes.json());
+        return;
+      }
+
+      if (scope === 'cvs') {
+        // Usado después de subir, editar o eliminar un CV
+        const res = await apiFetch(`${API_BASE}/cv-files`);
+        if (res.ok) setCvFiles(await res.json());
+        return;
+      }
+
+      if (scope === 'templates') {
+        // Usado después de crear/editar/eliminar una plantilla
+        const res = await apiFetch(`${API_BASE}/templates`);
+        if (res.ok) setTemplates(await res.json());
+        return;
+      }
+
+      if (scope === 'schedules') {
+        // Usado después de crear/editar/eliminar un cronograma
+        const res = await apiFetch(`${API_BASE}/schedules`);
+        if (res.ok) setSchedules(await res.json());
+        return;
+      }
+
+      if (scope === 'contacts') {
+        // Usado después de acciones en la bandeja o contactos
+        const [contactsRes, summaryRes, reportingRes] = await Promise.all([
+          apiFetch(`${API_BASE}/contacts`),
+          apiFetch(`${API_BASE}/summary`),
+          apiFetch(`${API_BASE}/reporting/overview`),
+        ]);
+        if (contactsRes.ok) setContacts(await contactsRes.json());
+        if (summaryRes.ok) setSummary(await summaryRes.json());
+        if (reportingRes.ok) setReporting(await reportingRes.json());
+        return;
+      }
+
+      // scope === 'all': carga inicial completa (11 endpoints en paralelo)
       const [healthRes, contactsRes, summaryRes, importsRes, capabilitiesRes, reportingRes,
              templatesRes, cvFilesRes, schedulesRes, emailJobsRes, gmailStatusRes] = await Promise.all([
         apiFetch(`${API_BASE}/health`),
@@ -420,13 +466,32 @@ function AppShell() {
     <div className="grid grid-cols-[280px_minmax(0,1fr)] min-h-screen">
 
       {importing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl px-10 py-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4">
-            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-lg font-semibold text-gray-800 text-center">Analizando archivo…</p>
-            <p className="text-sm text-gray-500 text-center">
-              Estamos procesando el documento con inteligencia artificial.<br />
-              Esto puede tardar unos minutos, no cierres la ventana.
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0 0 0 / 0.75)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Procesando archivo"
+        >
+          <div
+            className="rounded-2xl px-10 py-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4"
+            style={{
+              background: 'var(--surface-raised)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow-md)',
+            }}
+          >
+            <div
+              className="w-11 h-11 rounded-full border-4 border-t-transparent animate-spin"
+              style={{ borderColor: 'var(--border-strong)', borderTopColor: 'var(--accent)' }}
+              aria-hidden="true"
+            />
+            <p className="text-base font-semibold text-center" style={{ color: 'var(--text-primary)' }}>
+              Analizando archivo…
+            </p>
+            <p className="text-sm text-center" style={{ color: 'var(--text-secondary)' }}>
+              Procesando con IA. Esto puede tardar unos minutos.<br />
+              No cierres la ventana.
             </p>
           </div>
         </div>

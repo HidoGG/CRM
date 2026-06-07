@@ -43,20 +43,36 @@ export function OperacionesView({
 
       {/* View switcher */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex gap-1 bg-[#f4f8fc] rounded-[16px] p-1">
+        <div
+          style={{ display: 'flex', gap: 4, background: 'var(--surface-subtle)', borderRadius: 14, padding: 6, border: '1px solid var(--border-faint)' }}
+          role="tablist"
+          aria-label="Modo de vista"
+        >
           {VIEWS.map((v) => (
             <button
               key={v.id}
               type="button"
+              role="tab"
+              aria-selected={activeView === v.id}
               onClick={() => setActiveView(v.id)}
               title={v.note}
-              className={`flex items-center gap-2 rounded-[12px] px-5 py-2 text-sm font-semibold transition-all cursor-pointer border-0 ${
-                activeView === v.id
-                  ? 'bg-white text-[#184e77] shadow-sm'
-                  : 'text-[#597189] bg-transparent hover:text-[#142433]'
-              }`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                borderRadius: 10,
+                padding: '7px 18px',
+                fontSize: '0.87rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: activeView === v.id ? '1px solid var(--border)' : '1px solid transparent',
+                background: activeView === v.id ? 'var(--surface-raised)' : 'transparent',
+                color: activeView === v.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                boxShadow: activeView === v.id ? '0 1px 4px rgba(0,0,0,0.18)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
             >
-              <span>{v.icon}</span>
+              <span aria-hidden="true">{v.icon}</span>
               {v.label}
             </button>
           ))}
@@ -65,12 +81,18 @@ export function OperacionesView({
         {/* Resumen rápido */}
         <div className="flex gap-2 ml-auto flex-wrap">
           {reporting.queue.overdue > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-red-100 text-red-700 text-xs font-semibold">
+            <span
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 999, padding: '6px 12px', background: 'var(--red-bg)', color: 'var(--red-text)', fontSize: '0.8rem', fontWeight: 700 }}
+              aria-label={`${reporting.queue.overdue} contacto${reporting.queue.overdue !== 1 ? 's' : ''} vencido${reporting.queue.overdue !== 1 ? 's' : ''}`}
+            >
               ● {reporting.queue.overdue} vencido{reporting.queue.overdue !== 1 ? 's' : ''}
             </span>
           )}
           {reporting.queue.due_today > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-amber-100 text-amber-700 text-xs font-semibold">
+            <span
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 999, padding: '6px 12px', background: 'var(--amber-bg)', color: 'var(--amber-text)', fontSize: '0.8rem', fontWeight: 700 }}
+              aria-label={`${reporting.queue.due_today} contacto${reporting.queue.due_today !== 1 ? 's' : ''} para hoy`}
+            >
               ● {reporting.queue.due_today} para hoy
             </span>
           )}

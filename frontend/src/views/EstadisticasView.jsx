@@ -15,96 +15,85 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
   const analytics = useMemo(() => buildAnalytics(emailJobs, contacts), [emailJobs, contacts]);
 
   return (
-    <section className="grid gap-[20px]">
+    <section className="grid gap-5">
 
-      {/* ── Hero + métricas nuevas ── */}
-      <section className="grid grid-cols-[minmax(0,1.35fr)_minmax(280px,0.8fr)] gap-[20px]">
-        <article className="rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)] bg-[radial-gradient(circle_at_top_right,rgba(75,179,253,0.12),transparent_34%),rgba(255,255,255,0.9)]">
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#184e77]/10 text-[#184e77] text-[0.84rem] font-bold">Estadísticas</span>
-          <h2 className="m-0 mt-3 text-2xl font-bold">Analítica a mediano plazo: ritmo, calidad y trazabilidad del pipeline.</h2>
-          <p className="mt-2 mb-0 text-[#142433]/70 leading-relaxed">
-            Snapshots comparativos, evolución de stock y métricas de efectividad de envíos. El trabajo
-            diario vive en "Hoy" — acá se lee el resultado acumulado.
+      {/* ── Hero + métricas ── */}
+      <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(280px,0.8fr)', gap: 20 }}>
+        <article className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span className="eyebrow">Estadísticas</span>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35 }}>
+            Analítica a mediano plazo: ritmo, calidad y trazabilidad del pipeline.
+          </h2>
+          <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.65, fontSize: '0.9rem' }}>
+            Snapshots comparativos, evolución de stock y métricas de efectividad de envíos.
+            El trabajo diario vive en "Hoy" — acá se lee el resultado acumulado.
           </p>
         </article>
 
-        <div className="grid gap-[14px]">
+        <div style={{ display: 'grid', gap: 14 }}>
           <MetricCard
             label="Tasa de éxito de envíos"
             value={analytics.successRate !== null ? `${analytics.successRate}%` : '—'}
-            sub={
-              analytics.totalResolved > 0
-                ? `${analytics.sentJobs} enviados · ${analytics.failedJobs} fallidos`
-                : 'Sin jobs resueltos aún'
-            }
-            color={
-              analytics.successRate === null ? 'neutral'
-              : analytics.successRate >= 80 ? 'positive'
-              : analytics.successRate >= 50 ? 'warning'
-              : 'negative'
-            }
+            sub={analytics.totalResolved > 0 ? `${analytics.sentJobs} enviados · ${analytics.failedJobs} fallidos` : 'Sin jobs resueltos aún'}
+            color={analytics.successRate === null ? 'neutral' : analytics.successRate >= 80 ? 'positive' : analytics.successRate >= 50 ? 'warning' : 'negative'}
           />
           <MetricCard
             label="Tiempo medio import → envío"
             value={analytics.avgDaysToFirstSend !== null ? `${analytics.avgDaysToFirstSend}d` : '—'}
-            sub={
-              analytics.sampledContacts > 0
-                ? `sobre ${analytics.sampledContacts} contactos accionados`
-                : 'Sin contactos accionados aún'
-            }
+            sub={analytics.sampledContacts > 0 ? `sobre ${analytics.sampledContacts} contactos accionados` : 'Sin contactos accionados aún'}
             color="neutral"
           />
         </div>
       </section>
 
-      {/* ── Actividad semanal comparativa ── */}
-      <section className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        <div className="flex justify-between gap-[12px] items-start mb-[18px]">
+      {/* ── Actividad semanal ── */}
+      <section className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
-            <h3 className="m-0 text-xl font-bold">Actividad semanal</h3>
-            <p className="mt-[4px] mb-0 text-[#597189] text-[0.9rem]">Comparación entre los últimos 7 días y la ventana anterior.</p>
+            <span className="eyebrow">Ritmo</span>
+            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Actividad semanal</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+              Comparación entre los últimos 7 días y la ventana anterior.
+            </p>
           </div>
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold shrink-0">Ritmo</span>
         </div>
 
-        <div className="grid gap-[14px] mb-[20px]">
-          {['enviar', 'seguir', 'portal', 'descartar'].map((action) => (
-            <div key={action} className="grid gap-[8px]">
-              <div className="flex justify-between gap-[12px] items-baseline">
-                <strong className="text-[#102538]">{prettifyAction(action)}</strong>
-                <span className="text-[#597189] text-[0.9rem]">
+        <div style={{ display: 'grid', gap: 14, marginBottom: 20 }}>
+          {['enviar', 'seguir', 'portal', 'descartar'].map(action => (
+            <div key={action} style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+                <strong style={{ color: 'var(--text-primary)' }}>{prettifyAction(action)}</strong>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                   {reporting.activity.last_7d[action]} vs {reporting.activity.previous_7d[action]}
                 </span>
               </div>
-              <div className="relative h-[16px] rounded-full bg-[#142433]/8 overflow-hidden">
+              <div style={{ position: 'relative', height: 16, borderRadius: 999, background: 'var(--surface-subtle)', overflow: 'hidden' }}>
                 <div
-                  className="absolute left-0 top-0 bottom-0 rounded-full bg-[#184e77]/78"
-                  style={{ width: `${getRelativeBarWidth(reporting.activity.last_7d[action], reporting.activity.previous_7d[action])}%` }}
+                  style={{ position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 999, background: 'var(--accent)', opacity: 0.85, width: `${getRelativeBarWidth(reporting.activity.last_7d[action], reporting.activity.previous_7d[action])}%` }}
                 />
                 <div
-                  className="absolute left-0 top-0 bottom-0 rounded-full bg-[#5c7189]/42"
-                  style={{ width: `${getRelativeBarWidth(reporting.activity.previous_7d[action], reporting.activity.last_7d[action])}%` }}
+                  style={{ position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 999, background: 'var(--text-muted)', opacity: 0.35, width: `${getRelativeBarWidth(reporting.activity.previous_7d[action], reporting.activity.last_7d[action])}%` }}
                 />
               </div>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-4 gap-[16px]">
-          {['enviar', 'seguir', 'portal', 'descartar'].map((action) => (
-            <article key={action} className="bg-[#f6f9fc] rounded-[22px] p-[18px] grid gap-[14px]">
-              <div className="flex justify-between gap-[12px] items-start">
-                <strong className="text-[#102538]">{prettifyAction(action)}</strong>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+          {['enviar', 'seguir', 'portal', 'descartar'].map(action => (
+            <article key={action} style={{ background: 'var(--surface-subtle)', borderRadius: 22, padding: 18, display: 'grid', gap: 14, border: '1px solid var(--border-faint)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{prettifyAction(action)}</strong>
                 <DeltaBadge value={reporting.activity.deltas_7d[action]} />
               </div>
-              <div className="grid grid-cols-2 gap-[10px]">
-                <div className="bg-white/88 rounded-[16px] p-[12px] grid gap-[6px]">
-                  <span className="text-[#597189] text-[0.88rem]">Últimos 7d</span>
-                  <strong className="text-[#102538] text-[1.3rem]">{reporting.activity.last_7d[action]}</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ background: 'var(--surface-raised)', borderRadius: 16, padding: 12, display: 'grid', gap: 6, border: '1px solid var(--border-faint)' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Últimos 7d</span>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '1.3rem', lineHeight: 1 }}>{reporting.activity.last_7d[action]}</strong>
                 </div>
-                <div className="bg-white/88 rounded-[16px] p-[12px] grid gap-[6px]">
-                  <span className="text-[#597189] text-[0.88rem]">7d previos</span>
-                  <strong className="text-[#102538] text-[1.3rem]">{reporting.activity.previous_7d[action]}</strong>
+                <div style={{ background: 'var(--surface-raised)', borderRadius: 16, padding: 12, display: 'grid', gap: 6, border: '1px solid var(--border-faint)' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>7d previos</span>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '1.3rem', lineHeight: 1 }}>{reporting.activity.previous_7d[action]}</strong>
                 </div>
               </div>
             </article>
@@ -113,63 +102,80 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
       </section>
 
       {/* ── Evolución de snapshots ── */}
-      <section className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        <div className="flex justify-between gap-[12px] items-start mb-[14px]">
+      <section className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
-            <h3 className="m-0 text-xl font-bold">Evolución de stock</h3>
-            <p className="mt-[4px] mb-0 text-[#597189] text-[0.9rem]">Contactos, cola activa, vencidos y sin fecha en la ventana elegida.</p>
+            <span className="eyebrow">Evolución de stock</span>
+            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Stock en el tiempo</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+              Contactos, cola activa, vencidos y sin fecha en la ventana elegida.
+            </p>
           </div>
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold shrink-0">{filteredSnapshots.length} cortes</span>
+          <span
+            style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}
+          >
+            {filteredSnapshots.length} cortes
+          </span>
         </div>
 
-        <div className="flex flex-wrap gap-[10px] mb-[16px]">
-          {[7, 14, 30].map((range) => (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+          {[7, 14, 30].map(range => (
             <button
               key={range}
               type="button"
-              className={`rounded-full border px-[14px] py-[10px] cursor-pointer font-medium text-[0.95rem] transition-colors ${
-                activeRange === range
-                  ? 'bg-[#184e77] text-white border-[#184e77]'
-                  : 'bg-white/84 text-[#173047] border-[#142433]/12 hover:bg-white'
-              }`}
               onClick={() => setActiveRange(range)}
+              aria-pressed={activeRange === range}
+              style={{
+                borderRadius: 999,
+                padding: '6px 18px',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                border: activeRange === range ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: activeRange === range ? 'var(--accent)' : 'transparent',
+                color: activeRange === range ? 'var(--accent-text)' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
             >
               {range} días
             </button>
           ))}
-
           <button
             type="button"
-            className="ml-auto border border-[#142433]/12 rounded-[14px] px-4 py-[10px] font-semibold bg-white/75 text-[#173047] hover:bg-white/90 transition-colors text-[0.92rem]"
+            className="ghost-button"
+            style={{ marginLeft: 'auto', fontSize: '0.88rem' }}
             onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=overview`, '_blank', 'noopener,noreferrer')}
+            aria-label="Exportar resumen como CSV"
           >
             ↓ Exportar resumen CSV
           </button>
           <button
             type="button"
-            className="border border-[#142433]/12 rounded-[14px] px-4 py-[10px] font-semibold bg-white/75 text-[#173047] hover:bg-white/90 transition-colors text-[0.92rem]"
+            className="ghost-button"
+            style={{ fontSize: '0.88rem' }}
             onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=snapshots&limit=${activeRange}`, '_blank', 'noopener,noreferrer')}
+            aria-label="Exportar snapshots como CSV"
           >
             ↓ Exportar snapshots CSV
           </button>
         </div>
 
-        <article className="bg-[#f6f9fc] rounded-[22px] p-[18px] grid gap-[14px] mb-[16px]">
-          <div className="flex items-end h-[76px]" aria-hidden="true">
+        <article style={{ background: 'var(--surface-subtle)', borderRadius: 22, padding: 18, display: 'grid', gap: 14, marginBottom: 16, border: '1px solid var(--border-faint)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', height: 76 }} aria-hidden="true">
             {buildMultiSparklineSeries(filteredSnapshots) ? (
-              <svg viewBox="0 0 100 64" preserveAspectRatio="none" className="w-full h-[76px]">
+              <svg viewBox="0 0 100 64" preserveAspectRatio="none" style={{ width: '100%', height: 76 }}>
                 {Object.entries(buildMultiSparklineSeries(filteredSnapshots)).map(([key, points]) => {
-                  const stroke =
-                    key === 'active' ? '#2d7b55'
-                    : key === 'overdue' ? '#bc4749'
-                    : key === 'withoutDate' ? '#b5761a'
-                    : '#184e77';
+                  const strokeColor =
+                    key === 'active'      ? 'var(--green-text)'
+                    : key === 'overdue'   ? 'var(--red-text)'
+                    : key === 'withoutDate' ? 'var(--amber-text)'
+                    : 'var(--accent)';
                   return (
                     <polyline
                       key={key}
                       points={points}
                       fill="none"
-                      stroke={stroke}
+                      style={{ stroke: strokeColor }}
                       strokeWidth="2.4"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -178,80 +184,91 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
                 })}
               </svg>
             ) : (
-              <div className="text-[#597189] text-[0.9rem]">Sin serie suficiente para graficar.</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Sin serie suficiente para graficar.</div>
             )}
           </div>
-          <div className="flex flex-wrap gap-[10px]">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             {[
-              { key: 'contacts', color: '#184e77', label: 'Contactos' },
-              { key: 'active',   color: '#2d7b55', label: 'Cola activa' },
-              { key: 'overdue',  color: '#bc4749', label: 'Vencidos' },
-              { key: 'withoutDate', color: '#b5761a', label: 'Sin fecha' },
+              { key: 'contacts',    color: 'var(--accent)',      label: 'Contactos'   },
+              { key: 'active',      color: 'var(--green-text)',  label: 'Cola activa' },
+              { key: 'overdue',     color: 'var(--red-text)',    label: 'Vencidos'    },
+              { key: 'withoutDate', color: 'var(--amber-text)',  label: 'Sin fecha'   },
             ].map(({ key, color, label }) => (
-              <span key={key} className="inline-flex items-center gap-[8px] text-[#597189] text-[0.9rem]">
-                <span className="w-[10px] h-[10px] rounded-full" style={{ background: color }} />
+              <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
                 {label}
               </span>
             ))}
           </div>
         </article>
 
-        <div className="grid grid-cols-4 gap-[16px]">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           {[
-            { label: 'Contactos',  valueKey: 'total_contacts',   deltaKey: 'total_contacts',   snapshotKey: 'total_contacts' },
-            { label: 'Cola activa', valueKey: 'active_total',    deltaKey: 'active_total',     snapshotKey: 'active_total' },
-            { label: 'Vencidos',   valueKey: 'overdue_count',    deltaKey: 'overdue_count',    snapshotKey: 'overdue_count' },
-            { label: 'Sin fecha',  valueKey: 'without_date_count', deltaKey: 'without_date_count', snapshotKey: 'without_date_count' },
+            { label: 'Contactos',   valueKey: 'total_contacts',     deltaKey: 'total_contacts',     snapshotKey: 'total_contacts'     },
+            { label: 'Cola activa', valueKey: 'active_total',       deltaKey: 'active_total',       snapshotKey: 'active_total'       },
+            { label: 'Vencidos',    valueKey: 'overdue_count',      deltaKey: 'overdue_count',      snapshotKey: 'overdue_count'      },
+            { label: 'Sin fecha',   valueKey: 'without_date_count', deltaKey: 'without_date_count', snapshotKey: 'without_date_count' },
           ].map(({ label, valueKey, deltaKey, snapshotKey }) => (
             <SparklineCard
               key={label}
               label={label}
               value={reporting.stock_comparison.current[valueKey]}
               delta={reporting.stock_comparison.deltas[deltaKey]}
-              data={filteredSnapshots.map((s) => s[snapshotKey]).reverse()}
+              data={filteredSnapshots.map(s => s[snapshotKey]).reverse()}
             />
           ))}
         </div>
       </section>
 
       {/* ── Historial de importaciones ── */}
-      <section className="bg-white/86 rounded-[24px] p-[22px] border border-[#142433]/8 shadow-[0_20px_50px_rgba(32,57,82,0.08)]">
-        <div className="flex justify-between gap-[12px] items-start mb-[18px]">
+      <section className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
-            <h3 className="m-0 text-xl font-bold">Historial de importaciones</h3>
-            <p className="mt-[4px] mb-0 text-[#597189] text-[0.9rem]">Trazabilidad completa de archivos procesados — qué base se subió y cuándo.</p>
+            <span className="eyebrow">Historial</span>
+            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Importaciones</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+              Trazabilidad completa de archivos procesados.
+            </p>
           </div>
-          <span className="inline-flex items-center rounded-full px-3 py-1.5 bg-[#1a2b3d]/8 text-[#163047] text-[0.84rem] font-bold shrink-0">
+          <span
+            style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}
+          >
             {imports.length} registros
           </span>
         </div>
 
         {imports.length ? (
-          <div className="overflow-auto rounded-[18px] border border-[#142433]/8">
-            <table className="w-full border-collapse min-w-[600px]">
+          <div style={{ overflowX: 'auto', borderRadius: 18, border: '1px solid var(--border-faint)' }}>
+            <table className="w-full border-collapse" style={{ minWidth: 600 }}>
               <thead>
                 <tr>
-                  {['Archivo', 'Contactos', 'Estado', 'Notas', 'Fecha'].map((col) => (
-                    <th key={col} className="bg-[#f4f8fc] text-[#597189] text-[0.84rem] uppercase tracking-[0.07em] px-[18px] py-[14px] text-left border-b border-[#142433]/8 font-semibold">
+                  {['Archivo', 'Contactos', 'Estado', 'Notas', 'Fecha'].map(col => (
+                    <th
+                      key={col}
+                      scope="col"
+                      style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '12px 18px', textAlign: 'left', borderBottom: '1px solid var(--border-faint)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600 }}
+                    >
                       {col}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {imports.map((item) => (
-                  <tr key={item.id} className="border-b border-[#142433]/6 hover:bg-[#f9fbfd] transition-colors">
-                    <td className="px-[18px] py-[14px]">
-                      <strong className="text-[#102538] text-[0.95rem]">{item.filename || '—'}</strong>
+                {imports.map(item => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid var(--border-faint)' }}>
+                    <td style={{ padding: '14px 18px' }}>
+                      <strong style={{ color: 'var(--text-primary)', fontSize: '0.93rem' }}>{item.filename || '—'}</strong>
                     </td>
-                    <td className="px-[18px] py-[14px] text-[#597189]">{item.total_contacts ?? '—'}</td>
-                    <td className="px-[18px] py-[14px]">
+                    <td style={{ padding: '14px 18px', color: 'var(--text-secondary)' }}>{item.total_contacts ?? '—'}</td>
+                    <td style={{ padding: '14px 18px' }}>
                       <StatusBadge status={item.status} />
                     </td>
-                    <td className="px-[18px] py-[14px] text-[#597189] text-[0.9rem] max-w-[240px]">
-                      <span className="line-clamp-2">{item.notes || '—'}</span>
+                    <td style={{ padding: '14px 18px', color: 'var(--text-secondary)', fontSize: '0.88rem', maxWidth: 240 }}>
+                      <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {item.notes || '—'}
+                      </span>
                     </td>
-                    <td className="px-[18px] py-[14px] text-[#597189] text-[0.88rem] whitespace-nowrap">
+                    <td style={{ padding: '14px 18px', color: 'var(--text-secondary)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                       {item.created_at
                         ? new Date(item.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
                         : '—'}
@@ -262,12 +279,11 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
             </table>
           </div>
         ) : (
-          <div className="text-[#597189] text-[0.95rem] py-6 text-center">
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.92rem', padding: '40px 20px', textAlign: 'center' }}>
             Todavía no hay importaciones registradas en el sistema.
           </div>
         )}
       </section>
-
     </section>
   );
 }
@@ -275,34 +291,36 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
 // ── Sub-componentes ────────────────────────────────────────────────────────────
 
 function MetricCard({ label, value, sub, color = 'neutral' }) {
+  const bgStyle =
+    color === 'positive' ? { background: 'var(--green-bg)', border: '1px solid var(--green-text)' }
+    : color === 'negative' ? { background: 'var(--red-bg)', border: '1px solid var(--red-text)' }
+    : color === 'warning' ? { background: 'var(--amber-bg)', border: '1px solid var(--amber-text)' }
+    : { background: 'var(--surface-raised)', border: '1px solid var(--border-faint)' };
+
   const valueColor =
-    color === 'positive' ? 'text-[#1f5c3a]'
-    : color === 'negative' ? 'text-[#9c2730]'
-    : color === 'warning' ? 'text-[#7a4f10]'
-    : 'text-[#102538]';
-  const bg =
-    color === 'positive' ? 'bg-[#1f5c3a]/6 border-[#1f5c3a]/14'
-    : color === 'negative' ? 'bg-[#bc4749]/6 border-[#bc4749]/14'
-    : color === 'warning' ? 'bg-[#e6a340]/8 border-[#e6a340]/20'
-    : 'bg-white/86 border-[#142433]/8';
+    color === 'positive' ? 'var(--green-text)'
+    : color === 'negative' ? 'var(--red-text)'
+    : color === 'warning' ? 'var(--amber-text)'
+    : 'var(--text-primary)';
 
   return (
-    <article className={`rounded-[22px] p-[20px] border shadow-[0_20px_50px_rgba(32,57,82,0.08)] grid gap-[8px] ${bg}`}>
-      <span className="text-[#597189] text-[0.88rem] font-medium">{label}</span>
-      <strong className={`text-[1.9rem] leading-none font-bold ${valueColor}`}>{value}</strong>
-      {sub && <span className="text-[#597189] text-[0.82rem]">{sub}</span>}
+    <article style={{ borderRadius: 22, padding: 20, display: 'grid', gap: 8, ...bgStyle }}>
+      <span style={{ color: 'var(--text-muted)', fontSize: '0.87rem', fontWeight: 500 }}>{label}</span>
+      <strong style={{ fontSize: '1.9rem', lineHeight: 1, fontWeight: 700, color: valueColor }}>{value}</strong>
+      {sub && <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{sub}</span>}
     </article>
   );
 }
 
 function DeltaBadge({ value }) {
   const cls = getDeltaClassName(value);
+  const style =
+    cls === 'is-positive' ? { background: 'var(--green-bg)', color: 'var(--green-text)' }
+    : cls === 'is-negative' ? { background: 'var(--red-bg)', color: 'var(--red-text)' }
+    : { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
+
   return (
-    <span className={`rounded-full px-[10px] py-[6px] text-[0.84rem] font-bold ${
-      cls === 'is-positive' ? 'bg-[#308a5a]/14 text-[#1f6b45]'
-      : cls === 'is-negative' ? 'bg-[#bc4749]/14 text-[#9c2730]'
-      : 'bg-[#76828f]/16 text-[#495764]'
-    }`}>
+    <span style={{ ...style, borderRadius: 999, padding: '4px 10px', fontSize: '0.83rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
       {formatDelta(value)}
     </span>
   );
@@ -311,44 +329,44 @@ function DeltaBadge({ value }) {
 function SparklineCard({ label, value, delta, data }) {
   const points = buildSparklinePoints(data);
   return (
-    <article className="bg-[#f6f9fc] rounded-[22px] p-[18px] grid gap-[14px]">
-      <div className="flex justify-between items-start gap-3">
+    <article style={{ background: 'var(--surface-subtle)', borderRadius: 22, padding: 18, display: 'grid', gap: 14, border: '1px solid var(--border-faint)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div>
-          <span className="text-[#597189] text-[0.9rem] block">{label}</span>
-          <strong className="block text-[#102538] text-[1.45rem] mt-1">{value}</strong>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', display: 'block' }}>{label}</span>
+          <strong style={{ display: 'block', color: 'var(--text-primary)', fontSize: '1.45rem', marginTop: 4, lineHeight: 1 }}>{value}</strong>
         </div>
         <DeltaBadge value={delta} />
       </div>
-      <div className="flex items-end h-[44px]" aria-hidden="true">
+      <div style={{ display: 'flex', alignItems: 'flex-end', height: 44 }} aria-hidden="true">
         {points ? (
-          <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="w-full h-[44px]">
+          <svg viewBox="0 0 100 32" preserveAspectRatio="none" style={{ width: '100%', height: 44 }}>
             <polyline
               points={points}
               fill="none"
-              stroke="#184e77"
+              style={{ stroke: 'var(--accent)' }}
               strokeWidth="2.4"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
         ) : (
-          <div className="text-[#597189] text-[0.9rem]">Sin serie suficiente</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin serie suficiente</div>
         )}
       </div>
     </article>
   );
 }
 
-const STATUS_STYLES = {
-  confirmed: 'bg-[#1f5c3a]/10 text-[#1f5c3a]',
-  draft:     'bg-[#e6a340]/16 text-[#7a4f10]',
-  error:     'bg-[#bc4749]/12 text-[#9c2730]',
+const STATUS_CSS = {
+  confirmed: { background: 'var(--green-bg)', color: 'var(--green-text)' },
+  draft:     { background: 'var(--amber-bg)', color: 'var(--amber-text)' },
+  error:     { background: 'var(--red-bg)',   color: 'var(--red-text)'   },
 };
 
 function StatusBadge({ status }) {
-  const style = STATUS_STYLES[status] || 'bg-[#142433]/6 text-[#597189]';
+  const style = STATUS_CSS[status] || { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
   return (
-    <span className={`inline-flex rounded-full px-[10px] py-[4px] text-[0.82rem] font-semibold ${style}`}>
+    <span style={{ ...style, display: 'inline-flex', borderRadius: 999, padding: '3px 10px', fontSize: '0.8rem', fontWeight: 700 }}>
       {status}
     </span>
   );
@@ -357,14 +375,12 @@ function StatusBadge({ status }) {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function buildAnalytics(emailJobs, contacts) {
-  const sentJobs = emailJobs.filter((j) => j.status === 'sent' || j.status === 'completed').length;
-  const failedJobs = emailJobs.filter((j) => j.status === 'failed' || j.status === 'error').length;
+  const sentJobs   = emailJobs.filter(j => j.status === 'sent' || j.status === 'completed').length;
+  const failedJobs = emailJobs.filter(j => j.status === 'failed' || j.status === 'error').length;
   const totalResolved = sentJobs + failedJobs;
   const successRate = totalResolved > 0 ? Math.round((sentJobs / totalResolved) * 100) : null;
 
-  // Tiempo medio import → primer envío:
-  // Proxy: contactos que ya pasaron de 'enviar' a otra acción, con created_at y updated_at.
-  const actioned = contacts.filter((c) => {
+  const actioned = contacts.filter(c => {
     const action = String(c.next_action || '').toLowerCase();
     return action !== 'enviar' && c.created_at && c.updated_at;
   });

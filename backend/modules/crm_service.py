@@ -1717,24 +1717,43 @@ def delete_email_job(job_id: int) -> dict:
 
 def process_pending_email_jobs() -> dict:
     from modules import gmail_service
-    from pathlib import Path
 
     JOBS_PER_CYCLE = 25
     DELAY_BETWEEN_SENDS = 2
 
-    # Domingos: suspender todos los envíos
     if not _is_sending_day(now_art()):
-        print(f"[email_jobs] Domingo — envíos suspendidos hasta el lunes.")
+        print("[email_jobs] Domingo — envíos suspendidos hasta el lunes.")
         return {"sent": 0, "failed": 0, "skipped": 0}
 
     sent = 0
     failed = 0
     skipped = 0
 
-    # 1. Leer jobs candidatos: status='pending' y scheduled_at <= ahora (UTC)
-    #    JOIN con delivery_schedules para tener la ventana horaria en el mismo query.
+    # Atomic claim: transiciona pending → processing en un solo UPDATE.
+    # FOR UPDATE SKIP LOCKED garantiza que llamadas concurrentes (scheduler + run-now)
+    # nunca procesen el mismo job dos veces — cada fila sólo puede ser reclamada una vez.
     with get_session() as session:
-        jobs = session.execute(text("""
+        claimed_rows = session.execute(text("""
+            UPDATE email_jobs SET status = 'processing'
+            WHERE id IN (
+                SELECT id FROM email_jobs
+                WHERE status = 'pending' AND scheduled_at <= :now
+                ORDER BY scheduled_at ASC
+                LIMIT :limit
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id
+        """), {"now": now_iso(), "limit": JOBS_PER_CYCLE}).fetchall()
+
+        if not claimed_rows:
+            return {"sent": 0, "failed": 0, "skipped": 0}
+
+        claimed_ids = [r[0] for r in claimed_rows]
+
+        # Traer los datos completos de los jobs reclamados (con JOINs) en la misma sesión.
+        # Los IDs vienen de nuestro propio RETURNING — son enteros controlados, sin riesgo de inyección.
+        id_list = ",".join(str(i) for i in claimed_ids)
+        jobs = session.execute(text(f"""
             SELECT ej.id, ej.contact_id, ej.template_id, ej.cv_file_id,
                    ej.frequency_days, ej.scheduled_at, ej.schedule_id,
                    c.email, c.name, c.company,
@@ -1745,19 +1764,18 @@ def process_pending_email_jobs() -> dict:
             LEFT JOIN contacts c ON ej.contact_id = c.id
             LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
             LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
-            WHERE ej.status = 'pending' AND ej.scheduled_at <= :now
+            WHERE ej.id IN ({id_list})
             ORDER BY ej.scheduled_at ASC
-            LIMIT :limit
-        """), {"now": now_iso(), "limit": JOBS_PER_CYCLE}).fetchall()
+        """)).fetchall()
+    # La sesión hace commit aquí — los jobs están en 'processing' en DB.
 
-    # 2. Procesar cada job con sesión independiente de DB
+    # Procesar cada job con sesión independiente.
     for job in jobs:
         j = row_to_dict(job)
 
-        # --- Validación de ventana horaria ART ---
-        # Usamos la hora del scheduled_at (no la hora actual) para decidir si el job
-        # cae dentro de la ventana. Esto permite que jobs cuyo slot fue durante la
-        # ventana se envíen aunque el scheduler haya estado dormido y lo procese tarde.
+        # Validación de ventana horaria ART: usamos la hora del scheduled_at original
+        # para que jobs que debían enviarse durante la ventana se procesen aunque el
+        # scheduler haya estado dormido (cold start de Render).
         if j.get("schedule_id") is not None and j.get("start_hour_art") is not None:
             s_h = int(j["start_hour_art"])
             e_h = int(j["end_hour_art"])
@@ -1770,12 +1788,11 @@ def process_pending_email_jobs() -> dict:
                 sched_art_hour = now_art().hour
 
             if not (s_h <= sched_art_hour < e_h):
-                # Reprogramar al próximo slot válido en vez de ignorar indefinidamente
                 next_slot = _next_slot_start_art(s_h, e_h).replace(tzinfo=None)
                 next_slot_utc = (next_slot + timedelta(hours=3)).isoformat(timespec="seconds")
                 with get_session() as s:
                     s.execute(text(
-                        "UPDATE email_jobs SET scheduled_at = :t WHERE id = :id"
+                        "UPDATE email_jobs SET status = 'pending', scheduled_at = :t WHERE id = :id"
                     ), {"t": next_slot_utc, "id": j["id"]})
                 skipped += 1
                 print(
@@ -1858,9 +1875,8 @@ def process_pending_email_jobs() -> dict:
         time.sleep(DELAY_BETWEEN_SENDS)
 
     print(
-        f"[email_jobs] Ciclo completado — enviados: {sent}, "
-        f"fallidos: {failed}, fuera de ventana: {skipped}, "
-        f"hora ART: {now_art().strftime('%H:%M')}"
+        f"[email_jobs] Ciclo — enviados: {sent}, fallidos: {failed}, "
+        f"fuera de ventana: {skipped}, hora ART: {now_art().strftime('%H:%M')}"
     )
     return {"sent": sent, "failed": failed, "skipped": skipped}
 
