@@ -8,7 +8,7 @@ import {
   isFollowUpDue,
   prettifyEvent,
   formatDate,
-} from '../../AppShell';
+} from '../../lib/utils';
 
 const STATUS_STYLE = {
   prioridad:   { background: 'var(--red-bg)',    color: 'var(--red-text)'   },

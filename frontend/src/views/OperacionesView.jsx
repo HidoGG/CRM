@@ -35,6 +35,7 @@ export function OperacionesView({
   activePipelineActionFilter,
   onPipelineActionFilterChange,
   onOpenInWorktray,
+  onUpdateContact,
 }) {
   const [activeView, setActiveView] = useState('tabla');
 
@@ -138,6 +139,7 @@ export function OperacionesView({
           executingId={executingId}
           onExecuteAction={onExecuteAction}
           onOpenInWorktray={onOpenInWorktray}
+          onUpdateContact={onUpdateContact}
         />
       )}
     </div>

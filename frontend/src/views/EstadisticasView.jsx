@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
+import { API_BASE } from '../lib/api';
 import {
-  API_BASE,
   buildMultiSparklineSeries,
   buildSparklinePoints,
   formatDelta,
   getDeltaClassName,
   getRelativeBarWidth,
   prettifyAction,
-} from '../AppShell';
+} from '../lib/utils';
 
 export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
   const [activeRange, setActiveRange] = useState(7);

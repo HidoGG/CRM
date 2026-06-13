@@ -10,7 +10,13 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+# gmail.send: envío de correos. gmail.readonly: detección de respuestas y
+# rebotes. Un token emitido sólo con gmail.send sigue sirviendo para enviar;
+# las funciones de lectura informan que falta re-autorizar.
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
+]
 CREDENTIALS_FILE = Path(__file__).parent.parent / "credentials.json"
 TOKEN_FILE = Path(__file__).parent.parent / "token.json"
 _VERIFIER_FILE = Path(__file__).parent.parent / ".oauth_verifier"
@@ -66,6 +72,7 @@ def _load_token_str() -> str | None:
 
 
 def _save_token_str(token_json: str) -> None:
+    db_ok = False
     try:
         from modules.database import get_session
         from sqlalchemy import text
@@ -74,12 +81,15 @@ def _save_token_str(token_json: str) -> None:
                 INSERT INTO system_settings (key, value) VALUES ('gmail_token', :v)
                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
             """), {"v": token_json})
-    except Exception:
-        pass
+        db_ok = True
+    except Exception as exc:
+        print(f"[gmail_service] No se pudo guardar token en DB: {exc}")
     try:
         TOKEN_FILE.write_text(token_json)
-    except Exception:
-        pass
+    except Exception as exc:
+        # Si tampoco se pudo en DB, el token se perdería: dejar registro claro.
+        level = "CRÍTICO" if not db_ok else "aviso"
+        print(f"[gmail_service] ({level}) No se pudo guardar token en archivo: {exc}")
 
 
 def _clear_token() -> None:
@@ -233,19 +243,8 @@ def is_authorized() -> bool:
     return _get_credentials() is not None
 
 
-def send_email(
-    *,
-    to: str,
-    subject: str,
-    body: str,
-    cv_bytes: bytes | None = None,
-    cv_filename: str | None = None,
-) -> str:
-    """Envía un email via Gmail API.
-
-    Lanza RuntimeError si no hay credenciales.
-    cv_bytes: contenido binario del PDF adjunto, descargado previamente de Supabase Storage.
-    """
+def _build_service():
+    """Construye el cliente de la Gmail API o lanza RuntimeError si no hay token."""
     from googleapiclient.discovery import build
 
     creds = _get_credentials()
@@ -253,8 +252,51 @@ def send_email(
         raise RuntimeError(
             "Gmail no está autorizado. Completá el flujo OAuth desde la sección Envíos."
         )
+    return build("gmail", "v1", credentials=creds)
 
-    service = build("gmail", "v1", credentials=creds)
+
+def get_profile_email() -> str:
+    """Email de la cuenta autorizada (vacío si no se pudo obtener)."""
+    try:
+        service = _build_service()
+        profile = service.users().getProfile(userId="me").execute()
+        return profile.get("emailAddress", "")
+    except Exception as exc:
+        print(f"[gmail_service] No se pudo obtener perfil: {exc}")
+        return ""
+
+
+def has_readonly_scope() -> bool:
+    """¿El token ya otorgado incluye gmail.readonly?
+
+    Se lee del token guardado (scopes realmente otorgados), no de SCOPES
+    (scopes solicitados): un token viejo puede tener sólo gmail.send.
+    """
+    token_str = _load_token_str()
+    if not token_str:
+        return False
+    try:
+        granted = json.loads(token_str).get("scopes") or []
+    except Exception:
+        return False
+    return "https://www.googleapis.com/auth/gmail.readonly" in granted
+
+
+def send_email(
+    *,
+    to: str,
+    subject: str,
+    body: str,
+    cv_bytes: bytes | None = None,
+    cv_filename: str | None = None,
+) -> dict:
+    """Envía un email via Gmail API.
+
+    Lanza RuntimeError si no hay credenciales.
+    cv_bytes: contenido binario del PDF adjunto, descargado previamente de Supabase Storage.
+    Retorna {"id": <gmail message id>, "thread_id": <gmail thread id>}.
+    """
+    service = _build_service()
 
     # Obtener email del remitente para el header From
     sender_email = ""
@@ -282,15 +324,24 @@ def send_email(
     result = service.users().messages().send(
         userId="me", body={"raw": raw}
     ).execute()
-    return result.get("id", "")
+    return {"id": result.get("id", ""), "thread_id": result.get("threadId", "")}
 
 
 def get_status() -> dict:
     try:
         _get_client_config()
     except RuntimeError as e:
-        return {"authorized": False, "reason": str(e)}
+        return {"authorized": False, "has_readonly": False, "reason": str(e)}
     creds = _get_credentials()
     if not creds:
-        return {"authorized": False, "reason": "Token no generado. Completá la autorización."}
-    return {"authorized": True, "reason": "Listo para enviar"}
+        return {
+            "authorized": False,
+            "has_readonly": False,
+            "reason": "Token no generado. Completá la autorización.",
+        }
+    readonly = has_readonly_scope()
+    reason = "Listo para enviar" if readonly else (
+        "Listo para enviar. Para detectar respuestas y rebotes, "
+        "volvé a autorizar Gmail (falta el permiso de lectura)."
+    )
+    return {"authorized": True, "has_readonly": readonly, "reason": reason}

@@ -1036,6 +1036,42 @@ tr:last-child td {
   box-shadow: var(--shadow-sm);
   display: grid;
   gap: 16px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pipeline-column--over {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.kanban-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 20px;
+  cursor: grab;
+  color: var(--text-muted);
+  border-radius: 6px;
+  flex-shrink: 0;
+  font-size: 1rem;
+  letter-spacing: 2px;
+  user-select: none;
+  touch-action: none;
+}
+
+.kanban-drag-handle:hover {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+
+.kanban-drag-handle:active {
+  cursor: grabbing;
+}
+
+.pipeline-contact-card--dragging {
+  opacity: 0.4;
+  cursor: grabbing;
 }
 
 .pipeline-column-head {

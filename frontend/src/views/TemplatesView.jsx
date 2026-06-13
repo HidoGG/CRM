@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { API_BASE, apiFetch } from '../AppShell';
+import { API_BASE, apiFetch } from '../lib/api';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export function TemplatesView({ templates, onRefresh }) {
@@ -54,8 +54,17 @@ export function TemplatesView({ templates, onRefresh }) {
   }
 
   async function setDefault(id) {
-    await apiFetch(`${API_BASE}/templates/${id}/default`, { method: 'PUT' });
-    await onRefresh('templates');
+    try {
+      const res = await apiFetch(`${API_BASE}/templates/${id}/default`, { method: 'PUT' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.detail || 'No se pudo establecer la plantilla por defecto.');
+        return;
+      }
+      await onRefresh('templates');
+    } catch {
+      setError('Error de conexión al cambiar la plantilla por defecto.');
+    }
   }
 
   async function confirmRemove() {

@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import { capitalize, prettifyAction } from '../AppShell';
+import { capitalize, prettifyAction } from '../lib/utils';
 import { ConfirmModal } from '../components/ConfirmModal';
+
+const EDIT_FIELDS = [
+  { key: 'name',    label: 'Nombre',  type: 'text'  },
+  { key: 'email',   label: 'Email',   type: 'email' },
+  { key: 'company', label: 'Empresa', type: 'text'  },
+  { key: 'title',   label: 'Cargo',   type: 'text'  },
+  { key: 'notes',   label: 'Notas',   type: 'textarea' },
+];
 
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
@@ -14,11 +22,43 @@ const STATUS_STYLE = {
   portal:       { background: 'var(--purple-bg)', color: 'var(--purple-text)'},
 };
 
-export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, schedules = [] }) {
-  const [activeTab, setActiveTab] = useState('lista');
-  const [confirmId, setConfirmId] = useState(null);
+export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate, schedules = [] }) {
+  const [activeTab, setActiveTab]   = useState('lista');
+  const [confirmId, setConfirmId]   = useState(null);
+  const [editContact, setEditContact] = useState(null);
+  const [editForm, setEditForm]     = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError]   = useState('');
   const defaultSchedule = schedules.find(s => s.is_default) ?? schedules[0];
   const confirmContact  = contacts.find(c => c.id === confirmId);
+
+  function openEdit(contact) {
+    setEditContact(contact);
+    setEditForm({
+      name: contact.name || '',
+      email: contact.email || '',
+      company: contact.company || '',
+      title: contact.title || '',
+      notes: contact.notes || '',
+      status: contact.status || 'mantener',
+      next_action: contact.next_action || 'revisar_manual',
+    });
+    setEditError('');
+  }
+
+  async function saveEdit() {
+    if (!editForm.email?.trim()) { setEditError('El email es obligatorio.'); return; }
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await onUpdate(editContact.id, editForm);
+      setEditContact(null);
+    } catch (e) {
+      setEditError(e.message || 'Error al guardar.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   return (
     <section className="grid gap-5">
@@ -32,6 +72,82 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
         onConfirm={() => { onDelete(confirmId); setConfirmId(null); }}
         onCancel={() => setConfirmId(null)}
       />
+
+      {/* ── Modal de edición de contacto ── */}
+      {editContact && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-contact-heading"
+          onClick={e => { if (e.target === e.currentTarget) setEditContact(null); }}
+        >
+          <div
+            style={{ background: 'var(--surface-raised)', borderRadius: 24, padding: 28, width: '100%', maxWidth: 520, display: 'grid', gap: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.35)', border: '1px solid var(--border-faint)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 id="edit-contact-heading" style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '1.05rem' }}>
+              Editar contacto
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {EDIT_FIELDS.filter(f => f.type !== 'textarea').map(f => (
+                <div key={f.key} className="detail-field">
+                  <span>{f.label}</span>
+                  <input
+                    type={f.type}
+                    value={editForm[f.key] || ''}
+                    onChange={e => setEditForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    aria-label={f.label}
+                  />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="detail-field">
+                <span>Estado</span>
+                <select
+                  value={editForm.status || 'mantener'}
+                  onChange={e => setEditForm(prev => ({ ...prev, status: e.target.value }))}
+                  aria-label="Estado del contacto"
+                >
+                  {['mantener','revisar','seguimiento','prioridad','sacar','portal'].map(s => (
+                    <option key={s} value={s}>{capitalize(s)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="detail-field">
+                <span>Próxima acción</span>
+                <select
+                  value={editForm.next_action || 'revisar_manual'}
+                  onChange={e => setEditForm(prev => ({ ...prev, next_action: e.target.value }))}
+                  aria-label="Próxima acción"
+                >
+                  {['enviar','seguir','portal','descartar','revisar_manual'].map(a => (
+                    <option key={a} value={a}>{prettifyAction(a)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="detail-field">
+              <span>Notas</span>
+              <textarea
+                rows={3}
+                value={editForm.notes || ''}
+                onChange={e => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                style={{ resize: 'vertical', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', background: 'var(--surface-input)', color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit', lineHeight: 1.6 }}
+                aria-label="Notas del contacto"
+              />
+            </div>
+            {editError && <p style={{ margin: 0, color: 'var(--red-text)', fontSize: '0.87rem' }}>{editError}</p>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button type="button" className="ghost-button" onClick={() => setEditContact(null)}>Cancelar</button>
+              <button type="button" className="primary-button" onClick={saveEdit} disabled={editSaving}>
+                {editSaving ? 'Guardando…' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Header + tabs ── */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
@@ -94,17 +210,18 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
           >
             <table className="w-full table-fixed border-collapse text-sm">
               <colgroup>
-                <col style={{ width: '18%' }} />
                 <col style={{ width: '16%' }} />
-                <col style={{ width: '22%' }} />
-                <col style={{ width: '11%' }} />
                 <col style={{ width: '14%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '7%'  }} />
+                <col style={{ width: '19%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '9%'  }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '11%' }} />
               </colgroup>
               <thead>
                 <tr>
-                  {['Contacto', 'Empresa', 'Email', 'Estado', 'Acción', 'Origen', ''].map(col => (
+                  {['Contacto', 'Empresa', 'Email', 'Estado', 'Acción', 'Origen', 'Engage', ''].map(col => (
                     <th
                       key={col}
                       scope="col"
@@ -142,21 +259,49 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                         </td>
                         <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.source || '—'}</td>
                         <td style={{ padding: '10px 12px' }}>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmId(contact.id)}
-                            style={{ color: 'var(--red-text)', fontSize: '0.78rem', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                            aria-label={`Eliminar contacto ${contact.name || contact.email}`}
-                          >
-                            Eliminar
-                          </button>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {contact.replied_at && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'var(--green-bg)', color: 'var(--green-text)', whiteSpace: 'nowrap' }}
+                                title={`Respondió: ${new Date(contact.replied_at).toLocaleString('es-AR')}`}
+                              >
+                                Respondió
+                              </span>
+                            )}
+                            {contact.bounced_at && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: 'var(--red-bg)', color: 'var(--red-text)', whiteSpace: 'nowrap' }}
+                                title={`Rebote: ${new Date(contact.bounced_at).toLocaleString('es-AR')}`}
+                              >
+                                Rebotó
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(contact)}
+                              style={{ color: 'var(--accent)', fontSize: '0.78rem', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                              aria-label={`Editar contacto ${contact.name || contact.email}`}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmId(contact.id)}
+                              style={{ color: 'var(--red-text)', fontSize: '0.78rem', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                              aria-label={`Eliminar contacto ${contact.name || contact.email}`}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: '0.9rem' }}>
+                    <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: '0.9rem' }}>
                       No hay contactos para este filtro.
                     </td>
                   </tr>

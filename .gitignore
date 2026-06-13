@@ -14,3 +14,10 @@ backend/credentials.json
 backend/token.json
 backend/.oauth_verifier
 backend/uploads/
+
+# Datos personales (mailing) — nunca versionar
+*.xlsx
+*.xlsx.tmp
+
+# Scripts temporales de verificación
+backend/tools_check_emails.py

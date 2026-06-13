@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { API_BASE, apiFetch } from '../AppShell';
+import { API_BASE, apiFetch } from '../lib/api';
 import { ConfirmModal, InfoModal } from '../components/ConfirmModal';
 
 const STATUS_LABEL = { pending: 'Pendiente', sent: 'Enviado', failed: 'Fallido', processing: 'Procesando' };
@@ -25,6 +25,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   const [confirmCv, setConfirmCv]   = useState(null);
   const [confirmJob, setConfirmJob] = useState(null);
   const [runResult, setRunResult]   = useState(null);
+  const [authError, setAuthError]   = useState('');
 
   function handleFileSelected(e) {
     const file = e.target.files?.[0];
@@ -97,13 +98,13 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
       const res = await apiFetch(`${API_BASE}/gmail/auth-url`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(`Error al obtener URL de autorización: ${body.detail || res.status}`);
+        setAuthError(`Error al obtener URL de autorización: ${body.detail || res.status}`);
         return;
       }
       const { url } = await res.json();
       window.location.href = url;
     } catch (e) {
-      alert(`No se pudo conectar con el servidor: ${e.message}`);
+      setAuthError(`No se pudo conectar con el servidor: ${e.message}`);
     }
   }
 
@@ -149,6 +150,12 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
         title={resultTitle()}
         message={<p className="m-0">{resultMessage()}</p>}
         onClose={() => setRunResult(null)}
+      />
+      <InfoModal
+        open={Boolean(authError)}
+        title="Error de autorización"
+        message={<p className="m-0">{authError}</p>}
+        onClose={() => setAuthError('')}
       />
       <ConfirmModal
         open={confirmCv !== null}

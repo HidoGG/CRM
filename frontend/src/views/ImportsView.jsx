@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { capitalize, formatDate, prettifyAction } from '../AppShell';
+import { capitalize, formatDate, prettifyAction } from '../lib/utils';
 
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];

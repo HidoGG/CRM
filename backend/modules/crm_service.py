@@ -8,10 +8,11 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from urllib.parse import quote, urlencode
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
-from modules.database import get_session, insert_history, now_iso, row_to_dict
+from modules.database import get_session, insert_history, now_utc, row_to_dict
 
 
 # ---------------------------------------------------------------------------
@@ -21,13 +22,14 @@ from modules.database import get_session, insert_history, now_iso, row_to_dict
 EMAIL_RE = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.IGNORECASE)
 VALID_EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$", re.IGNORECASE)
 
-# Argentina no usa DST — offset fijo UTC-3
-ART_OFFSET = timedelta(hours=-3)
+# Zona horaria oficial de Argentina (IANA). Maneja offset y reglas históricas
+# correctamente, sin aritmética manual de horas.
+ART_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 
 
 def now_art() -> datetime:
-    """Retorna la hora actual en Argentina (UTC-3)."""
-    return datetime.now(timezone.utc) + ART_OFFSET
+    """Retorna la hora actual en Argentina (aware)."""
+    return datetime.now(ART_TZ)
 
 
 def _is_sending_day(dt: datetime) -> bool:
@@ -43,14 +45,20 @@ def _next_working_day(dt: datetime) -> datetime:
     return nxt
 
 
-def _next_slot_start_art(start_h: int, end_h: int) -> datetime:
+def _next_slot_start_art(start_h: int, end_h: int, now: datetime | None = None) -> datetime:
     """
     Retorna el próximo momento válido para enviar un job en hora ART,
-    saltando domingos automáticamente.
+    saltando domingos automáticamente. `now` es inyectable para tests.
     """
-    now = now_art()
-    # Si hoy es domingo, empezar el lunes
-    base = now if _is_sending_day(now) else _next_working_day(now)
+    if now is None:
+        now = now_art()
+    # Si hoy es domingo, empezar el lunes desde el inicio de la ventana
+    # (no desde la misma hora del domingo, que desperdicia ventana útil).
+    base = now
+    if not _is_sending_day(base):
+        base = _next_working_day(base).replace(
+            hour=start_h, minute=0, second=0, microsecond=0
+        )
     today_start = base.replace(hour=start_h, minute=0, second=0, microsecond=0)
     today_end = base.replace(hour=end_h, minute=0, second=0, microsecond=0)
     if base <= today_start:
@@ -62,17 +70,18 @@ def _next_slot_start_art(start_h: int, end_h: int) -> datetime:
     return next_day.replace(hour=start_h, minute=0, second=0, microsecond=0)
 
 
-def calc_job_scheduled_at(schedule: dict, job_index: int = 0) -> str:
+def calc_job_scheduled_at(schedule: dict, job_index: int = 0, now: datetime | None = None) -> datetime:
     """
-    Calcula el scheduled_at en UTC ISO para el job número job_index dentro de un lote.
-    Distribuye los envíos respetando la ventana horaria ART; si el lote supera
-    la ventana diaria, los jobs restantes se programan para días siguientes.
+    Calcula el scheduled_at (datetime UTC aware) para el job número job_index
+    dentro de un lote. Distribuye los envíos respetando la ventana horaria ART;
+    si el lote supera la ventana diaria, los jobs restantes se programan para
+    días siguientes. `now` es inyectable para tests.
     """
     start_h = int(schedule["start_hour_art"])
     end_h = int(schedule["end_hour_art"])
     interval = max(1, int(schedule["interval_minutes"]))
 
-    base_art = _next_slot_start_art(start_h, end_h)
+    base_art = _next_slot_start_art(start_h, end_h, now=now)
     remaining = job_index * interval
     current = base_art
 
@@ -88,8 +97,8 @@ def calc_job_scheduled_at(schedule: dict, job_index: int = 0) -> str:
             current = next_day.replace(hour=start_h, minute=0, second=0, microsecond=0)
             remaining -= mins_left
 
-    # Convertir ART → UTC para almacenar en DB
-    return (current - ART_OFFSET).isoformat(timespec="seconds")
+    # Almacenar siempre en UTC
+    return current.astimezone(timezone.utc)
 
 
 def _is_within_art_window(start_h: int, end_h: int) -> bool:
@@ -149,12 +158,16 @@ def normalize_decision(value: object) -> str:
     return "pending"
 
 
-def normalize_follow_up_date(value: object) -> str | None:
+def normalize_follow_up_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
     cleaned = clean_optional(value)
     if not cleaned:
         return None
     try:
-        return date.fromisoformat(cleaned).isoformat()
+        return date.fromisoformat(cleaned)
     except ValueError:
         return None
 
@@ -182,13 +195,13 @@ def extract_import_id(path: str) -> int | None:
 # Action & business logic helpers
 # ---------------------------------------------------------------------------
 
-def infer_follow_up_date_for_action(action: object) -> str | None:
+def infer_follow_up_date_for_action(action: object) -> date | None:
     normalized = normalize_next_action(action)
     today = datetime.now(timezone.utc).date()
     if normalized == "enviar":
-        return (today + timedelta(days=3)).isoformat()
+        return today + timedelta(days=3)
     if normalized == "seguir":
-        return (today + timedelta(days=7)).isoformat()
+        return today + timedelta(days=7)
     return None
 
 
@@ -311,6 +324,10 @@ def build_draft_body(contact: dict, action: str) -> str:
 # ---------------------------------------------------------------------------
 
 def parse_iso_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
     cleaned = clean_optional(value)
     if not cleaned:
         return None
@@ -321,6 +338,10 @@ def parse_iso_date(value: object) -> date | None:
 
 
 def parse_iso_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
     cleaned = clean_optional(value)
     if not cleaned:
         return None
@@ -409,8 +430,8 @@ def build_reporting_overview(contacts: list[dict], history: list[dict]) -> dict:
     previous_7d = count_actions_between(history, now - timedelta(days=14), now - timedelta(days=7))
 
     return {
-        "generated_at": now_iso(),
-        "snapshot_date": today.isoformat(),
+        "generated_at": now_utc(),
+        "snapshot_date": today,
         "queue": queue,
         "actions": actions,
         "statuses": [
@@ -456,7 +477,7 @@ def build_reporting_overview_payload(session) -> dict:
             FROM contacts
         """)
     ).fetchall()
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
     history_rows = session.execute(
         text("""
             SELECT event_type, metadata_json, created_at
@@ -475,7 +496,7 @@ def build_reporting_overview_payload(session) -> dict:
 def persist_reporting_snapshot(session, overview: dict) -> None:
     snapshot_date = overview.get("snapshot_date")
     queue = overview.get("queue", {})
-    now = now_iso()
+    now = now_utc()
     session.execute(
         text("""
             INSERT INTO reporting_snapshots (
@@ -632,7 +653,7 @@ _CONTACT_COLS = (
 )
 
 
-def get_contacts(limit: int = 100, offset: int = 0) -> list[dict]:
+def get_contacts(limit: int = 500, offset: int = 0) -> list[dict]:
     with get_session() as session:
         rows = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts ORDER BY id DESC LIMIT :limit OFFSET :offset"),
@@ -648,8 +669,13 @@ def delete_contact(contact_id: int) -> dict:
         ).fetchone()
         if not row:
             raise ServiceError("Contacto no encontrado.", HTTPStatus.NOT_FOUND)
+        # Los jobs pendientes se borran por ON DELETE CASCADE — informarlo al caller
+        pending_jobs = session.execute(
+            text("SELECT COUNT(*) FROM email_jobs WHERE contact_id = :id AND status = 'pending'"),
+            {"id": contact_id},
+        ).scalar()
         session.execute(text("DELETE FROM contacts WHERE id = :id"), {"id": contact_id})
-    return {"deleted": contact_id}
+    return {"deleted": contact_id, "cancelled_jobs": int(pending_jobs or 0)}
 
 
 def get_summary() -> dict:
@@ -685,22 +711,22 @@ def get_summary() -> dict:
 def get_contact_history(contact_id: int) -> list[dict]:
     with get_session() as session:
         row = session.execute(
-            text("SELECT id, email FROM contacts WHERE id = :id"),
+            text("SELECT id FROM contacts WHERE id = :id"),
             {"id": contact_id},
         ).fetchone()
         if row is None:
             raise ServiceError("Contact not found", HTTPStatus.NOT_FOUND)
-        email = row_to_dict(row)["email"]
+        # Consulta por entidad (indexada) — todos los eventos de contacto
+        # registran entity_id, por lo que el match por substring ya no es necesario.
         rows = session.execute(
             text("""
                 SELECT id, event_type, entity_type, entity_id, message, metadata_json, created_at
                 FROM history
-                WHERE (entity_type = 'contact' AND entity_id = :contact_id)
-                   OR (metadata_json IS NOT NULL AND strpos(lower(metadata_json), lower(:email)) > 0)
+                WHERE entity_type = 'contact' AND entity_id = :contact_id
                 ORDER BY created_at DESC, id DESC
                 LIMIT 30
             """),
-            {"contact_id": str(contact_id), "email": email},
+            {"contact_id": str(contact_id)},
         ).fetchall()
     return [row_to_dict(row) for row in rows]
 
@@ -711,7 +737,7 @@ def create_contact(payload: dict) -> dict:
     if not VALID_EMAIL_RE.fullmatch(email):
         raise ServiceError("invalid email format", HTTPStatus.UNPROCESSABLE_ENTITY)
 
-    now = now_iso()
+    now = now_utc()
     with get_session() as session:
         existing = session.execute(
             text("SELECT id FROM contacts WHERE email = :email"),
@@ -773,6 +799,88 @@ def create_contact(payload: dict) -> dict:
     return row_to_dict(row)
 
 
+# Campos editables vía PATCH y su normalizador correspondiente
+_UPDATABLE_CONTACT_FIELDS = {
+    "email": normalize_email,
+    "name": clean_name,
+    "company": clean_optional,
+    "title": clean_optional,
+    "status": normalize_status,
+    "next_action": normalize_next_action,
+    "suggested_message": clean_optional,
+    "follow_up_date": normalize_follow_up_date,
+    "portal_url": clean_optional,
+    "portal_status": clean_optional,
+    "discard_reason": clean_optional,
+    "notes": clean_optional,
+}
+
+
+def update_contact(contact_id: int, payload: dict) -> dict:
+    """Actualización parcial de un contacto. Sólo toca los campos presentes."""
+    updates: dict = {}
+    for field, normalizer in _UPDATABLE_CONTACT_FIELDS.items():
+        if field in payload:
+            updates[field] = normalizer(payload[field])
+
+    if not updates:
+        raise ServiceError("No hay campos para actualizar.", HTTPStatus.UNPROCESSABLE_ENTITY)
+
+    if "email" in updates:
+        email = updates["email"]
+        if not email or not VALID_EMAIL_RE.fullmatch(email):
+            raise ServiceError("invalid email format", HTTPStatus.UNPROCESSABLE_ENTITY)
+    if "name" in updates and not updates["name"]:
+        raise ServiceError("El nombre no puede quedar vacío.", HTTPStatus.UNPROCESSABLE_ENTITY)
+
+    with get_session() as session:
+        row = session.execute(
+            text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
+            {"id": contact_id},
+        ).fetchone()
+        if row is None:
+            raise ServiceError("Contacto no encontrado.", HTTPStatus.NOT_FOUND)
+        previous = row_to_dict(row)
+
+        if "email" in updates and updates["email"] != previous["email"]:
+            duplicate = session.execute(
+                text("SELECT id FROM contacts WHERE email = :email AND id != :id"),
+                {"email": updates["email"], "id": contact_id},
+            ).fetchone()
+            if duplicate is not None:
+                raise ServiceError("contact email already exists", HTTPStatus.CONFLICT)
+
+        updates["updated_at"] = now_utc()
+        set_clause = ", ".join(f"{field} = :{field}" for field in updates)
+        params = {**updates, "id": contact_id}
+        session.execute(
+            text(f"UPDATE contacts SET {set_clause} WHERE id = :id"), params
+        )
+
+        changed_fields = [f for f in updates if f != "updated_at"]
+        insert_history(
+            session,
+            event_type="contact.updated",
+            entity_type="contact",
+            entity_id=str(contact_id),
+            message=f"Updated contact {previous.get('email')}: {', '.join(changed_fields)}",
+            metadata_json=json.dumps(
+                {
+                    "contact_id": contact_id,
+                    "changed_fields": changed_fields,
+                    "previous": {f: previous.get(f) for f in changed_fields},
+                },
+                ensure_ascii=True,
+                default=str,
+            ),
+        )
+        updated = session.execute(
+            text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
+            {"id": contact_id},
+        ).fetchone()
+    return row_to_dict(updated)
+
+
 def execute_contact_action(contact_id: int, payload: dict) -> dict:
     raw_action = clean_optional(payload.get("action"))
     requested_action = normalize_next_action(raw_action) if raw_action else None
@@ -781,7 +889,7 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
     portal_url = clean_optional(payload.get("portal_url"))
     portal_status = clean_optional(payload.get("portal_status"))
     discard_reason = clean_optional(payload.get("discard_reason"))
-    now = now_iso()
+    now = now_utc()
 
     with get_session() as session:
         row = session.execute(
@@ -868,6 +976,7 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
                     "discard_reason": next_discard_reason,
                 },
                 ensure_ascii=True,
+                default=str,
             ),
         )
         updated_row = session.execute(
@@ -891,9 +1000,9 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def get_reporting_overview() -> dict:
+    """Lectura pura: NO persiste snapshots (eso lo hace el scheduler)."""
     with get_session() as session:
         overview = build_reporting_overview_payload(session)
-        persist_reporting_snapshot(session, overview)
         previous_snapshot = get_previous_reporting_snapshot(session, overview["snapshot_date"])
         recent_snapshots = get_recent_reporting_snapshots(session, 30)
     overview["stock_comparison"] = build_stock_comparison(overview, previous_snapshot)
@@ -901,10 +1010,18 @@ def get_reporting_overview() -> dict:
     return overview
 
 
-def export_reporting_csv(export_type: str, limit: int) -> tuple[str, str]:
+def persist_daily_snapshot_job() -> dict:
+    """Job del scheduler: persiste el snapshot del día (upsert idempotente)."""
     with get_session() as session:
         overview = build_reporting_overview_payload(session)
         persist_reporting_snapshot(session, overview)
+    print(f"[reporting] Snapshot {overview['snapshot_date']} persistido.")
+    return {"snapshot_date": str(overview["snapshot_date"])}
+
+
+def export_reporting_csv(export_type: str, limit: int) -> tuple[str, str]:
+    with get_session() as session:
+        overview = build_reporting_overview_payload(session)
         previous_snapshot = get_previous_reporting_snapshot(session, overview["snapshot_date"])
         recent_snapshots = get_recent_reporting_snapshots(session, limit)
     overview["stock_comparison"] = build_stock_comparison(overview, previous_snapshot)
@@ -965,7 +1082,7 @@ def create_mock_import(payload: dict) -> dict:
     source = str(payload.get("source", "manual")).strip() or "manual"
     total_contacts = int(payload.get("total_contacts", 0))
     notes = clean_optional(payload.get("notes"))
-    now = now_iso()
+    now = now_utc()
 
     with get_session() as session:
         result = session.execute(
@@ -1016,7 +1133,7 @@ def preview_import(filename: str, mime_type: str, raw_bytes: bytes, source: str)
         prepared = prepare_candidates(extraction, existing_emails)
         prepared, classification_provider = classify_candidates(prepared, capabilities=extraction["capabilities"])
         totals = summarize_candidates(prepared)
-        now = now_iso()
+        now = now_utc()
         result = session.execute(
             text("""
                 INSERT INTO imports (
@@ -1110,7 +1227,7 @@ def confirm_import(import_id: int, payload: dict) -> dict:
     template_id: int | None = payload.get("template_id")
     cv_file_id: int | None = payload.get("cv_file_id")
     schedule_id: int | None = payload.get("schedule_id")
-    now = now_iso()
+    now = now_utc()
     inserted_contacts = []
     # Contador de jobs por schedule para espaciar correctamente los scheduled_at
     _schedule_job_index: dict[int | None, int] = {}
@@ -1255,7 +1372,7 @@ _DEFAULT_TEMPLATE_BODY = (
 def _ensure_default_template(session) -> None:
     count = session.execute(text("SELECT COUNT(*) FROM message_templates")).scalar()
     if count == 0:
-        now = now_iso()
+        now = now_utc()
         session.execute(
             text("""
                 INSERT INTO message_templates (name, subject, body, is_default, created_at, updated_at)
@@ -1281,7 +1398,7 @@ def create_template(payload: dict) -> dict:
     body = (payload.get("body") or "").strip()
     if not name or not subject or not body:
         raise ServiceError("Nombre, asunto y cuerpo son obligatorios.")
-    now = now_iso()
+    now = now_utc()
     with get_session() as session:
         result = session.execute(
             text("""
@@ -1314,7 +1431,7 @@ def update_template(template_id: int, payload: dict) -> dict:
             fields["body"] = payload["body"].strip()
         if not fields:
             raise ServiceError("No hay campos para actualizar.")
-        fields["updated_at"] = now_iso()
+        fields["updated_at"] = now_utc()
         fields["id"] = template_id
         set_clause = ", ".join(f"{k} = :{k}" for k in fields if k != "id")
         session.execute(text(f"UPDATE message_templates SET {set_clause} WHERE id = :id"), fields)
@@ -1384,9 +1501,9 @@ def _auto_create_email_job(
         sched_row = session.execute(
             text("SELECT * FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
         ).fetchone()
-        scheduled_at = calc_job_scheduled_at(row_to_dict(sched_row), job_index) if sched_row else now_iso()
+        scheduled_at = calc_job_scheduled_at(row_to_dict(sched_row), job_index) if sched_row else now_utc()
     else:
-        scheduled_at = now_iso()
+        scheduled_at = now_utc()
 
     session.execute(text("""
         INSERT INTO email_jobs (contact_id, template_id, cv_file_id, frequency_days,
@@ -1395,7 +1512,7 @@ def _auto_create_email_job(
             :schedule_id, :scheduled_at, 'pending', :now)
     """), {
         "contact_id": contact_id, "template_id": template_id, "cv_file_id": cv_file_id,
-        "schedule_id": schedule_id, "scheduled_at": scheduled_at, "now": now_iso(),
+        "schedule_id": schedule_id, "scheduled_at": scheduled_at, "now": now_utc(),
     })
 
 
@@ -1437,7 +1554,7 @@ def get_cv_files() -> list[dict]:
 
 
 def save_cv_file(original_name: str, file_path: str, comment: str = "") -> dict:
-    now = now_iso()
+    now = now_utc()
     with get_session() as session:
         count = session.execute(text("SELECT COUNT(*) FROM cv_files")).scalar()
         is_default = 1 if count == 0 else 0
@@ -1529,7 +1646,7 @@ def create_schedule(payload: dict) -> dict:
         raise ServiceError(
             "Horas inválidas: start_hour_art debe ser menor a end_hour_art y ambas entre 0 y 23."
         )
-    now = now_iso()
+    now = now_utc()
     with get_session() as session:
         # Si es el primero, queda como default automáticamente
         count = session.execute(text("SELECT COUNT(*) FROM delivery_schedules")).scalar()
@@ -1661,7 +1778,7 @@ def create_email_job(payload: dict) -> dict:
     template_id = payload.get("template_id")
     cv_file_id = payload.get("cv_file_id")
     frequency_days = int(payload.get("frequency_days") or 0)
-    scheduled_at = payload.get("scheduled_at") or now_iso()
+    scheduled_at = parse_iso_datetime(payload.get("scheduled_at")) or now_utc()
 
     if not contact_id:
         raise ServiceError("contact_id es obligatorio.")
@@ -1688,7 +1805,7 @@ def create_email_job(payload: dict) -> dict:
                 RETURNING id
             """),
             {"contact_id": contact_id, "template_id": template_id, "cv_file_id": cv_file_id,
-             "frequency_days": frequency_days, "scheduled_at": scheduled_at, "now": now_iso()},
+             "frequency_days": frequency_days, "scheduled_at": scheduled_at, "now": now_utc()},
         )
         new_id = result.fetchone()[0]
         row = session.execute(text("""
@@ -1720,6 +1837,7 @@ def process_pending_email_jobs() -> dict:
 
     JOBS_PER_CYCLE = 25
     DELAY_BETWEEN_SENDS = 2
+    MAX_RETRIES_PER_JOB = 3
 
     if not _is_sending_day(now_art()):
         print("[email_jobs] Domingo — envíos suspendidos hasta el lunes.")
@@ -1743,7 +1861,7 @@ def process_pending_email_jobs() -> dict:
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id
-        """), {"now": now_iso(), "limit": JOBS_PER_CYCLE}).fetchall()
+        """), {"now": now_utc(), "limit": JOBS_PER_CYCLE}).fetchall()
 
         if not claimed_rows:
             return {"sent": 0, "failed": 0, "skipped": 0}
@@ -1751,22 +1869,25 @@ def process_pending_email_jobs() -> dict:
         claimed_ids = [r[0] for r in claimed_rows]
 
         # Traer los datos completos de los jobs reclamados (con JOINs) en la misma sesión.
-        # Los IDs vienen de nuestro propio RETURNING — son enteros controlados, sin riesgo de inyección.
-        id_list = ",".join(str(i) for i in claimed_ids)
-        jobs = session.execute(text(f"""
-            SELECT ej.id, ej.contact_id, ej.template_id, ej.cv_file_id,
-                   ej.frequency_days, ej.scheduled_at, ej.schedule_id,
-                   c.email, c.name, c.company,
-                   cv.file_path, cv.original_name,
-                   ds.name as schedule_name,
-                   ds.start_hour_art, ds.end_hour_art, ds.interval_minutes
-            FROM email_jobs ej
-            LEFT JOIN contacts c ON ej.contact_id = c.id
-            LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
-            LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
-            WHERE ej.id IN ({id_list})
-            ORDER BY ej.scheduled_at ASC
-        """)).fetchall()
+        # bindparam expanding: SQLAlchemy expande la lista a parámetros posicionales.
+        jobs = session.execute(
+            text("""
+                SELECT ej.id, ej.contact_id, ej.template_id, ej.cv_file_id,
+                       ej.frequency_days, ej.scheduled_at, ej.schedule_id,
+                       ej.retry_count,
+                       c.email, c.name, c.company,
+                       cv.file_path, cv.original_name,
+                       ds.name as schedule_name,
+                       ds.start_hour_art, ds.end_hour_art, ds.interval_minutes
+                FROM email_jobs ej
+                LEFT JOIN contacts c ON ej.contact_id = c.id
+                LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
+                LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
+                WHERE ej.id IN :ids
+                ORDER BY ej.scheduled_at ASC
+            """).bindparams(bindparam("ids", expanding=True)),
+            {"ids": claimed_ids},
+        ).fetchall()
     # La sesión hace commit aquí — los jobs están en 'processing' en DB.
 
     # Procesar cada job con sesión independiente.
@@ -1779,17 +1900,13 @@ def process_pending_email_jobs() -> dict:
         if j.get("schedule_id") is not None and j.get("start_hour_art") is not None:
             s_h = int(j["start_hour_art"])
             e_h = int(j["end_hour_art"])
-            try:
-                sched_utc = datetime.fromisoformat(
-                    str(j["scheduled_at"]).replace("Z", "+00:00")
-                ).astimezone(timezone.utc)
-                sched_art_hour = (sched_utc + ART_OFFSET).hour
-            except Exception:
-                sched_art_hour = now_art().hour
+            sched_utc = parse_iso_datetime(j["scheduled_at"])
+            sched_art_hour = (
+                sched_utc.astimezone(ART_TZ).hour if sched_utc else now_art().hour
+            )
 
             if not (s_h <= sched_art_hour < e_h):
-                next_slot = _next_slot_start_art(s_h, e_h).replace(tzinfo=None)
-                next_slot_utc = (next_slot + timedelta(hours=3)).isoformat(timespec="seconds")
+                next_slot_utc = _next_slot_start_art(s_h, e_h).astimezone(timezone.utc)
                 with get_session() as s:
                     s.execute(text(
                         "UPDATE email_jobs SET status = 'pending', scheduled_at = :t WHERE id = :id"
@@ -1797,7 +1914,7 @@ def process_pending_email_jobs() -> dict:
                 skipped += 1
                 print(
                     f"[email_jobs] Job {j['id']} fuera de ventana "
-                    f"({s_h}:00–{e_h}:00 ART) — reprogramado para {next_slot_utc}"
+                    f"({s_h}:00–{e_h}:00 ART) — reprogramado para {next_slot_utc.isoformat()}"
                 )
                 continue
 
@@ -1825,7 +1942,7 @@ def process_pending_email_jobs() -> dict:
                     "body": f"{j['name'] or 'Hola'},\n\nTe comparto mi CV.\n\nGracias,\nGabriel",
                 }
 
-            msg_id = gmail_service.send_email(
+            send_result = gmail_service.send_email(
                 to=j["email"],
                 subject=rendered["subject"],
                 body=rendered["body"],
@@ -1836,13 +1953,16 @@ def process_pending_email_jobs() -> dict:
             with get_session() as s:
                 s.execute(text("""
                     UPDATE email_jobs SET status = 'sent', sent_at = :now,
-                        gmail_message_id = :msg_id WHERE id = :id
-                """), {"now": now_iso(), "msg_id": msg_id, "id": j["id"]})
+                        gmail_message_id = :msg_id, thread_id = :thread_id WHERE id = :id
+                """), {
+                    "now": now_utc(), "msg_id": send_result["id"],
+                    "thread_id": send_result.get("thread_id"), "id": j["id"],
+                })
 
                 if j["frequency_days"] and int(j["frequency_days"]) > 0:
                     next_send = (
                         datetime.now(timezone.utc) + timedelta(days=int(j["frequency_days"]))
-                    ).isoformat(timespec="seconds")
+                    )
                     s.execute(text("""
                         INSERT INTO email_jobs (contact_id, template_id, cv_file_id,
                             frequency_days, schedule_id, scheduled_at, status, created_at)
@@ -1852,7 +1972,7 @@ def process_pending_email_jobs() -> dict:
                         "contact_id": j["contact_id"], "template_id": j["template_id"],
                         "cv_file_id": j["cv_file_id"], "frequency_days": j["frequency_days"],
                         "schedule_id": j.get("schedule_id"), "scheduled_at": next_send,
-                        "now": now_iso(),
+                        "now": now_utc(),
                     })
                 insert_history(s, event_type="email.sent", entity_type="contact",
                                entity_id=str(j["contact_id"]),
@@ -1862,12 +1982,34 @@ def process_pending_email_jobs() -> dict:
 
         except Exception as exc:
             err_msg = str(exc)[:500]
-            print(f"[email_jobs] Fallo job {j['id']} ({j.get('email')}): {err_msg}")
+            retry_count = int(j.get("retry_count") or 0)
             try:
                 with get_session() as s:
-                    s.execute(text("""
-                        UPDATE email_jobs SET status = 'failed', error_message = :err WHERE id = :id
-                    """), {"err": err_msg, "id": j["id"]})
+                    if retry_count < MAX_RETRIES_PER_JOB:
+                        # Reintento automático con backoff: 5, 15, 45 minutos
+                        delay_min = 5 * (3 ** retry_count)
+                        next_try = datetime.now(timezone.utc) + timedelta(minutes=delay_min)
+                        s.execute(text("""
+                            UPDATE email_jobs
+                            SET status = 'pending', retry_count = :rc,
+                                scheduled_at = :next_try, error_message = :err
+                            WHERE id = :id
+                        """), {
+                            "rc": retry_count + 1, "next_try": next_try,
+                            "err": err_msg, "id": j["id"],
+                        })
+                        print(
+                            f"[email_jobs] Fallo job {j['id']} ({j.get('email')}): {err_msg} "
+                            f"— reintento {retry_count + 1}/{MAX_RETRIES_PER_JOB} en {delay_min} min"
+                        )
+                    else:
+                        s.execute(text("""
+                            UPDATE email_jobs SET status = 'failed', error_message = :err WHERE id = :id
+                        """), {"err": err_msg, "id": j["id"]})
+                        print(
+                            f"[email_jobs] Fallo definitivo job {j['id']} ({j.get('email')}) "
+                            f"tras {retry_count} reintentos: {err_msg}"
+                        )
             except Exception as db_exc:
                 print(f"[email_jobs] No se pudo registrar fallo en DB: {db_exc}")
             failed += 1
@@ -1909,7 +2051,7 @@ def retry_failed_email_jobs() -> dict:
             UPDATE email_jobs
             SET status = 'pending', scheduled_at = :now, error_message = NULL
             WHERE status = 'failed'
-        """), {"now": now_iso()})
+        """), {"now": now_utc()})
         retried = result.rowcount
     print(f"[email_jobs] Retry: {retried} jobs fallidos reseteados a pending.")
     return {"retried": retried}

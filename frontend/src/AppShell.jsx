@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { HoyView } from './views/HoyView';
@@ -6,19 +7,24 @@ import { EstadisticasView } from './views/EstadisticasView';
 import { OperacionesView } from './views/OperacionesView';
 import { ContactsView } from './views/ContactsView';
 import { ImportsView } from './views/ImportsView';
-import { EmailJobsView } from './views/EmailJobsView';
 import { EnviosView } from './views/EnviosView';
-
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
-const _API_KEY = import.meta.env.VITE_API_KEY || '';
-
-/** Drop-in fetch que inyecta X-API-Key en todas las llamadas al backend. */
-export function apiFetch(url, options = {}) {
-  if (!_API_KEY) return fetch(url, options);
-  const headers = new Headers(options.headers || {});
-  headers.set('X-API-Key', _API_KEY);
-  return fetch(url, { ...options, headers });
-}
+import { LoginView } from './views/LoginView';
+import { API_BASE, apiFetch, setAccessToken } from './lib/api';
+import { authEnabled, supabase } from './lib/supabaseClient';
+import {
+  useCapabilities,
+  useContacts,
+  useCvFiles,
+  useEmailJobs,
+  useGmailStatus,
+  useImports,
+  useRefresh,
+  useReporting,
+  useSchedules,
+  useSummary,
+  useTemplates,
+} from './lib/queries';
+import { matchesTimingFilter, prettifyAction, timingFilters, worktrayActions } from './lib/utils';
 
 const defaultForm = {
   email: '',
@@ -32,13 +38,95 @@ const defaultForm = {
   schedule_id: null,
 };
 
-export const worktrayActions = ['enviar', 'seguir', 'portal', 'descartar'];
-export const timingFilters = ['todos', 'vencido', 'hoy', 'esta_semana'];
+// Rutas reales (URL navegable, botón atrás del navegador funciona)
+const VIEW_ROUTES = {
+  dashboard: '/',
+  operaciones: '/operaciones',
+  bandeja: '/operaciones',
+  pipeline: '/operaciones',
+  contactos: '/contactos',
+  importaciones: '/importaciones',
+  envios: '/envios',
+  plantillas: '/envios',
+  cronogramas: '/envios',
+  estadisticas: '/estadisticas',
+  tendencias: '/estadisticas',
+};
+
+const PATH_TITLES = {
+  '/': 'Hoy',
+  '/operaciones': 'Operaciones',
+  '/contactos': 'Contactos',
+  '/importaciones': 'Importaciones',
+  '/envios': 'Envíos',
+  '/estadisticas': 'Estadísticas',
+};
+
+function pathToViewId(pathname) {
+  if (pathname.startsWith('/operaciones')) return 'operaciones';
+  if (pathname.startsWith('/contactos')) return 'contactos';
+  if (pathname.startsWith('/importaciones')) return 'importaciones';
+  if (pathname.startsWith('/envios')) return 'envios';
+  if (pathname.startsWith('/estadisticas')) return 'estadisticas';
+  return 'dashboard';
+}
 
 function AppShell() {
-  const [activeView, setActiveView] = useState('dashboard');
-  const [contacts, setContacts] = useState([]);
-  const [imports, setImports] = useState([]);
+  // ── Sesión Supabase (opcional) ──
+  const [session, setSession] = useState(undefined); // undefined = cargando
+
+  useEffect(() => {
+    if (!authEnabled) {
+      setSession(null);
+      return undefined;
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      setAccessToken(data.session?.access_token);
+      setSession(data.session ?? null);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setAccessToken(newSession?.access_token);
+      setSession(newSession ?? null);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  if (authEnabled && session === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ color: 'var(--text-secondary)' }}>
+        Cargando sesión…
+      </div>
+    );
+  }
+  if (authEnabled && !session) {
+    return <LoginView />;
+  }
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const refresh = useRefresh();
+
+  const activeView = pathToViewId(location.pathname);
+  const setActiveView = (viewId) => navigate(VIEW_ROUTES[viewId] || '/');
+  const pageTitle = PATH_TITLES[location.pathname] || 'Hoy';
+
+  // ── Datos (TanStack Query) ──
+  const contactsQuery = useContacts();
+  const contacts = contactsQuery.data || [];
+  const summary = useSummary().data;
+  const reporting = useReporting().data;
+  const imports = useImports().data || [];
+  const capabilities = useCapabilities().data;
+  const templates = useTemplates().data || [];
+  const cvFiles = useCvFiles().data || [];
+  const schedules = useSchedules().data || [];
+  const emailJobs = useEmailJobs().data || [];
+  const gmailStatus = useGmailStatus().data;
+
+  // ── Estado de UI ──
   const [importPreview, setImportPreview] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -49,48 +137,23 @@ function AppShell() {
   const [selectedWorktrayId, setSelectedWorktrayId] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [capabilities, setCapabilities] = useState({
-    tesseract_available: false,
-    tesseract_path: null,
-    openai_enabled: false,
-    providers: [],
-  });
-  const [summary, setSummary] = useState({
-    total_contacts: 0,
-    total_companies: 0,
-    priority_contacts: 0,
-    review_contacts: 0,
-    imports_count: 0,
-    draft_imports: 0,
-    confirmed_imports: 0,
-  });
-  const [reporting, setReporting] = useState(createEmptyReporting());
-  const [statusMessage, setStatusMessage] = useState('Conectando con la API local...');
+  const [statusMessage, setStatusMessage] = useState('Conectando con la API...');
   const [activeFilter, setActiveFilter] = useState('todos');
   const [activeActionFilter, setActiveActionFilter] = useState('enviar');
   const [activeTimingFilter, setActiveTimingFilter] = useState('todos');
   const [activePipelineActionFilter, setActivePipelineActionFilter] = useState('todos');
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
-  const [templates, setTemplates] = useState([]);
-  const [cvFiles, setCvFiles] = useState([]);
-  const [schedules, setSchedules] = useState([]);
-  const [emailJobs, setEmailJobs] = useState([]);
-  const [gmailStatus, setGmailStatus] = useState({ authorized: false });
-
-  const pageTitle = useMemo(() => {
-    if (activeView === 'operaciones' || activeView === 'bandeja' || activeView === 'pipeline') return 'Operaciones';
-    if (activeView === 'estadisticas' || activeView === 'tendencias') return 'Estadísticas';
-    if (activeView === 'contactos') return 'Contactos';
-    if (activeView === 'importaciones') return 'Importaciones';
-    if (activeView === 'envios' || activeView === 'plantillas' || activeView === 'cronogramas') return 'Envíos';
-    return 'Hoy';
-  }, [activeView]);
 
   useEffect(() => {
-    void refreshData();
-  }, []);
+    if (contactsQuery.isError) {
+      setStatusMessage('No pude conectar con la API. Verificá que el backend esté levantado.');
+    } else if (contactsQuery.isSuccess) {
+      setStatusMessage('API conectada. Ya podés cargar, confirmar y operar desde la bandeja.');
+    }
+  }, [contactsQuery.isError, contactsQuery.isSuccess]);
 
+  // ── Derivados ──
   const filteredContacts = useMemo(
     () =>
       contacts.filter((contact) => {
@@ -165,98 +228,7 @@ function AppShell() {
     void loadContactHistory(selectedWorktrayId);
   }, [selectedWorktrayId]);
 
-  async function refreshData(scope = 'all') {
-    try {
-      if (scope === 'jobs') {
-        // Usado después de acciones de email: run-now, retry, assign-cv, cancelar job
-        const [jobsRes, gmailRes] = await Promise.all([
-          apiFetch(`${API_BASE}/email-jobs`),
-          apiFetch(`${API_BASE}/gmail/status`),
-        ]);
-        if (jobsRes.ok) setEmailJobs(await jobsRes.json());
-        if (gmailRes.ok) setGmailStatus(await gmailRes.json());
-        return;
-      }
-
-      if (scope === 'cvs') {
-        // Usado después de subir, editar o eliminar un CV
-        const res = await apiFetch(`${API_BASE}/cv-files`);
-        if (res.ok) setCvFiles(await res.json());
-        return;
-      }
-
-      if (scope === 'templates') {
-        // Usado después de crear/editar/eliminar una plantilla
-        const res = await apiFetch(`${API_BASE}/templates`);
-        if (res.ok) setTemplates(await res.json());
-        return;
-      }
-
-      if (scope === 'schedules') {
-        // Usado después de crear/editar/eliminar un cronograma
-        const res = await apiFetch(`${API_BASE}/schedules`);
-        if (res.ok) setSchedules(await res.json());
-        return;
-      }
-
-      if (scope === 'contacts') {
-        // Usado después de acciones en la bandeja o contactos
-        const [contactsRes, summaryRes, reportingRes] = await Promise.all([
-          apiFetch(`${API_BASE}/contacts`),
-          apiFetch(`${API_BASE}/summary`),
-          apiFetch(`${API_BASE}/reporting/overview`),
-        ]);
-        if (contactsRes.ok) setContacts(await contactsRes.json());
-        if (summaryRes.ok) setSummary(await summaryRes.json());
-        if (reportingRes.ok) setReporting(await reportingRes.json());
-        return;
-      }
-
-      // scope === 'all': carga inicial completa (11 endpoints en paralelo)
-      const [healthRes, contactsRes, summaryRes, importsRes, capabilitiesRes, reportingRes,
-             templatesRes, cvFilesRes, schedulesRes, emailJobsRes, gmailStatusRes] = await Promise.all([
-        apiFetch(`${API_BASE}/health`),
-        apiFetch(`${API_BASE}/contacts`),
-        apiFetch(`${API_BASE}/summary`),
-        apiFetch(`${API_BASE}/imports`),
-        apiFetch(`${API_BASE}/capabilities`),
-        apiFetch(`${API_BASE}/reporting/overview`),
-        apiFetch(`${API_BASE}/templates`),
-        apiFetch(`${API_BASE}/cv-files`),
-        apiFetch(`${API_BASE}/schedules`),
-        apiFetch(`${API_BASE}/email-jobs`),
-        apiFetch(`${API_BASE}/gmail/status`),
-      ]);
-
-      if (!healthRes.ok) throw new Error('No se pudo conectar con la API');
-
-      const contactsData = contactsRes.ok ? await contactsRes.json() : [];
-      const summaryData = summaryRes.ok ? await summaryRes.json() : summary;
-      const importsData = importsRes.ok ? await importsRes.json() : [];
-      const capabilitiesData = capabilitiesRes.ok ? await capabilitiesRes.json() : capabilities;
-      const reportingData = reportingRes.ok ? await reportingRes.json() : createEmptyReporting();
-      const templatesData = templatesRes.ok ? await templatesRes.json() : [];
-      const cvFilesData = cvFilesRes.ok ? await cvFilesRes.json() : [];
-      const schedulesData = schedulesRes.ok ? await schedulesRes.json() : [];
-      const emailJobsData = emailJobsRes.ok ? await emailJobsRes.json() : [];
-      const gmailStatusData = gmailStatusRes.ok ? await gmailStatusRes.json() : { authorized: false };
-
-      setContacts(contactsData);
-      setSummary(summaryData);
-      setImports(importsData);
-      setCapabilities(capabilitiesData);
-      setReporting(reportingData);
-      setTemplates(templatesData);
-      setCvFiles(cvFilesData);
-      setSchedules(schedulesData);
-      setEmailJobs(emailJobsData);
-      setGmailStatus(gmailStatusData);
-      setStatusMessage('API conectada. Ya podes cargar, confirmar y operar desde la bandeja.');
-    } catch {
-      setStatusMessage('No pude conectar con la API local. Primero hay que levantar el backend.');
-    }
-  }
-
+  // ── Acciones ──
   async function handleSubmit(event) {
     event.preventDefault();
     setSaving(true);
@@ -272,13 +244,45 @@ function AppShell() {
       }
       setForm(defaultForm);
       setStatusMessage('Contacto guardado correctamente.');
-      await refreshData('contacts');
-      setActiveView('contactos');
+      await refresh('contacts');
+      navigate('/contactos');
     } catch (error) {
       setStatusMessage(error.message || 'Error al guardar el contacto.');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function updateContact(contactId, fields) {
+    const response = await apiFetch(`${API_BASE}/contacts/${contactId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.detail || 'No se pudo actualizar el contacto');
+    }
+    setStatusMessage('Contacto actualizado.');
+    await refresh('contacts');
+    return response.json();
+  }
+
+  async function deleteContact(contactId) {
+    const response = await apiFetch(`${API_BASE}/contacts/${contactId}`, { method: 'DELETE' });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      setStatusMessage(errorBody.detail || 'No se pudo eliminar el contacto.');
+      return;
+    }
+    const result = await response.json().catch(() => ({}));
+    setStatusMessage(
+      result.cancelled_jobs > 0
+        ? `Contacto eliminado. Se cancelaron ${result.cancelled_jobs} envío(s) programado(s).`
+        : 'Contacto eliminado.',
+    );
+    await refresh('contacts');
+    await refresh('jobs');
   }
 
   async function createMockImport() {
@@ -296,8 +300,8 @@ function AppShell() {
       });
       if (!response.ok) throw new Error('No se pudo registrar la importacion');
       setStatusMessage('Importacion mock registrada en historial.');
-      await refreshData();
-      setActiveView('importaciones');
+      await refresh();
+      navigate('/importaciones');
     } catch (error) {
       setStatusMessage(error.message || 'Error al registrar la importacion.');
     }
@@ -323,8 +327,8 @@ function AppShell() {
       const preview = await response.json();
       setImportPreview(preview);
       setStatusMessage('Archivo analizado. Revisa, confirma y luego opera desde la bandeja.');
-      setActiveView('importaciones');
-      await refreshData();
+      navigate('/importaciones');
+      await refresh();
     } catch (error) {
       setStatusMessage(error.message || 'No se pudo procesar el archivo.');
     } finally {
@@ -369,8 +373,8 @@ function AppShell() {
       );
       setImportPreview(null);
       setSelectedFile(null);
-      await refreshData();
-      setActiveView('bandeja');
+      await refresh();
+      navigate('/operaciones');
     } catch (error) {
       setStatusMessage(error.message || 'Error al confirmar la importacion.');
     } finally {
@@ -404,7 +408,7 @@ function AppShell() {
         }
       }
       setStatusMessage(result.message || `Accion ${prettifyAction(action)} ejecutada.`);
-      await refreshData('contacts');
+      await refresh('contacts');
     } catch (error) {
       setStatusMessage(error.message || 'Error al ejecutar la accion.');
     } finally {
@@ -425,9 +429,9 @@ function AppShell() {
         const errorBody = await response.json().catch(() => ({}));
         throw new Error(errorBody.detail || 'No se pudo guardar la fecha');
       }
-      setStatusMessage(`Seguimiento actualizado para ${formatFollowUpLabel(follow_up_date)}.`);
+      setStatusMessage('Fecha de seguimiento actualizada.');
       setEditingFollowUp((current) => ({ ...current, [contact.id]: follow_up_date }));
-      await refreshData('contacts');
+      await refresh('contacts');
     } catch (error) {
       setStatusMessage(error.message || 'Error al guardar la fecha de seguimiento.');
     } finally {
@@ -459,7 +463,7 @@ function AppShell() {
     setActiveActionFilter(nextAction);
     setActiveTimingFilter('todos');
     setSelectedWorktrayId(contact.id);
-    setActiveView('operaciones');
+    navigate('/operaciones');
   }
 
   return (
@@ -507,286 +511,130 @@ function AppShell() {
       <main className="p-6 flex flex-col gap-6">
         <Topbar
           pageTitle={pageTitle}
-          refreshData={refreshData}
+          refreshData={() => refresh()}
           createMockImport={createMockImport}
           importing={importing}
           handleFileSelection={handleFileSelection}
           setActiveView={setActiveView}
         />
 
-        {activeView === 'dashboard' && (
-          <HoyView
-            summary={summary}
-            contacts={contacts}
-            reporting={reporting}
-            imports={imports}
-            emailJobs={emailJobs}
-            onOpenInWorktray={openInWorktray}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <HoyView
+                summary={summary}
+                contacts={contacts}
+                reporting={reporting}
+                imports={imports}
+                emailJobs={emailJobs}
+                onOpenInWorktray={openInWorktray}
+              />
+            }
           />
-        )}
-
-        {(activeView === 'operaciones' || activeView === 'bandeja' || activeView === 'pipeline') && (
-          <OperacionesView
-            actionableContacts={actionableContacts}
-            activeActionFilter={activeActionFilter}
-            onActionFilterChange={setActiveActionFilter}
-            activeTimingFilter={activeTimingFilter}
-            onTimingFilterChange={setActiveTimingFilter}
-            counts={worktrayCounts}
-            timingCounts={timingCounts}
-            reporting={reporting}
-            executingId={executingId}
-            onExecuteAction={executeContactAction}
-            editingFollowUp={editingFollowUp}
-            onFollowUpChange={setEditingFollowUp}
-            onSaveFollowUp={saveFollowUpDate}
-            actionDetails={actionDetails}
-            onActionDetailsChange={setActionDetails}
-            selectedContactId={selectedWorktrayId}
-            onSelectContact={setSelectedWorktrayId}
-            selectedContact={actionableContacts.find((contact) => contact.id === selectedWorktrayId) || null}
-            historyItems={selectedHistory}
-            loadingHistory={loadingHistory}
-            contacts={contacts}
-            activePipelineActionFilter={activePipelineActionFilter}
-            onPipelineActionFilterChange={setActivePipelineActionFilter}
-            onOpenInWorktray={openInWorktray}
+          <Route
+            path="/operaciones"
+            element={
+              <OperacionesView
+                actionableContacts={actionableContacts}
+                activeActionFilter={activeActionFilter}
+                onActionFilterChange={setActiveActionFilter}
+                activeTimingFilter={activeTimingFilter}
+                onTimingFilterChange={setActiveTimingFilter}
+                counts={worktrayCounts}
+                timingCounts={timingCounts}
+                reporting={reporting}
+                executingId={executingId}
+                onExecuteAction={executeContactAction}
+                editingFollowUp={editingFollowUp}
+                onFollowUpChange={setEditingFollowUp}
+                onSaveFollowUp={saveFollowUpDate}
+                actionDetails={actionDetails}
+                onActionDetailsChange={setActionDetails}
+                selectedContactId={selectedWorktrayId}
+                onSelectContact={setSelectedWorktrayId}
+                selectedContact={actionableContacts.find((contact) => contact.id === selectedWorktrayId) || null}
+                historyItems={selectedHistory}
+                loadingHistory={loadingHistory}
+                contacts={contacts}
+                activePipelineActionFilter={activePipelineActionFilter}
+                onPipelineActionFilterChange={setActivePipelineActionFilter}
+                onOpenInWorktray={openInWorktray}
+                onUpdateContact={updateContact}
+              />
+            }
           />
-        )}
-
-        {(activeView === 'estadisticas' || activeView === 'tendencias') && (
-          <EstadisticasView
-            reporting={reporting}
-            imports={imports}
-            emailJobs={emailJobs}
-            contacts={contacts}
+          <Route
+            path="/estadisticas"
+            element={
+              <EstadisticasView
+                reporting={reporting}
+                imports={imports}
+                emailJobs={emailJobs}
+                contacts={contacts}
+              />
+            }
           />
-        )}
-
-        {activeView === 'contactos' && (
-          <ContactsView
-            contacts={filteredContacts}
-            activeFilter={activeFilter}
-            onFilterChange={setActiveFilter}
-            form={form}
-            onFormChange={setForm}
-            onSubmit={handleSubmit}
-            onReset={() => setForm(defaultForm)}
-            saving={saving}
-            schedules={schedules}
-            onDelete={async (id) => {
-              await apiFetch(`${API_BASE}/contacts/${id}`, { method: 'DELETE' });
-              await refreshData();
-            }}
+          <Route
+            path="/contactos"
+            element={
+              <ContactsView
+                contacts={filteredContacts}
+                activeFilter={activeFilter}
+                onFilterChange={setActiveFilter}
+                form={form}
+                onFormChange={setForm}
+                onSubmit={handleSubmit}
+                onReset={() => setForm(defaultForm)}
+                saving={saving}
+                schedules={schedules}
+                onDelete={deleteContact}
+                onUpdate={updateContact}
+              />
+            }
           />
-        )}
-
-        {activeView === 'importaciones' && (
-          <ImportsView
-            imports={imports}
-            importPreview={importPreview}
-            selectedFile={selectedFile}
-            importing={importing}
-            confirming={confirming}
-            capabilities={capabilities}
-            templates={templates}
-            cvFiles={cvFiles}
-            schedules={schedules}
-            onFileChange={handleFileSelection}
-            onCandidateChange={updateCandidate}
-            onConfirm={confirmPreview}
-            onClearPreview={() => {
-              setImportPreview(null);
-              setSelectedFile(null);
-            }}
+          <Route
+            path="/importaciones"
+            element={
+              <ImportsView
+                imports={imports}
+                importPreview={importPreview}
+                selectedFile={selectedFile}
+                importing={importing}
+                confirming={confirming}
+                capabilities={capabilities}
+                templates={templates}
+                cvFiles={cvFiles}
+                schedules={schedules}
+                onFileChange={handleFileSelection}
+                onCandidateChange={updateCandidate}
+                onConfirm={confirmPreview}
+                onClearPreview={() => {
+                  setImportPreview(null);
+                  setSelectedFile(null);
+                }}
+              />
+            }
           />
-        )}
-
-        {(activeView === 'envios' || activeView === 'plantillas' || activeView === 'cronogramas') && (
-          <EnviosView
-            contacts={contacts}
-            templates={templates}
-            emailJobs={emailJobs}
-            cvFiles={cvFiles}
-            gmailStatus={gmailStatus}
-            schedules={schedules}
-            onRefresh={refreshData}
+          <Route
+            path="/envios"
+            element={
+              <EnviosView
+                contacts={contacts}
+                templates={templates}
+                emailJobs={emailJobs}
+                cvFiles={cvFiles}
+                gmailStatus={gmailStatus}
+                schedules={schedules}
+                onRefresh={refresh}
+              />
+            }
           />
-        )}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Exported utilities (usadas por Worktray, TrendsView, vistas)
-// ---------------------------------------------------------------------------
-
-export function createEmptyReporting() {
-  return {
-    generated_at: null,
-    queue: { overdue: 0, due_today: 0, due_this_week: 0, without_date: 0, active_total: 0 },
-    outcomes: {
-      portal: { aplicado: 0, pendiente: 0, revisar: 0, total: 0 },
-      discard: { total: 0, reasons: [] },
-    },
-    pipeline: { by_status: [], by_action: [] },
-    activity: {
-      last_24h: { enviar: 0, seguir: 0, portal: 0, descartar: 0 },
-      last_7d: { enviar: 0, seguir: 0, portal: 0, descartar: 0 },
-      previous_7d: { enviar: 0, seguir: 0, portal: 0, descartar: 0 },
-      deltas_7d: { enviar: 0, seguir: 0, portal: 0, descartar: 0 },
-    },
-    stock_comparison: {
-      previous_snapshot_date: null,
-      current: { total_contacts: 0, active_total: 0, overdue_count: 0, without_date_count: 0 },
-      deltas: { total_contacts: 0, active_total: 0, overdue_count: 0, without_date_count: 0 },
-    },
-    recent_snapshots: [],
-  };
-}
-
-export function capitalize(value) {
-  return String(value).charAt(0).toUpperCase() + String(value).slice(1);
-}
-
-export function prettifyAction(value) {
-  if (value === 'revisar_manual') return 'Revisar manual';
-  return capitalize(value);
-}
-
-export function prettifyTimingFilter(value) {
-  if (value === 'esta_semana') return 'Esta semana';
-  return capitalize(value);
-}
-
-export function formatDelta(value) {
-  if (!value) return '0';
-  return value > 0 ? `+${value}` : `${value}`;
-}
-
-export function getDeltaClassName(value) {
-  if (value > 0) return 'is-positive';
-  if (value < 0) return 'is-negative';
-  return 'is-neutral';
-}
-
-export function formatDate(value) {
-  if (!value) return '-';
-  return new Date(value).toLocaleString('es-AR');
-}
-
-export function formatFollowUpLabel(value) {
-  if (!value) return 'Sin fecha';
-  const dateValue = new Date(`${value}T00:00:00`);
-  return `Seguimiento ${dateValue.toLocaleDateString('es-AR')}`;
-}
-
-export function isFollowUpDue(value) {
-  if (!value) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dueDate = new Date(`${value}T00:00:00`);
-  return dueDate.getTime() <= today.getTime();
-}
-
-export function buildSparklinePoints(values) {
-  const numericValues = values.filter((value) => Number.isFinite(value));
-  if (numericValues.length < 2) return null;
-  const min = Math.min(...numericValues);
-  const max = Math.max(...numericValues);
-  const range = max - min || 1;
-  return numericValues
-    .map((value, index) => {
-      const x = (index / (numericValues.length - 1)) * 100;
-      const y = 28 - ((value - min) / range) * 24;
-      return `${x},${y}`;
-    })
-    .join(' ');
-}
-
-export function buildMultiSparklineSeries(snapshots) {
-  const series = {
-    contacts: snapshots.map((s) => s.total_contacts).reverse(),
-    active: snapshots.map((s) => s.active_total).reverse(),
-    overdue: snapshots.map((s) => s.overdue_count).reverse(),
-    withoutDate: snapshots.map((s) => s.without_date_count).reverse(),
-  };
-  const entries = Object.entries(series).map(([key, values]) => [key, buildSparklinePointsForDomain(values, 64)]);
-  const validEntries = entries.filter(([, points]) => Boolean(points));
-  if (!validEntries.length) return null;
-  return Object.fromEntries(validEntries);
-}
-
-function buildSparklinePointsForDomain(values, height) {
-  const numericValues = values.filter((value) => Number.isFinite(value));
-  if (numericValues.length < 2) return null;
-  const min = Math.min(...numericValues);
-  const max = Math.max(...numericValues);
-  const range = max - min || 1;
-  return numericValues
-    .map((value, index) => {
-      const x = (index / (numericValues.length - 1)) * 100;
-      const y = height - 8 - ((value - min) / range) * (height - 16);
-      return `${x},${y}`;
-    })
-    .join(' ');
-}
-
-export function getRelativeBarWidth(value, reference) {
-  const base = Math.max(value, reference, 1);
-  return (value / base) * 100;
-}
-
-export function buildTodayInbox(contacts) {
-  const actionable = contacts.filter((contact) =>
-    worktrayActions.includes(String(contact.next_action || '').toLowerCase()),
-  );
-  const overdue = [];
-  const today = [];
-  const withoutDate = [];
-
-  actionable.forEach((contact) => {
-    const followUpDate = contact.follow_up_date ? new Date(`${contact.follow_up_date}T00:00:00`) : null;
-    const timing = getFollowUpTimingBucket(followUpDate);
-    if (timing === 'overdue') overdue.push(contact);
-    if (timing === 'today') today.push(contact);
-    if (timing === 'without_date') withoutDate.push(contact);
-  });
-
-  return {
-    overdue: overdue.slice(0, 5),
-    today: today.slice(0, 5),
-    withoutDate: withoutDate.slice(0, 5),
-    total: overdue.length + today.length + withoutDate.length,
-  };
-}
-
-function getFollowUpTimingBucket(followUpDate) {
-  if (!followUpDate || Number.isNaN(followUpDate.getTime())) return 'without_date';
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (followUpDate.getTime() < today.getTime()) return 'overdue';
-  if (followUpDate.getTime() === today.getTime()) return 'today';
-  return 'future';
-}
-
-export function prettifyEvent(value) {
-  const text = String(value || '').replaceAll('.', ' ');
-  return capitalize(text);
-}
-
-function matchesTimingFilter(value, filter) {
-  if (filter === 'todos') return true;
-  if (!value) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dueDate = new Date(`${value}T00:00:00`);
-  const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
-  if (filter === 'vencido') return diffDays < 0;
-  if (filter === 'hoy') return diffDays === 0;
-  if (filter === 'esta_semana') return diffDays >= 0 && diffDays <= 6;
-  return true;
 }
 
 export default AppShell;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { API_BASE, apiFetch } from '../AppShell';
+import { API_BASE, apiFetch } from '../lib/api';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 function formatWindow(startH, endH) {
@@ -66,8 +66,17 @@ export function SchedulesView({ schedules, onRefresh }) {
   }
 
   async function setDefault(id) {
-    await apiFetch(`${API_BASE}/schedules/${id}/default`, { method: 'PUT' });
-    await onRefresh('schedules');
+    try {
+      const res = await apiFetch(`${API_BASE}/schedules/${id}/default`, { method: 'PUT' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.detail || 'No se pudo establecer el cronograma por defecto.');
+        return;
+      }
+      await onRefresh('schedules');
+    } catch {
+      setError('Error de conexión al cambiar el cronograma por defecto.');
+    }
   }
 
   async function confirmRemove() {

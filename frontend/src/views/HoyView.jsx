@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { buildTodayInbox, prettifyAction } from '../AppShell';
+import { buildTodayInbox, prettifyAction } from '../lib/utils';
 
 export function HoyView({ summary, contacts, reporting, imports, emailJobs, onOpenInWorktray }) {
   const kpis  = useMemo(() => buildKpis(contacts, reporting, emailJobs), [contacts, reporting, emailJobs]);
