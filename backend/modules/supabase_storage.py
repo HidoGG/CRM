@@ -12,7 +12,7 @@ def _client() -> Client:
     global _supabase
     if _supabase is None:
         url = os.environ["SUPABASE_URL"]
-        key = os.environ["SUPABASE_SERVICE_KEY"]
+        key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
         _supabase = create_client(url, key)
     return _supabase
 
