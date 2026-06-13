@@ -19,6 +19,7 @@ function formatDate(iso) {
 
 export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailStatus, onRefresh }) {
   const [uploadingCv, setUploadingCv]   = useState(false);
+  const [uploadError, setUploadError]   = useState('');
   const [pendingFile, setPendingFile]   = useState(null);
   const [pendingComment, setPendingComment] = useState('');
   const cvInputRef = useRef(null);
@@ -38,16 +39,24 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   async function confirmUpload() {
     if (!pendingFile) return;
     setUploadingCv(true);
+    setUploadError('');
     try {
       const fd = new FormData();
       fd.append('file', pendingFile);
       fd.append('comment', pendingComment.trim());
-      await apiFetch(`${API_BASE}/cv-files`, { method: 'POST', body: fd });
+      const res = await apiFetch(`${API_BASE}/cv-files`, { method: 'POST', body: fd });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setUploadError(body.detail || `Error ${res.status} al subir el CV`);
+        return;
+      }
       await onRefresh('cvs');
-    } finally {
-      setUploadingCv(false);
       setPendingFile(null);
       setPendingComment('');
+    } catch (e) {
+      setUploadError(`No se pudo conectar con el servidor: ${e.message}`);
+    } finally {
+      setUploadingCv(false);
     }
   }
 
@@ -272,6 +281,11 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
                 aria-label="Comentario del CV"
               />
             </div>
+            {uploadError && (
+              <p style={{ margin: 0, color: 'var(--red-text)', fontSize: '0.85rem', fontWeight: 500 }}>
+                {uploadError}
+              </p>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"
@@ -283,7 +297,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
               </button>
               <button
                 type="button"
-                onClick={() => { setPendingFile(null); setPendingComment(''); }}
+                onClick={() => { setPendingFile(null); setPendingComment(''); setUploadError(''); }}
                 className="ghost-button"
               >
                 Cancelar
