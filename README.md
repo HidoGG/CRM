@@ -80,7 +80,7 @@ npm run dev
 | `GOOGLE_CLIENT_ID` | ✅ si no hay credentials.json | ID de cliente OAuth de Google Cloud Console. |
 | `GOOGLE_CLIENT_SECRET` | ✅ si no hay credentials.json | Secret de cliente OAuth de Google. |
 | `SUPABASE_URL` | ✅ para Storage | URL del proyecto Supabase, ej: `https://abc.supabase.co`. |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ para Storage | Service role key (no la anon key). Para subir CVs al bucket. |
+| `SUPABASE_SERVICE_KEY` | ✅ para Storage | Service role key (no la anon key). Para subir CVs al bucket. |
 | `SUPABASE_STORAGE_BUCKET` | opcional | Nombre del bucket para CVs. Default: `cvs`. |
 | `SUPABASE_JWT_SECRET` | opcional | Habilita login con Supabase Auth (Bearer JWT). Se obtiene en Settings → API → JWT Secret. |
 

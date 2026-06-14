@@ -37,7 +37,7 @@ postgresql://postgres.[ref]:[password]@aws-0-us-east-1.pooler.supabase.com:6543/
 En **Settings → API** copiá:
 - `URL` → `SUPABASE_URL`
 - `anon public` → `VITE_SUPABASE_ANON_KEY` (frontend, sólo si usás Supabase Auth)
-- `service_role` → `SUPABASE_SERVICE_ROLE_KEY` (backend, para Storage)
+- `service_role` → `SUPABASE_SERVICE_KEY` (backend, para Storage)
 - `JWT Secret` → `SUPABASE_JWT_SECRET` (backend, sólo si usás Supabase Auth)
 
 ### 1.3 Crear bucket para CVs
@@ -130,7 +130,7 @@ En **Environment → Environment Variables**, agregar:
 | `GOOGLE_CLIENT_ID` | De Google Cloud Console |
 | `GOOGLE_CLIENT_SECRET` | De Google Cloud Console |
 | `SUPABASE_URL` | URL del proyecto Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key de Supabase |
+| `SUPABASE_SERVICE_KEY` | Service role key de Supabase |
 | `SUPABASE_STORAGE_BUCKET` | `cvs` |
 | `SUPABASE_JWT_SECRET` | (opcional) JWT Secret de Supabase, sólo si usás Supabase Auth |
 
