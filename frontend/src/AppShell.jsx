@@ -12,17 +12,12 @@ import { LoginView } from './views/LoginView';
 import { API_BASE, apiFetch, setAccessToken } from './lib/api';
 import { authEnabled, supabase } from './lib/supabaseClient';
 import {
-  useCapabilities,
   useContacts,
-  useCvFiles,
   useEmailJobs,
-  useGmailStatus,
   useImports,
   useRefresh,
   useReporting,
-  useSchedules,
   useSummary,
-  useTemplates,
 } from './lib/queries';
 import { matchesTimingFilter, prettifyAction, timingFilters, worktrayActions } from './lib/utils';
 
@@ -113,18 +108,21 @@ function AuthenticatedApp() {
   const setActiveView = (viewId) => navigate(VIEW_ROUTES[viewId] || '/');
   const pageTitle = PATH_TITLES[location.pathname] || 'Hoy';
 
-  // ── Datos (TanStack Query) ──
+  // ── Datos críticos (cargados al inicio) ──
   const contactsQuery = useContacts();
   const contacts = contactsQuery.data || [];
   const summary = useSummary().data;
   const reporting = useReporting().data;
   const imports = useImports().data || [];
-  const capabilities = useCapabilities().data;
-  const templates = useTemplates().data || [];
-  const cvFiles = useCvFiles().data || [];
-  const schedules = useSchedules().data || [];
   const emailJobs = useEmailJobs().data || [];
-  const gmailStatus = useGmailStatus().data;
+
+  // ── Cold start: si el backend tarda más de 7s, avisamos al usuario ──
+  const [slowBackend, setSlowBackend] = useState(false);
+  useEffect(() => {
+    if (!contactsQuery.isLoading) { setSlowBackend(false); return; }
+    const t = setTimeout(() => setSlowBackend(true), 7000);
+    return () => clearTimeout(t);
+  }, [contactsQuery.isLoading]);
 
   // ── Estado de UI ──
   const [importPreview, setImportPreview] = useState(null);
@@ -150,8 +148,10 @@ function AuthenticatedApp() {
       setStatusMessage('No pude conectar con la API. Verificá que el backend esté levantado.');
     } else if (contactsQuery.isSuccess) {
       setStatusMessage('API conectada. Ya podés cargar, confirmar y operar desde la bandeja.');
+    } else if (slowBackend) {
+      setStatusMessage('El servidor está despertando… puede tardar hasta 60 segundos la primera vez.');
     }
-  }, [contactsQuery.isError, contactsQuery.isSuccess]);
+  }, [contactsQuery.isError, contactsQuery.isSuccess, slowBackend]);
 
   // ── Derivados ──
   const filteredContacts = useMemo(
@@ -587,7 +587,6 @@ function AuthenticatedApp() {
                 onSubmit={handleSubmit}
                 onReset={() => setForm(defaultForm)}
                 saving={saving}
-                schedules={schedules}
                 onDelete={deleteContact}
                 onUpdate={updateContact}
               />
@@ -602,10 +601,6 @@ function AuthenticatedApp() {
                 selectedFile={selectedFile}
                 importing={importing}
                 confirming={confirming}
-                capabilities={capabilities}
-                templates={templates}
-                cvFiles={cvFiles}
-                schedules={schedules}
                 onFileChange={handleFileSelection}
                 onCandidateChange={updateCandidate}
                 onConfirm={confirmPreview}
@@ -621,11 +616,7 @@ function AuthenticatedApp() {
             element={
               <EnviosView
                 contacts={contacts}
-                templates={templates}
                 emailJobs={emailJobs}
-                cvFiles={cvFiles}
-                gmailStatus={gmailStatus}
-                schedules={schedules}
                 onRefresh={refresh}
               />
             }

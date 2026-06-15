@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { EmailJobsView } from './EmailJobsView';
 import { TemplatesView } from './TemplatesView';
 import { SchedulesView } from './SchedulesView';
-import { useTemplateStats } from '../lib/queries';
+import { useCvFiles, useGmailStatus, useSchedules, useTemplateStats, useTemplates } from '../lib/queries';
 import { API_BASE, apiFetch } from '../lib/api';
 
 const TABS = [
@@ -12,8 +12,12 @@ const TABS = [
   { id: 'estadisticas', label: 'Stats de respuesta'},
 ];
 
-export function EnviosView({ contacts, templates, emailJobs, cvFiles, gmailStatus, schedules, onRefresh }) {
+export function EnviosView({ contacts, emailJobs, onRefresh }) {
   const [activeTab, setActiveTab] = useState('cola');
+  const templates = useTemplates().data || [];
+  const cvFiles = useCvFiles().data || [];
+  const schedules = useSchedules().data || [];
+  const gmailStatus = useGmailStatus().data ?? { authorized: false, has_readonly: false };
   const { data: templateStats } = useTemplateStats();
 
   return (

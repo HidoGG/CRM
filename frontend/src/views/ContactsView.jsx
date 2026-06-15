@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { capitalize, prettifyAction } from '../lib/utils';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { useSchedules } from '../lib/queries';
 
 const EDIT_FIELDS = [
   { key: 'name',    label: 'Nombre',  type: 'text'  },
@@ -22,7 +23,8 @@ const STATUS_STYLE = {
   portal:       { background: 'var(--purple-bg)', color: 'var(--purple-text)'},
 };
 
-export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate, schedules = [] }) {
+export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
+  const schedules = useSchedules().data || [];
   const [activeTab, setActiveTab]   = useState('lista');
   const [confirmId, setConfirmId]   = useState(null);
   const [editContact, setEditContact] = useState(null);

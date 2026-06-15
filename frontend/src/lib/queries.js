@@ -7,7 +7,8 @@ import { createEmptyReporting } from './utils';
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
       retry: 1,
       refetchOnWindowFocus: false,
     },
@@ -43,16 +44,32 @@ export function useCapabilities() {
     queryFn: fetchers.capabilities,
     placeholderData: { openai_enabled: false, providers: [] },
     staleTime: Infinity,
+    gcTime: 30 * 60_000,
   });
 }
 export function useTemplates() {
-  return useQuery({ queryKey: ['templates'], queryFn: fetchers.templates, placeholderData: [] });
+  return useQuery({
+    queryKey: ['templates'],
+    queryFn: fetchers.templates,
+    placeholderData: [],
+    staleTime: 5 * 60_000,
+  });
 }
 export function useCvFiles() {
-  return useQuery({ queryKey: ['cvFiles'], queryFn: fetchers.cvFiles, placeholderData: [] });
+  return useQuery({
+    queryKey: ['cvFiles'],
+    queryFn: fetchers.cvFiles,
+    placeholderData: [],
+    staleTime: 5 * 60_000,
+  });
 }
 export function useSchedules() {
-  return useQuery({ queryKey: ['schedules'], queryFn: fetchers.schedules, placeholderData: [] });
+  return useQuery({
+    queryKey: ['schedules'],
+    queryFn: fetchers.schedules,
+    placeholderData: [],
+    staleTime: 10 * 60_000,
+  });
 }
 export function useEmailJobs() {
   return useQuery({ queryKey: ['emailJobs'], queryFn: fetchers.emailJobs, placeholderData: [] });
@@ -62,6 +79,7 @@ export function useGmailStatus() {
     queryKey: ['gmailStatus'],
     queryFn: fetchers.gmailStatus,
     placeholderData: { authorized: false, has_readonly: false },
+    staleTime: 2 * 60_000,
   });
 }
 export function useTemplateStats() {

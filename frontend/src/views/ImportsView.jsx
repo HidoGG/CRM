@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { capitalize, formatDate, prettifyAction } from '../lib/utils';
+import { useCapabilities, useCvFiles, useSchedules, useTemplates } from '../lib/queries';
 
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
@@ -10,15 +11,15 @@ export function ImportsView({
   selectedFile,
   importing,
   confirming,
-  capabilities,
-  templates = [],
-  cvFiles = [],
-  schedules = [],
   onFileChange,
   onCandidateChange,
   onConfirm,
   onClearPreview,
 }) {
+  const capabilities = useCapabilities().data ?? { openai_enabled: false };
+  const templates = useTemplates().data || [];
+  const cvFiles = useCvFiles().data || [];
+  const schedules = useSchedules().data || [];
   const defaultTemplate = templates.find((t) => t.is_default) ?? templates[0];
   const defaultCv = cvFiles.find((c) => c.is_default) ?? cvFiles[0];
   const defaultSchedule = schedules.find((s) => s.is_default) ?? schedules[0];
