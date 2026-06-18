@@ -24,7 +24,7 @@ EMAIL_RE = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.IGNORECASE)
 # muy por debajo del límite por usuario de la Gmail API.
 REPLY_WINDOW_DAYS = 30
 REPLY_BATCH_LIMIT = 40
-BOUNCE_QUERY = "from:(mailer-daemon OR postmaster) newer_than:7d"
+BOUNCE_QUERY = "from:(mailer-daemon OR postmaster) newer_than:90d"
 BOUNCE_BATCH_LIMIT = 25
 
 
