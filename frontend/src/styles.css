@@ -8,49 +8,49 @@
   color-scheme: dark;
   font-family: 'Barlow', ui-sans-serif, system-ui, -apple-system, sans-serif;
 
-  /* ── Backgrounds ── */
-  --base:             oklch(11% 0.008 258);
-  --surface:          oklch(15% 0.010 258);
-  --surface-raised:   oklch(19% 0.012 258);
-  --surface-subtle:   oklch(13% 0.009 258);
-  --surface-input:    oklch(17% 0.011 258);
-  --surface-hover:    oklch(22% 0.013 258);
+  /* ── Backgrounds — gris oscuro (no negro puro) ── */
+  --base:             oklch(17% 0.010 258);
+  --surface:          oklch(21% 0.012 258);
+  --surface-raised:   oklch(26% 0.014 258);
+  --surface-subtle:   oklch(19% 0.011 258);
+  --surface-input:    oklch(23% 0.013 258);
+  --surface-hover:    oklch(30% 0.015 258);
 
   /* ── Borders ── */
-  --border-faint:  rgba(255 255 255 / 0.07);
-  --border:        rgba(255 255 255 / 0.11);
-  --border-strong: rgba(255 255 255 / 0.20);
+  --border-faint:  rgba(255 255 255 / 0.10);
+  --border:        rgba(255 255 255 / 0.16);
+  --border-strong: rgba(255 255 255 / 0.26);
 
   /* ── Text ── */
-  --text-primary:   oklch(93% 0.005 258);
-  --text-secondary: oklch(61% 0.015 258);
-  --text-muted:     oklch(55% 0.011 258);
+  --text-primary:   oklch(94% 0.005 258);
+  --text-secondary: oklch(65% 0.015 258);
+  --text-muted:     oklch(58% 0.011 258);
   --text-inverse:   oklch(11% 0.008 258);
 
   /* ── Accent — Gold (única identidad de marca) ── */
   --accent:        oklch(76% 0.14 78);
-  --accent-subtle: oklch(24% 0.06 78);
+  --accent-subtle: oklch(28% 0.07 78);
   --accent-text:   oklch(10% 0.006 258);
 
   /* ── Blue UI (funcional, no identidad) ── */
-  --blue:        oklch(62% 0.11 255);
-  --blue-subtle: oklch(19% 0.055 255);
+  --blue:        oklch(64% 0.11 255);
+  --blue-subtle: oklch(24% 0.060 255);
 
   /* ── Status semántico ── */
-  --green-bg:    oklch(22% 0.08 145);
-  --green-text:  oklch(70% 0.14 145);
-  --amber-bg:    oklch(24% 0.07 78);
-  --amber-text:  oklch(78% 0.13 78);
-  --red-bg:      oklch(22% 0.09 25);
-  --red-text:    oklch(65% 0.16 25);
-  --gray-bg:     oklch(21% 0.006 258);
-  --gray-text:   oklch(57% 0.010 258);
-  --purple-bg:   oklch(22% 0.08 305);
-  --purple-text: oklch(68% 0.12 305);
+  --green-bg:    oklch(27% 0.09 145);
+  --green-text:  oklch(72% 0.14 145);
+  --amber-bg:    oklch(29% 0.08 78);
+  --amber-text:  oklch(80% 0.13 78);
+  --red-bg:      oklch(27% 0.10 25);
+  --red-text:    oklch(67% 0.17 25);
+  --gray-bg:     oklch(26% 0.007 258);
+  --gray-text:   oklch(60% 0.010 258);
+  --purple-bg:   oklch(27% 0.09 305);
+  --purple-text: oklch(70% 0.12 305);
 
   /* ── Sombras ── */
-  --shadow-sm: 0 1px 4px rgba(0 0 0 / 0.45);
-  --shadow-md: 0 4px 16px rgba(0 0 0 / 0.55);
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.35);
+  --shadow-md: 0 4px 14px rgba(0 0 0 / 0.45);
 
   background: var(--base);
   color: var(--text-primary);
@@ -91,17 +91,17 @@ button {
 
 .shell {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 232px minmax(0, 1fr);
   min-height: 100vh;
 }
 
 .sidebar {
-  padding: 24px;
+  padding: 16px;
   background: var(--surface);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   border-right: 1px solid var(--border-faint);
 }
 
@@ -112,15 +112,15 @@ button {
 }
 
 .brand-mark {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   display: grid;
   place-items: center;
   background: var(--accent);
   color: var(--accent-text);
   font-weight: 800;
-  font-size: 1.2rem;
+  font-size: 1rem;
   letter-spacing: -0.02em;
   flex-shrink: 0;
 }
@@ -154,12 +154,12 @@ button {
   border: 1px solid var(--border-faint);
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 12px;
+  border-radius: 10px;
   text-align: left;
-  padding: 12px 14px;
+  padding: 8px 11px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
@@ -193,10 +193,10 @@ button {
 }
 
 .main {
-  padding: 24px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 .topbar {
@@ -217,7 +217,7 @@ button {
 }
 
 .topbar h1 {
-  font-size: clamp(1.8rem, 2vw + 1rem, 2.6rem);
+  font-size: clamp(1.3rem, 1.5vw + 0.6rem, 1.8rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
@@ -254,10 +254,10 @@ button {
 .ghost-button,
 .primary-button {
   border: 0;
-  border-radius: 10px;
-  padding: 10px 16px;
+  border-radius: 8px;
+  padding: 7px 13px;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   transition: opacity 150ms ease;
 }
 
@@ -321,8 +321,8 @@ button {
 .detail-card {
   background: var(--surface-raised);
   border: 1px solid var(--border-faint);
-  border-radius: 20px;
-  padding: 22px;
+  border-radius: 14px;
+  padding: 16px;
   box-shadow: var(--shadow-sm);
 }
 
@@ -333,29 +333,29 @@ button {
 }
 
 .mini-kpis {
-  margin-top: 18px;
+  margin-top: 12px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .mini-kpis div {
-  padding: 14px;
-  border-radius: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
   background: var(--surface-subtle);
   border: 1px solid var(--border-faint);
 }
 
 .mini-kpis strong {
   display: block;
-  font-size: 1.4rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--text-primary);
 }
 
 .mini-kpis span {
   color: var(--text-secondary);
-  font-size: 0.88rem;
+  font-size: 0.82rem;
 }
 
 .pill {
@@ -380,32 +380,32 @@ button {
 }
 
 .hero-stats {
-  margin-top: 20px;
+  margin-top: 14px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .stat-card {
   background: var(--surface-subtle);
   border: 1px solid var(--border-faint);
-  border-radius: 14px;
-  padding: 14px;
+  border-radius: 10px;
+  padding: 10px 12px;
 }
 
 .stat-card span {
   display: block;
   color: var(--text-secondary);
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   font-family: 'Barlow Condensed', ui-sans-serif, system-ui, sans-serif;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .stat-card strong {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -419,7 +419,7 @@ button {
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .section-head span {
@@ -436,9 +436,9 @@ button {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 14px;
+  padding: 8px 12px;
   background: var(--surface-subtle);
-  border-radius: 12px;
+  border-radius: 9px;
   border: 1px solid var(--border-faint);
 }
 
@@ -454,11 +454,11 @@ button {
 
 .today-inbox-panel {
   background: var(--surface-subtle);
-  border-radius: 18px;
+  border-radius: 12px;
   border: 1px solid var(--border-faint);
-  padding: 18px;
+  padding: 14px;
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .today-inbox-head {
@@ -487,11 +487,11 @@ button {
 .today-inbox-item {
   border: 1px solid var(--border-faint);
   background: var(--surface-raised);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 9px;
+  padding: 8px 11px;
   text-align: left;
   display: grid;
-  gap: 5px;
+  gap: 3px;
   color: var(--text-primary);
   transition: border-color 150ms ease;
 }
@@ -518,11 +518,11 @@ button {
 
 .comparison-card {
   background: var(--surface-subtle);
-  border-radius: 18px;
+  border-radius: 12px;
   border: 1px solid var(--border-faint);
-  padding: 18px;
+  padding: 13px;
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .comparison-card-head {
@@ -568,21 +568,21 @@ button {
 
 .comparison-card-metrics div {
   background: var(--surface-raised);
-  border-radius: 12px;
+  border-radius: 9px;
   border: 1px solid var(--border-faint);
-  padding: 12px;
+  padding: 9px 10px;
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .comparison-card-metrics span {
   color: var(--text-secondary);
-  font-size: 0.84rem;
+  font-size: 0.80rem;
 }
 
 .comparison-card-metrics strong {
   color: var(--text-primary);
-  font-size: 1.3rem;
+  font-size: 1.15rem;
   font-weight: 700;
 }
 
@@ -661,11 +661,11 @@ button {
 
 .sparkline-card {
   background: var(--surface-subtle);
-  border-radius: 18px;
+  border-radius: 12px;
   border: 1px solid var(--border-faint);
-  padding: 18px;
+  padding: 13px;
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .sparkline-card-head {
@@ -687,9 +687,9 @@ button {
 .sparkline-card-head strong {
   display: block;
   color: var(--text-primary);
-  font-size: 1.45rem;
+  font-size: 1.2rem;
   font-weight: 700;
-  margin-top: 4px;
+  margin-top: 3px;
 }
 
 .sparkline-shell {
@@ -742,12 +742,12 @@ button {
 
 .trend-combo-card {
   background: var(--surface-subtle);
-  border-radius: 18px;
+  border-radius: 12px;
   border: 1px solid var(--border-faint);
-  padding: 18px;
+  padding: 13px;
   display: grid;
-  gap: 14px;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .trend-legend {
@@ -841,7 +841,7 @@ table {
 
 th,
 td {
-  padding: 14px 16px;
+  padding: 9px 13px;
   border-bottom: 1px solid var(--border-faint);
   text-align: left;
 }
@@ -973,12 +973,12 @@ tr:last-child td {
 }
 
 .weekly-column {
-  border-radius: 18px;
+  border-radius: 12px;
   background: var(--surface-subtle);
   border: 1px solid var(--border-faint);
-  padding: 16px;
+  padding: 12px;
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .weekly-column.is-today {
@@ -1016,10 +1016,10 @@ tr:last-child td {
 .weekly-contact-card {
   background: var(--surface-raised);
   border: 1px solid var(--border-faint);
-  border-radius: 14px;
-  padding: 14px;
+  border-radius: 10px;
+  padding: 9px 11px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .weekly-jump-button {
@@ -1031,11 +1031,11 @@ tr:last-child td {
 .pipeline-column {
   background: var(--surface-raised);
   border: 1px solid var(--border-faint);
-  border-radius: 20px;
-  padding: 18px;
+  border-radius: 14px;
+  padding: 14px;
   box-shadow: var(--shadow-sm);
   display: grid;
-  gap: 16px;
+  gap: 12px;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -1087,7 +1087,7 @@ tr:last-child td {
 }
 
 .pipeline-column-head strong {
-  font-size: 1.6rem;
+  font-size: 1.3rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -1103,12 +1103,12 @@ tr:last-child td {
 }
 
 .pipeline-contact-card {
-  border-radius: 16px;
+  border-radius: 10px;
   background: var(--surface-subtle);
   border: 1px solid var(--border-faint);
-  padding: 14px;
+  padding: 10px 12px;
   display: grid;
-  gap: 10px;
+  gap: 7px;
 }
 
 .pipeline-contact-head,
@@ -1184,11 +1184,11 @@ tr:last-child td {
 .report-panel {
   background: var(--surface-raised);
   border: 1px solid var(--border-faint);
-  border-radius: 20px;
+  border-radius: 14px;
   box-shadow: var(--shadow-sm);
-  padding: 20px 22px;
+  padding: 14px 16px;
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .report-panel-primary {
@@ -1205,15 +1205,15 @@ tr:last-child td {
 .report-activity-card,
 .pipeline-row {
   background: var(--surface-subtle);
-  border-radius: 14px;
+  border-radius: 10px;
   border: 1px solid var(--border-faint);
-  padding: 14px;
+  padding: 10px 12px;
 }
 
 .report-kpis strong,
 .pipeline-row strong {
   display: block;
-  font-size: 1.45rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -1245,17 +1245,17 @@ tr:last-child td {
 .worktray-metrics {
   background: var(--surface-raised);
   border: 1px solid var(--border-faint);
-  border-radius: 22px;
+  border-radius: 14px;
   box-shadow: var(--shadow-sm);
 }
 
 .worktray-hero-copy {
-  padding: 24px 26px;
+  padding: 16px 18px;
 }
 
 .worktray-hero-copy h2 {
-  margin: 12px 0 8px;
-  font-size: 2rem;
+  margin: 8px 0 6px;
+  font-size: 1.45rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--text-primary);
@@ -1278,17 +1278,17 @@ tr:last-child td {
 .worktray-metric {
   border: 1px solid var(--border-faint);
   background: var(--surface-subtle);
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 10px;
+  padding: 10px 12px;
   text-align: left;
   color: var(--text-primary);
   display: grid;
-  gap: 5px;
+  gap: 4px;
   transition: border-color 150ms ease;
 }
 
 .worktray-metric strong {
-  font-size: 1.6rem;
+  font-size: 1.3rem;
   font-weight: 700;
   line-height: 1;
 }
@@ -1427,12 +1427,12 @@ tr:last-child td {
 }
 
 .history-item {
-  padding: 12px 14px;
-  border-radius: 14px;
+  padding: 8px 11px;
+  border-radius: 10px;
   background: var(--surface-subtle);
   border: 1px solid var(--border-faint);
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 
 .history-item strong {
