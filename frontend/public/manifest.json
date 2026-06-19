@@ -1,0 +1,18 @@
+{
+  "name": "CRM · Gabriel Hidalgo",
+  "short_name": "CRM",
+  "description": "CRM personal para gestión de contactos laborales en Oil & Gas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1c26",
+  "theme_color": "#d4a020",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
