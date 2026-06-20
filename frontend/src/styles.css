@@ -141,31 +141,31 @@ button {
 }
 
 .sidebar {
-  padding: 8px;
+  padding: 10px;
   background: var(--surface);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   border-right: 1px solid var(--border-faint);
 }
 
 .brand {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
 
 .brand-mark {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   background: var(--accent);
   color: var(--accent-text);
   font-weight: 800;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   letter-spacing: -0.02em;
   flex-shrink: 0;
 }
@@ -199,14 +199,14 @@ button {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 7px;
+  border-radius: 8px;
   text-align: left;
-  padding: 5px 6px;
+  padding: 6px 8px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   width: 100%;
 }
 

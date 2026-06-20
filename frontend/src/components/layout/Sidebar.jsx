@@ -33,8 +33,8 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
       <div className="brand">
         <div className="brand-mark" aria-hidden="true">C</div>
         <div style={{ minWidth: 0 }}>
-          <strong style={{ display: 'block', fontSize: '0.8rem', lineHeight: 1, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CRM Laboral</strong>
-          <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <strong style={{ display: 'block', fontSize: '0.92rem', lineHeight: 1, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CRM Laboral</strong>
+          <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Oil &amp; Gas
           </p>
         </div>
@@ -67,7 +67,7 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
                 </div>
                 {showBadge && (
                   <span
-                    className="flex-shrink-0 min-w-[20px] h-5 rounded-full bg-[var(--red-text)] text-white text-[11px] font-bold flex items-center justify-center px-1"
+                    className="flex-shrink-0 min-w-[22px] h-[22px] rounded-full bg-[var(--red-text)] text-white text-[12px] font-bold flex items-center justify-center px-1"
                     aria-hidden="true"
                   >
                     {overdueCount > 99 ? '99+' : overdueCount}
