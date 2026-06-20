@@ -259,9 +259,9 @@ export function Worktray({
                   <>
                     <col style={{ width: '22%' }} />
                     <col style={{ width: '18%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '34%' }} />
-                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '31%' }} />
+                    <col style={{ width: '18%' }} />
                   </>
                 ) : (
                   <>
@@ -364,11 +364,11 @@ export function Worktray({
                             </p>
                           </td>
                         )}
-                        <td style={{ padding: '7px 10px' }}>
+                        <td style={{ padding: '7px 8px' }}>
                           <button
                             type="button"
                             className="primary-button"
-                            style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '6px 10px' }}
+                            style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '6px 8px', width: '100%' }}
                             onClick={e => { e.stopPropagation(); onExecuteAction(contact, action); }}
                             disabled={executingId === contact.id}
                             aria-label={`Ejecutar ${prettifyAction(action)} para ${contact.name || 'contacto'}`}
