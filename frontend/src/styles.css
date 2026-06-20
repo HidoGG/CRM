@@ -136,36 +136,36 @@ button {
 
 .shell {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 160px minmax(0, 1fr);
   min-height: 100vh;
 }
 
 .sidebar {
-  padding: 12px;
+  padding: 10px;
   background: var(--surface);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   border-right: 1px solid var(--border-faint);
 }
 
 .brand {
   display: flex;
-  gap: 14px;
+  gap: 10px;
   align-items: center;
 }
 
 .brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   background: var(--accent);
   color: var(--accent-text);
   font-weight: 800;
-  font-size: 1rem;
+  font-size: 0.9rem;
   letter-spacing: -0.02em;
   flex-shrink: 0;
 }
@@ -201,12 +201,13 @@ button {
   color: var(--text-secondary);
   border-radius: 8px;
   text-align: left;
-  padding: 7px 10px;
+  padding: 6px 8px;
   display: flex;
   align-items: center;
   gap: 8px;
   transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-  font-size: 0.93rem;
+  font-size: 0.88rem;
+  width: 100%;
 }
 
 .nav-item:hover {
