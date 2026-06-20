@@ -6,46 +6,47 @@
    ============================================================ */
 :root {
   color-scheme: dark;
+  font-size: 14px;
   font-family: 'Barlow', ui-sans-serif, system-ui, -apple-system, sans-serif;
 
-  /* ── Backgrounds — gris oscuro (no negro puro) ── */
-  --base:             oklch(17% 0.010 258);
-  --surface:          oklch(21% 0.012 258);
-  --surface-raised:   oklch(26% 0.014 258);
-  --surface-subtle:   oklch(19% 0.011 258);
-  --surface-input:    oklch(23% 0.013 258);
-  --surface-hover:    oklch(30% 0.015 258);
+  /* ── Backgrounds — slate azulado (hue 240, estilo premium) ── */
+  --base:             oklch(14% 0.012 240);
+  --surface:          oklch(19% 0.014 240);
+  --surface-raised:   oklch(23% 0.016 240);
+  --surface-subtle:   oklch(17% 0.013 240);
+  --surface-input:    oklch(21% 0.015 240);
+  --surface-hover:    oklch(28% 0.018 240);
 
-  /* ── Borders ── */
-  --border-faint:  rgba(255 255 255 / 0.10);
-  --border:        rgba(255 255 255 / 0.16);
-  --border-strong: rgba(255 255 255 / 0.26);
+  /* ── Borders — más sutiles para mayor sofisticación ── */
+  --border-faint:  rgba(255 255 255 / 0.07);
+  --border:        rgba(255 255 255 / 0.12);
+  --border-strong: rgba(255 255 255 / 0.22);
 
   /* ── Text ── */
-  --text-primary:   oklch(94% 0.005 258);
-  --text-secondary: oklch(65% 0.015 258);
-  --text-muted:     oklch(58% 0.011 258);
-  --text-inverse:   oklch(11% 0.008 258);
+  --text-primary:   oklch(94% 0.005 240);
+  --text-secondary: oklch(65% 0.015 240);
+  --text-muted:     oklch(55% 0.011 240);
+  --text-inverse:   oklch(11% 0.008 240);
 
-  /* ── Accent — Gold (única identidad de marca) ── */
-  --accent:        oklch(76% 0.14 78);
-  --accent-subtle: oklch(28% 0.07 78);
-  --accent-text:   oklch(10% 0.006 258);
+  /* ── Accent — Azul clásico (estilo SaaS moderno) ── */
+  --accent:        oklch(64% 0.16 250);
+  --accent-subtle: oklch(22% 0.10 250);
+  --accent-text:   oklch(97% 0.003 250);
 
-  /* ── Blue UI (funcional, no identidad) ── */
-  --blue:        oklch(64% 0.11 255);
-  --blue-subtle: oklch(24% 0.060 255);
+  /* ── Blue UI (mismo tono que accent, alias para compatibilidad) ── */
+  --blue:        oklch(64% 0.16 250);
+  --blue-subtle: oklch(22% 0.10 250);
 
   /* ── Status semántico ── */
-  --green-bg:    oklch(27% 0.09 145);
+  --green-bg:    oklch(22% 0.09 145);
   --green-text:  oklch(72% 0.14 145);
-  --amber-bg:    oklch(29% 0.08 78);
+  --amber-bg:    oklch(24% 0.08 78);
   --amber-text:  oklch(80% 0.13 78);
-  --red-bg:      oklch(27% 0.10 25);
+  --red-bg:      oklch(22% 0.10 25);
   --red-text:    oklch(67% 0.17 25);
-  --gray-bg:     oklch(26% 0.007 258);
-  --gray-text:   oklch(60% 0.010 258);
-  --purple-bg:   oklch(27% 0.09 305);
+  --gray-bg:     oklch(24% 0.007 240);
+  --gray-text:   oklch(58% 0.010 240);
+  --purple-bg:   oklch(24% 0.09 305);
   --purple-text: oklch(70% 0.12 305);
 
   /* ── Sombras ── */
@@ -91,17 +92,17 @@ button {
 
 .shell {
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: 200px minmax(0, 1fr);
   min-height: 100vh;
 }
 
 .sidebar {
-  padding: 16px;
+  padding: 12px;
   background: var(--surface);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   border-right: 1px solid var(--border-faint);
 }
 
@@ -147,56 +148,55 @@ button {
 
 .nav {
   display: grid;
-  gap: 6px;
+  gap: 2px;
 }
 
 .nav-item {
-  border: 1px solid var(--border-faint);
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 10px;
+  border-radius: 8px;
   text-align: left;
-  padding: 8px 11px;
+  padding: 7px 10px;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
   transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  font-size: 0.93rem;
 }
 
 .nav-item:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
-  border-color: var(--border);
 }
 
 .nav-item small {
-  color: var(--text-muted);
-  font-size: 0.8rem;
+  display: none;
 }
 
 .nav-item.is-active {
-  background: var(--blue-subtle);
-  border-color: var(--blue);
+  background: var(--accent-subtle);
+  border-color: var(--accent);
   color: var(--text-primary);
 }
 
 .nav-item.is-active small {
-  color: var(--text-secondary);
+  display: none;
 }
 
 .sidebar-card {
   margin-top: auto;
-  padding: 16px;
-  border-radius: 14px;
+  padding: 12px;
+  border-radius: 10px;
   background: var(--surface-subtle);
   border: 1px solid var(--border-faint);
 }
 
 .main {
-  padding: 18px 20px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .topbar {
@@ -217,9 +217,9 @@ button {
 }
 
 .topbar h1 {
-  font-size: clamp(1.3rem, 1.5vw + 0.6rem, 1.8rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: clamp(1.05rem, 1.1vw + 0.5rem, 1.35rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
 }
 
@@ -297,7 +297,7 @@ button {
 .hero-grid,
 .secondary-grid {
   display: grid;
-  gap: 20px;
+  gap: 14px;
 }
 
 .hero-grid {
@@ -307,13 +307,13 @@ button {
 .pipeline-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
-  gap: 20px;
+  gap: 14px;
 }
 
 .trends-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
-  gap: 20px;
+  gap: 14px;
 }
 
 .hero-panel,
@@ -321,8 +321,8 @@ button {
 .detail-card {
   background: var(--surface-raised);
   border: 1px solid var(--border-faint);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: 10px;
+  padding: 12px 14px;
   box-shadow: var(--shadow-sm);
 }
 
@@ -449,7 +449,7 @@ button {
 .today-inbox-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .today-inbox-panel {
@@ -841,7 +841,7 @@ table {
 
 th,
 td {
-  padding: 9px 13px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--border-faint);
   text-align: left;
 }

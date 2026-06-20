@@ -4,8 +4,8 @@
   "description": "CRM personal para gestión de contactos laborales en Oil & Gas",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1a1c26",
-  "theme_color": "#d4a020",
+  "background_color": "#0f111a",
+  "theme_color": "#0f111a",
   "lang": "es",
   "icons": [
     {

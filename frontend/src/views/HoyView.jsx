@@ -89,16 +89,16 @@ function KpiCard({ label, value, sub, subColor = 'neutral', urgent = false }) {
   return (
     <article
       style={{
-        borderRadius: 24,
-        padding: 22,
+        borderRadius: 10,
+        padding: '12px 14px',
         border: urgent ? '1px solid var(--red-text)' : '1px solid var(--border-faint)',
         background: urgent ? 'var(--red-bg)' : 'var(--surface-raised)',
         display: 'grid',
-        gap: 10,
+        gap: 6,
       }}
     >
-      <span style={{ color: 'var(--text-muted)', fontSize: '0.87rem', fontWeight: 500 }}>{label}</span>
-      <strong style={{ fontSize: '2rem', lineHeight: 1, fontWeight: 700, color: urgent ? 'var(--red-text)' : 'var(--text-primary)' }}>
+      <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: "'Barlow Condensed', sans-serif" }}>{label}</span>
+      <strong style={{ fontSize: '1.7rem', lineHeight: 1, fontWeight: 700, color: urgent ? 'var(--red-text)' : 'var(--text-primary)' }}>
         {value}
       </strong>
       {sub && (

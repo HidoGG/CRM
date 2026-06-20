@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#1a1c26"/>
+  <rect width="32" height="32" rx="7" fill="#0f111a"/>
   <text
     x="16" y="23"
     font-family="system-ui, -apple-system, sans-serif"
     font-size="19"
     font-weight="800"
     text-anchor="middle"
-    fill="#d4a020"
+    fill="#4d88e0"
     letter-spacing="-0.5"
   >C</text>
 </svg>
