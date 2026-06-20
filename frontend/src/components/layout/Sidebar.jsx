@@ -32,10 +32,10 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
       {/* Brand */}
       <div className="brand">
         <div className="brand-mark" aria-hidden="true">C</div>
-        <div>
-          <strong className="block leading-none text-[var(--text-primary)]">CRM Laboral</strong>
-          <p className="text-sm text-[var(--text-secondary)] mt-1 leading-snug">
-            Oil &amp; Gas · Búsqueda activa
+        <div style={{ minWidth: 0 }}>
+          <strong style={{ display: 'block', fontSize: '0.8rem', lineHeight: 1, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CRM Laboral</strong>
+          <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Oil &amp; Gas
           </p>
         </div>
       </div>
