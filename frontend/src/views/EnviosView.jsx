@@ -116,7 +116,7 @@ export function EnviosView({ contacts, emailJobs, onRefresh }) {
         <SchedulesView schedules={schedules} onRefresh={onRefresh} />
       )}
       {activeTab === 'estadisticas' && (
-        <TemplateStatsPanel stats={templateStats} onSync={() => apiFetch(`${API_BASE}/engagement/sync`, { method: 'POST' }).then(() => onRefresh('jobs'))} />
+        <TemplateStatsPanel stats={templateStats} onSync={() => apiFetch(`${API_BASE}/engagement/sync`, { method: 'POST' }).then(() => Promise.all([onRefresh('jobs'), onRefresh('contacts')]))} />
       )}
     </div>
   );

@@ -26,6 +26,7 @@ export function useSummary() {
       total_contacts: 0, total_companies: 0, priority_contacts: 0,
       review_contacts: 0, imports_count: 0, draft_imports: 0, confirmed_imports: 0,
     },
+    staleTime: 3 * 60_000,
   });
 }
 export function useReporting() {
@@ -33,10 +34,11 @@ export function useReporting() {
     queryKey: ['reporting'],
     queryFn: fetchers.reporting,
     placeholderData: createEmptyReporting(),
+    staleTime: 5 * 60_000,
   });
 }
 export function useImports() {
-  return useQuery({ queryKey: ['imports'], queryFn: fetchers.imports, placeholderData: [] });
+  return useQuery({ queryKey: ['imports'], queryFn: fetchers.imports, placeholderData: [], staleTime: 10 * 60_000 });
 }
 export function useCapabilities() {
   return useQuery({
