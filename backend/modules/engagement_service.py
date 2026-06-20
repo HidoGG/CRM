@@ -215,6 +215,16 @@ def _check_bounces(service) -> int:
                 """),
                 {"now": now, "id": contact["id"]},
             )
+            # Marcar jobs 'sent' de este contacto como fallidos para reflejar el rebote en métricas
+            session.execute(
+                text("""
+                    UPDATE email_jobs
+                    SET status = 'failed',
+                        error_message = 'Rebote: dirección inválida o dominio inexistente'
+                    WHERE contact_id = :id AND status = 'sent'
+                """),
+                {"id": contact["id"]},
+            )
             insert_history(
                 session,
                 event_type="email.bounced",

@@ -306,6 +306,11 @@ export function Worktray({
                         <div style={{ display: 'grid', gap: 3 }}>
                           <strong style={{ color: 'var(--text-primary)' }}>{contact.company || '—'}</strong>
                           <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{prettifyAction(action)}</span>
+                          {contact.discard_reason && (
+                            <span style={{ display: 'inline-flex', alignSelf: 'start', borderRadius: 6, padding: '2px 7px', fontSize: '0.76rem', fontWeight: 600, background: 'var(--gray-bg)', color: 'var(--gray-text)', fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.04em' }}>
+                              {contact.discard_reason === 'rebote_email' ? 'Rebote de email' : contact.discard_reason}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td style={{ padding: '14px 18px' }}>

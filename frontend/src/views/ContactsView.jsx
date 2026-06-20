@@ -256,8 +256,15 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                             {contact.status}
                           </span>
                         </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {prettifyAction(contact.next_action || 'revisar_manual')}
+                        <td style={{ padding: '10px 12px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{prettifyAction(contact.next_action || 'revisar_manual')}</span>
+                            {contact.discard_reason && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 7px', borderRadius: 6, background: 'var(--gray-bg)', color: 'var(--gray-text)', whiteSpace: 'nowrap', display: 'inline-block', fontFamily: "'Barlow Condensed', sans-serif" }}>
+                                {contact.discard_reason === 'rebote_email' ? 'Rebote' : contact.discard_reason}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.source || '—'}</td>
                         <td style={{ padding: '10px 12px' }}>

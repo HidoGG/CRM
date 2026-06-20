@@ -24,10 +24,10 @@ export function HoyView({ summary, contacts, reporting, imports, emailJobs, onOp
           urgent={kpis.pendingEmailsToday > 0}
         />
         <KpiCard
-          label="Tasa de éxito"
-          value={kpis.successRate !== null ? `${kpis.successRate}%` : '—'}
-          sub={kpis.successRate !== null ? `${kpis.sentJobs} enviados · ${kpis.failedJobs} fallidos` : 'Sin datos suficientes'}
-          subColor={kpis.successRate !== null && kpis.successRate >= 80 ? 'positive' : 'neutral'}
+          label="Tasa de entrega"
+          value={kpis.deliveryRate !== null ? `${kpis.deliveryRate}%` : '—'}
+          sub={kpis.deliveryRate !== null ? `${kpis.sentJobs} enviados · ${kpis.bouncedContacts} rebotes` : 'Sin datos suficientes'}
+          subColor={kpis.deliveryRate !== null && kpis.deliveryRate >= 80 ? 'positive' : kpis.deliveryRate !== null && kpis.deliveryRate >= 60 ? 'neutral' : 'negative'}
         />
       </div>
 
@@ -102,7 +102,7 @@ function KpiCard({ label, value, sub, subColor = 'neutral', urgent = false }) {
         {value}
       </strong>
       {sub && (
-        <span style={{ fontSize: '0.82rem', fontWeight: 500, color: subColor === 'positive' ? 'var(--green-text)' : 'var(--text-secondary)' }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 500, color: subColor === 'positive' ? 'var(--green-text)' : subColor === 'negative' ? 'var(--red-text)' : 'var(--text-secondary)' }}>
           {sub}
         </span>
       )}
@@ -213,10 +213,12 @@ function buildKpis(contacts, reporting, emailJobs) {
     new Date(`${c.follow_up_date}T00:00:00`).getTime() <= today.getTime()
   ).length;
 
-  const sentJobs   = emailJobs.filter(j => j.status === 'sent' || j.status === 'completed').length;
-  const failedJobs = emailJobs.filter(j => j.status === 'failed' || j.status === 'error').length;
+  const sentJobs    = emailJobs.filter(j => j.status === 'sent' || j.status === 'completed').length;
+  const failedJobs  = emailJobs.filter(j => j.status === 'failed' || j.status === 'error').length;
+  const bouncedContacts = contacts.filter(c => c.bounced_at).length;
   const totalResolved = sentJobs + failedJobs;
-  const successRate = totalResolved > 0 ? Math.round((sentJobs / totalResolved) * 100) : null;
+  // deliveryRate excluye rebotes: emails que salieron pero fueron rechazados por el servidor destino
+  const deliveryRate = sentJobs > 0 ? Math.round(((sentJobs - bouncedContacts) / sentJobs) * 100) : null;
 
-  return { newThisWeek, emailsSentWeek, pendingEmailsToday, sentJobs, failedJobs, successRate };
+  return { newThisWeek, emailsSentWeek, pendingEmailsToday, sentJobs, failedJobs, bouncedContacts, deliveryRate };
 }
