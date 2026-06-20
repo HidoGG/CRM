@@ -245,24 +245,24 @@ export function Worktray({
         <div style={{ display: 'grid', gridTemplateColumns: selectedContact ? '1fr 280px' : '1fr', gap: 12, alignItems: 'start' }}>
 
           {/* Tabla */}
-          <div style={{ borderRadius: 12, border: '1px solid var(--border-faint)', overflow: 'hidden', background: 'var(--surface-raised)' }}>
+          <div style={{ borderRadius: 12, border: '1px solid var(--border-faint)', background: 'var(--surface-raised)', overflow: 'clip' }}>
             <table className="w-full border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
               <colgroup>
                 {selectedContact ? (
                   <>
-                    <col style={{ width: '22%' }} />
-                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '23%' }} />
+                    <col style={{ width: '17%' }} />
                     <col style={{ width: '11%' }} />
-                    <col style={{ width: '31%' }} />
-                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '32%' }} />
+                    <col style={{ width: '17%' }} />
                   </>
                 ) : (
                   <>
-                    <col style={{ width: '16%' }} />
-                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '15%' }} />
+                    <col style={{ width: '12%' }} />
                     <col style={{ width: '9%' }} />
-                    <col style={{ width: '20%' }} />
-                    <col style={{ width: '30%' }} />
+                    <col style={{ width: '19%' }} />
+                    <col style={{ width: '33%' }} />
                     <col style={{ width: '12%' }} />
                   </>
                 )}
@@ -276,7 +276,7 @@ export function Worktray({
                     <th
                       key={col}
                       scope="col"
-                      style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid var(--border-faint)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}
+                      style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--border-faint)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}
                     >
                       {col}
                     </th>
@@ -304,13 +304,13 @@ export function Worktray({
                         }}
                         aria-selected={isSelected}
                       >
-                        <td style={{ padding: '7px 10px', overflow: 'hidden' }}>
+                        <td style={{ padding: '5px 8px', overflow: 'hidden' }}>
                           <div style={{ display: 'grid', gap: 2 }}>
                             <strong style={{ color: 'var(--text-primary)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name || 'Sin nombre'}</strong>
                             <span style={{ color: 'var(--text-secondary)', fontSize: '0.79rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.email || '—'}</span>
                           </div>
                         </td>
-                        <td style={{ padding: '7px 10px', overflow: 'hidden' }}>
+                        <td style={{ padding: '5px 8px', overflow: 'hidden' }}>
                           <div style={{ display: 'grid', gap: 2 }}>
                             <strong style={{ color: 'var(--text-primary)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.company || '—'}</strong>
                             {contact.discard_reason && (
@@ -320,12 +320,12 @@ export function Worktray({
                             )}
                           </div>
                         </td>
-                        <td style={{ padding: '7px 10px' }}>
+                        <td style={{ padding: '5px 8px' }}>
                           <span style={{ ...ss, display: 'inline-flex', borderRadius: 6, padding: '2px 7px', fontSize: '0.76rem', fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                             {contact.status}
                           </span>
                         </td>
-                        <td style={{ padding: '7px 10px' }}>
+                        <td style={{ padding: '5px 8px' }}>
                           <div style={{ display: 'grid', gap: 5 }}>
                             <span style={{ display: 'inline-flex', borderRadius: 999, padding: '2px 8px', fontSize: '0.78rem', fontWeight: 600, background: followUpDue ? 'var(--red-bg)' : 'var(--surface-subtle)', color: followUpDue ? 'var(--red-text)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                               {formatFollowUpLabel(contact.follow_up_date)}
@@ -351,13 +351,13 @@ export function Worktray({
                           </div>
                         </td>
                         {!selectedContact && (
-                          <td style={{ padding: '7px 10px', overflow: 'hidden' }}>
+                          <td style={{ padding: '5px 8px', overflow: 'hidden' }}>
                             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                               {contact.suggested_message || 'Sin sugerencia disponible.'}
                             </p>
                           </td>
                         )}
-                        <td style={{ padding: '7px 8px' }}>
+                        <td style={{ padding: '5px 7px' }}>
                           <button
                             type="button"
                             className="primary-button"
