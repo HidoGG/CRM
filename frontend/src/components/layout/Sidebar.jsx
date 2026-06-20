@@ -67,7 +67,7 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
                 </div>
                 {showBadge && (
                   <span
-                    className="flex-shrink-0 min-w-[16px] h-4 rounded-full bg-[var(--red-text)] text-[var(--accent-text)] text-[9px] font-bold flex items-center justify-center px-0.5"
+                    className="flex-shrink-0 min-w-[20px] h-5 rounded-full bg-[var(--red-text)] text-white text-[11px] font-bold flex items-center justify-center px-1"
                     aria-hidden="true"
                   >
                     {overdueCount > 99 ? '99+' : overdueCount}
