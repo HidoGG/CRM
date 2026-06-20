@@ -22,6 +22,15 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
     [contacts, emailJobs, reporting],
   );
 
+  const recentContacts = useMemo(
+    () =>
+      [...contacts]
+        .filter(c => c.updated_at)
+        .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+        .slice(0, 12),
+    [contacts],
+  );
+
   const hasSnapshotData = filteredSnapshots.length >= 2;
 
   return (
@@ -127,38 +136,50 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
         )}
       </section>
 
-      {/* ── 2. Actividad semanal ── */}
+      {/* ── 2. Últimas actualizaciones ── */}
       <section className="card">
         <div style={{ marginBottom: 16 }}>
-          <span className="eyebrow">Ritmo</span>
+          <span className="eyebrow">Actividad reciente</span>
           <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            Actividad semanal
+            Últimas actualizaciones
           </h3>
           <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-            Últimos 7 días comparados con la ventana anterior.
+            Contactos modificados más recientemente en el pipeline.
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-          {['enviar', 'seguir', 'portal', 'descartar'].map(action => (
-            <article key={action} style={{ background: 'var(--surface-subtle)', borderRadius: 12, padding: 14, display: 'grid', gap: 10, border: '1px solid var(--border-faint)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{prettifyAction(action)}</strong>
-                <DeltaBadge value={reporting.activity.deltas_7d[action]} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div style={{ background: 'var(--surface-raised)', borderRadius: 10, padding: '10px 12px', border: '1px solid var(--border-faint)' }}>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>7d</span>
-                  <strong style={{ color: 'var(--text-primary)', fontSize: '1.3rem', lineHeight: 1 }}>{reporting.activity.last_7d[action]}</strong>
+        {recentContacts.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Sin contactos cargados aún.</p>
+        ) : (
+          <div style={{ display: 'grid', gap: 6 }}>
+            {recentContacts.map(c => {
+              const action = c.next_action || 'sin acción';
+              const actionColor =
+                action === 'enviar'    ? { bg: 'var(--accent-bg)',   fg: 'var(--accent)'      }
+                : action === 'seguir'  ? { bg: 'var(--amber-bg)',    fg: 'var(--amber-text)'  }
+                : action === 'portal'  ? { bg: 'var(--purple-bg)',   fg: 'var(--purple-text)' }
+                : action === 'descartar' ? { bg: 'var(--gray-bg)',   fg: 'var(--gray-text)'   }
+                : { bg: 'var(--surface-subtle)', fg: 'var(--text-muted)' };
+              const updatedAt = c.updated_at ? new Date(c.updated_at) : null;
+              const timeLabel = updatedAt
+                ? updatedAt.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : '—';
+              return (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'var(--surface-subtle)', border: '1px solid var(--border-faint)' }}>
+                  <span style={{ flex: 1, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.company_name || c.contact_name || c.email || '—'}
+                  </span>
+                  <span style={{ flexShrink: 0, padding: '3px 10px', borderRadius: 999, background: actionColor.bg, color: actionColor.fg, fontSize: '0.78rem', fontWeight: 700 }}>
+                    {prettifyAction(action)}
+                  </span>
+                  <span style={{ flexShrink: 0, color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                    {timeLabel}
+                  </span>
                 </div>
-                <div style={{ background: 'var(--surface-raised)', borderRadius: 10, padding: '10px 12px', border: '1px solid var(--border-faint)' }}>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ant.</span>
-                  <strong style={{ color: 'var(--text-secondary)', fontSize: '1.3rem', lineHeight: 1 }}>{reporting.activity.previous_7d[action]}</strong>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* ── 3. Stock en el tiempo ── */}
@@ -166,107 +187,77 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
             <span className="eyebrow">Evolución de stock</span>
-            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Stock en el tiempo</h3>
+            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Estado del pipeline</h3>
             <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-              Contactos, cola activa, vencidos y sin fecha en la ventana elegida.
+              Evolución de contactos y vencimientos en la ventana elegida.
             </p>
           </div>
-          <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}>
-            {filteredSnapshots.length} cortes
-          </span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+            <button
+              type="button"
+              className="ghost-button"
+              style={{ fontSize: '0.82rem' }}
+              onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=snapshots&limit=${activeRange}`, '_blank', 'noopener,noreferrer')}
+            >
+              ↓ Exportar
+            </button>
+            <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)' }}>
+              {filteredSnapshots.length} cortes
+            </span>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
           {[7, 14, 30].map(range => (
             <button
               key={range}
               type="button"
               onClick={() => setActiveRange(range)}
               aria-pressed={activeRange === range}
-              style={{ borderRadius: 999, padding: '6px 18px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', border: activeRange === range ? '1px solid var(--accent)' : '1px solid var(--border)', background: activeRange === range ? 'var(--accent)' : 'transparent', color: activeRange === range ? 'var(--accent-text)' : 'var(--text-secondary)', transition: 'all 0.15s ease' }}
+              style={{ borderRadius: 999, padding: '5px 16px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer', border: activeRange === range ? '1px solid var(--accent)' : '1px solid var(--border)', background: activeRange === range ? 'var(--accent)' : 'transparent', color: activeRange === range ? 'var(--accent-text)' : 'var(--text-secondary)', transition: 'all 0.15s ease' }}
             >
               {range} días
             </button>
           ))}
-          <button
-            type="button"
-            className="ghost-button"
-            style={{ marginLeft: 'auto', fontSize: '0.88rem' }}
-            onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=overview`, '_blank', 'noopener,noreferrer')}
-          >
-            ↓ Exportar CSV
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
-            style={{ fontSize: '0.88rem' }}
-            onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=snapshots&limit=${activeRange}`, '_blank', 'noopener,noreferrer')}
-          >
-            ↓ Exportar snapshots
-          </button>
         </div>
 
         {hasSnapshotData ? (
-          <>
-            <article style={{ background: 'var(--surface-subtle)', borderRadius: 12, padding: 18, display: 'grid', gap: 14, marginBottom: 16, border: '1px solid var(--border-faint)' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', height: 76 }} aria-hidden="true">
-                {multiSeries ? (
-                  <svg viewBox="0 0 100 64" preserveAspectRatio="none" style={{ width: '100%', height: 76 }}>
-                    {Object.entries(multiSeries).map(([key, points]) => {
-                      const strokeColor =
-                        key === 'active'       ? 'var(--green-text)'
-                        : key === 'overdue'    ? 'var(--red-text)'
-                        : key === 'withoutDate'? 'var(--amber-text)'
-                        : 'var(--accent)';
-                      return (
-                        <polyline
-                          key={key}
-                          points={points}
-                          fill="none"
-                          style={{ stroke: strokeColor }}
-                          strokeWidth="2.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      );
-                    })}
-                  </svg>
-                ) : (
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Sin variación suficiente para graficar.</div>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {[
-                  { key: 'contacts',    color: 'var(--accent)',     label: 'Contactos'   },
-                  { key: 'active',      color: 'var(--green-text)', label: 'Cola activa' },
-                  { key: 'overdue',     color: 'var(--red-text)',   label: 'Vencidos'    },
-                  { key: 'withoutDate', color: 'var(--amber-text)', label: 'Sin fecha'   },
-                ].map(({ key, color, label }) => (
-                  <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                    {label}
-                  </span>
-                ))}
-              </div>
-            </article>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-              {[
-                { label: 'Contactos',   valueKey: 'total_contacts',     deltaKey: 'total_contacts',     snapshotKey: 'total_contacts'     },
-                { label: 'Cola activa', valueKey: 'active_total',       deltaKey: 'active_total',       snapshotKey: 'active_total'       },
-                { label: 'Vencidos',    valueKey: 'overdue_count',      deltaKey: 'overdue_count',      snapshotKey: 'overdue_count'      },
-                { label: 'Sin fecha',   valueKey: 'without_date_count', deltaKey: 'without_date_count', snapshotKey: 'without_date_count' },
-              ].map(({ label, valueKey, deltaKey, snapshotKey }) => (
-                <SparklineCard
-                  key={label}
-                  label={label}
-                  value={reporting.stock_comparison.current[valueKey]}
-                  delta={reporting.stock_comparison.deltas[deltaKey]}
-                  data={filteredSnapshots.map(s => s[snapshotKey]).reverse()}
-                />
-              ))}
-            </div>
-          </>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {[
+              { label: 'Contactos totales', valueKey: 'total_contacts', snapshotKey: 'total_contacts', color: 'var(--accent)', deltaKey: 'total_contacts' },
+              { label: 'Vencidos',          valueKey: 'overdue_count',  snapshotKey: 'overdue_count',  color: 'var(--red-text)', deltaKey: 'overdue_count' },
+            ].map(({ label, valueKey, snapshotKey, color, deltaKey }) => {
+              const value = reporting.stock_comparison.current[valueKey];
+              const delta = reporting.stock_comparison.deltas[deltaKey];
+              const data = filteredSnapshots.map(s => s[snapshotKey]).reverse();
+              const points = buildSparklinePoints(data);
+              const total = reporting.stock_comparison.current['total_contacts'] || 1;
+              const pct = valueKey === 'overdue_count' ? Math.round(value / total * 100) : null;
+              return (
+                <article key={label} style={{ background: 'var(--surface-subtle)', borderRadius: 14, padding: '18px 20px', display: 'grid', gap: 14, border: '1px solid var(--border-faint)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</span>
+                      <strong style={{ display: 'block', color, fontSize: '2rem', marginTop: 6, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value?.toLocaleString('es-AR')}</strong>
+                      {pct !== null && (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 4, display: 'block' }}>{pct}% del total</span>
+                      )}
+                    </div>
+                    {delta !== 0 && delta !== undefined && <DeltaBadge value={delta} />}
+                  </div>
+                  <div style={{ height: 52 }} aria-hidden="true">
+                    {points ? (
+                      <svg viewBox="0 0 100 32" preserveAspectRatio="none" style={{ width: '100%', height: 52 }}>
+                        <polyline points={points} fill="none" style={{ stroke: color }} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: 0 }}>Sin variación en este período</p>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         ) : (
           <div style={{ textAlign: 'center', padding: '32px 20px', background: 'var(--surface-subtle)', borderRadius: 12, border: '1px solid var(--border-faint)' }}>
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
