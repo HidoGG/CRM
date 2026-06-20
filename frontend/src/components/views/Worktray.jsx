@@ -252,15 +252,38 @@ export function Worktray({
           }}
         >
           {/* Tabla */}
-          <div style={{ flex: 1, overflowX: 'auto' }}>
-            <table className="w-full border-collapse" style={{ minWidth: selectedContact ? 580 : 800 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <table className="w-full border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
+              <colgroup>
+                {selectedContact ? (
+                  <>
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '34%' }} />
+                    <col style={{ width: '14%' }} />
+                  </>
+                ) : (
+                  <>
+                    <col style={{ width: '16%' }} />
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '20%' }} />
+                    <col style={{ width: '30%' }} />
+                    <col style={{ width: '12%' }} />
+                  </>
+                )}
+              </colgroup>
               <thead>
                 <tr>
-                  {['Contacto', 'Empresa', 'Estado', 'Seguimiento', 'Lectura operativa', 'Ejecutar'].map(col => (
+                  {(selectedContact
+                    ? ['Contacto', 'Empresa', 'Estado', 'Seguimiento', 'Ejecutar']
+                    : ['Contacto', 'Empresa', 'Estado', 'Seguimiento', 'Lectura operativa', 'Ejecutar']
+                  ).map(col => (
                     <th
                       key={col}
                       scope="col"
-                      style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '12px 18px', textAlign: 'left', borderBottom: '1px solid var(--border-faint)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}
+                      style={{ background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid var(--border-faint)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, whiteSpace: 'nowrap' }}
                     >
                       {col}
                     </th>
@@ -288,38 +311,37 @@ export function Worktray({
                         }}
                         aria-selected={isSelected}
                       >
-                        <td style={{ padding: '14px 18px' }}>
-                          <div style={{ display: 'grid', gap: 3 }}>
-                            <strong style={{ color: 'var(--text-primary)' }}>{contact.name || 'Sin nombre'}</strong>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{contact.email || '—'}</span>
+                        <td style={{ padding: '7px 10px', overflow: 'hidden' }}>
+                          <div style={{ display: 'grid', gap: 2 }}>
+                            <strong style={{ color: 'var(--text-primary)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name || 'Sin nombre'}</strong>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.79rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.email || '—'}</span>
                           </div>
                         </td>
-                        <td style={{ padding: '14px 18px' }}>
-                          <div style={{ display: 'grid', gap: 3 }}>
-                            <strong style={{ color: 'var(--text-primary)' }}>{contact.company || '—'}</strong>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{prettifyAction(action)}</span>
+                        <td style={{ padding: '7px 10px', overflow: 'hidden' }}>
+                          <div style={{ display: 'grid', gap: 2 }}>
+                            <strong style={{ color: 'var(--text-primary)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.company || '—'}</strong>
                             {contact.discard_reason && (
-                              <span style={{ display: 'inline-flex', alignSelf: 'start', borderRadius: 6, padding: '2px 7px', fontSize: '0.76rem', fontWeight: 600, background: 'var(--gray-bg)', color: 'var(--gray-text)', fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.04em' }}>
-                                {contact.discard_reason === 'rebote_email' ? 'Rebote de email' : contact.discard_reason}
+                              <span style={{ display: 'inline-flex', alignSelf: 'start', borderRadius: 6, padding: '1px 6px', fontSize: '0.72rem', fontWeight: 600, background: 'var(--gray-bg)', color: 'var(--gray-text)', fontFamily: "'Barlow Condensed', sans-serif" }}>
+                                {contact.discard_reason === 'rebote_email' ? 'Rebote' : contact.discard_reason}
                               </span>
                             )}
                           </div>
                         </td>
-                        <td style={{ padding: '14px 18px' }}>
-                          <span style={{ ...ss, display: 'inline-flex', borderRadius: 8, padding: '3px 10px', fontSize: '0.82rem', fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <td style={{ padding: '7px 10px' }}>
+                          <span style={{ ...ss, display: 'inline-flex', borderRadius: 6, padding: '2px 7px', fontSize: '0.76rem', fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                             {contact.status}
                           </span>
                         </td>
-                        <td style={{ padding: '14px 18px' }}>
-                          <div style={{ display: 'grid', gap: 8 }}>
-                            <span style={{ display: 'inline-flex', borderRadius: 999, padding: '3px 10px', fontSize: '0.83rem', fontWeight: 600, background: followUpDue ? 'var(--red-bg)' : 'var(--surface-subtle)', color: followUpDue ? 'var(--red-text)' : 'var(--text-secondary)' }}>
+                        <td style={{ padding: '7px 10px' }}>
+                          <div style={{ display: 'grid', gap: 5 }}>
+                            <span style={{ display: 'inline-flex', borderRadius: 999, padding: '2px 8px', fontSize: '0.78rem', fontWeight: 600, background: followUpDue ? 'var(--red-bg)' : 'var(--surface-subtle)', color: followUpDue ? 'var(--red-text)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                               {formatFollowUpLabel(contact.follow_up_date)}
                             </span>
-                            <div style={{ display: 'flex', gap: 6 }}>
+                            <div style={{ display: 'flex', gap: 4 }}>
                               <input
                                 type="date"
                                 onClick={e => e.stopPropagation()}
-                                style={{ flex: 1, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-input)', color: 'var(--text-primary)', padding: '5px 8px', fontSize: '0.83rem' }}
+                                style={{ flex: 1, minWidth: 0, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-input)', color: 'var(--text-primary)', padding: '3px 5px', fontSize: '0.78rem' }}
                                 value={editingFollowUp[contact.id] ?? contact.follow_up_date ?? ''}
                                 onChange={event => onFollowUpChange(current => ({ ...current, [contact.id]: event.target.value }))}
                               />
@@ -328,28 +350,25 @@ export function Worktray({
                                 onClick={e => { e.stopPropagation(); onSaveFollowUp(contact); }}
                                 disabled={executingId === contact.id}
                                 className="ghost-button"
-                                style={{ padding: '5px 10px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+                                style={{ padding: '3px 7px', fontSize: '0.76rem', whiteSpace: 'nowrap', flexShrink: 0 }}
                               >
                                 Guardar
                               </button>
                             </div>
                           </div>
                         </td>
-                        <td style={{ padding: '14px 18px' }}>
-                          <div style={{ display: 'grid', gap: 6 }}>
-                            <span style={{ display: 'inline-flex', width: 'fit-content', borderRadius: 999, padding: '3px 10px', fontSize: '0.83rem', background: 'var(--surface-subtle)', color: 'var(--text-secondary)', fontWeight: 600, border: '1px solid var(--border-faint)' }}>
-                              {prettifyAction(action)}
-                            </span>
-                            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.4, maxWidth: 220 }}>
+                        {!selectedContact && (
+                          <td style={{ padding: '7px 10px', overflow: 'hidden' }}>
+                            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                               {contact.suggested_message || 'Sin sugerencia disponible.'}
                             </p>
-                          </div>
-                        </td>
-                        <td style={{ padding: '14px 18px' }}>
+                          </td>
+                        )}
+                        <td style={{ padding: '7px 10px' }}>
                           <button
                             type="button"
                             className="primary-button"
-                            style={{ whiteSpace: 'nowrap', fontSize: '0.87rem', padding: '8px 14px' }}
+                            style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '6px 10px' }}
                             onClick={e => { e.stopPropagation(); onExecuteAction(contact, action); }}
                             disabled={executingId === contact.id}
                             aria-label={`Ejecutar ${prettifyAction(action)} para ${contact.name || 'contacto'}`}
