@@ -519,6 +519,8 @@ function AuthenticatedApp({ theme, toggleTheme }) {
         setActiveView={setActiveView}
         statusMessage={statusMessage}
         overdueCount={reporting.queue.overdue}
+        theme={theme}
+        toggleTheme={toggleTheme}
       />
 
       <main className="p-6 flex flex-col gap-6">
@@ -529,8 +531,6 @@ function AuthenticatedApp({ theme, toggleTheme }) {
           importing={importing}
           handleFileSelection={handleFileSelection}
           setActiveView={setActiveView}
-          theme={theme}
-          toggleTheme={toggleTheme}
         />
 
         <Routes>
