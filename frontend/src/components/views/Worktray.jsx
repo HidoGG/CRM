@@ -242,17 +242,10 @@ export function Worktray({
         </div>
 
         {/* Tabla + Drawer de historial lado a lado */}
-        <div
-          style={{
-            display: 'flex',
-            borderRadius: 12,
-            border: '1px solid var(--border-faint)',
-            overflow: 'hidden',
-            background: 'var(--surface-raised)',
-          }}
-        >
+        <div style={{ display: 'grid', gridTemplateColumns: selectedContact ? '1fr 280px' : '1fr', gap: 12, alignItems: 'start' }}>
+
           {/* Tabla */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ borderRadius: 12, border: '1px solid var(--border-faint)', overflow: 'hidden', background: 'var(--surface-raised)' }}>
             <table className="w-full border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
               <colgroup>
                 {selectedContact ? (
@@ -410,14 +403,13 @@ export function Worktray({
             </table>
           </div>
 
-          {/* ── Drawer de historial (aparece al seleccionar una fila) ── */}
+          {/* ── Panel de historial (separado de la tabla) ── */}
           {selectedContact && (
             <aside
               aria-label="Historial del contacto"
               style={{
-                width: 272,
-                flexShrink: 0,
-                borderLeft: '1px solid var(--border-faint)',
+                borderRadius: 12,
+                border: '1px solid var(--border-faint)',
                 background: 'var(--surface-subtle)',
                 padding: '16px',
                 display: 'grid',
