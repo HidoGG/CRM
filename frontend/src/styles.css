@@ -57,6 +57,50 @@
   color: var(--text-primary);
 }
 
+/* ============================================================
+   MODO CLARO — se activa con class="light" en <html>
+   ============================================================ */
+html.light {
+  color-scheme: light;
+
+  --base:             oklch(96% 0.006 240);
+  --surface:          oklch(99% 0.003 240);
+  --surface-raised:   oklch(100% 0.000 240);
+  --surface-subtle:   oklch(94% 0.008 240);
+  --surface-input:    oklch(97% 0.005 240);
+  --surface-hover:    oklch(91% 0.012 240);
+
+  --border-faint:  rgba(0 0 0 / 0.07);
+  --border:        rgba(0 0 0 / 0.13);
+  --border-strong: rgba(0 0 0 / 0.22);
+
+  --text-primary:   oklch(14% 0.015 240);
+  --text-secondary: oklch(40% 0.020 240);
+  --text-muted:     oklch(54% 0.015 240);
+  --text-inverse:   oklch(97% 0.003 240);
+
+  --accent:        oklch(52% 0.18 250);
+  --accent-subtle: oklch(92% 0.08 250);
+  --accent-text:   oklch(99% 0.003 250);
+
+  --blue:        oklch(52% 0.18 250);
+  --blue-subtle: oklch(92% 0.08 250);
+
+  --green-bg:    oklch(92% 0.07 145);
+  --green-text:  oklch(38% 0.14 145);
+  --amber-bg:    oklch(93% 0.07 78);
+  --amber-text:  oklch(40% 0.13 78);
+  --red-bg:      oklch(92% 0.06 25);
+  --red-text:    oklch(42% 0.17 25);
+  --gray-bg:     oklch(90% 0.007 240);
+  --gray-text:   oklch(42% 0.010 240);
+  --purple-bg:   oklch(92% 0.07 305);
+  --purple-text: oklch(40% 0.12 305);
+
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.10);
+  --shadow-md: 0 4px 14px rgba(0 0 0 / 0.14);
+}
+
 * {
   box-sizing: border-box;
 }

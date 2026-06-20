@@ -66,6 +66,18 @@ function pathToViewId(pathname) {
   return 'dashboard';
 }
 
+function useTheme() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('crm-theme') || 'dark');
+  useEffect(() => {
+    const html = document.documentElement;
+    html.classList.toggle('dark', theme === 'dark');
+    html.classList.toggle('light', theme === 'light');
+    localStorage.setItem('crm-theme', theme);
+  }, [theme]);
+  const toggle = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+  return { theme, toggle };
+}
+
 function AppShell() {
   // ── Sesión Supabase (opcional) ──
   const [session, setSession] = useState(undefined); // undefined = cargando
@@ -96,10 +108,11 @@ function AppShell() {
   if (authEnabled && !session) {
     return <LoginView />;
   }
-  return <AuthenticatedApp />;
+  const { theme, toggle: toggleTheme } = useTheme();
+  return <AuthenticatedApp theme={theme} toggleTheme={toggleTheme} />;
 }
 
-function AuthenticatedApp() {
+function AuthenticatedApp({ theme, toggleTheme }) {
   const navigate = useNavigate();
   const location = useLocation();
   const refresh = useRefresh();
@@ -516,6 +529,8 @@ function AuthenticatedApp() {
           importing={importing}
           handleFileSelection={handleFileSelection}
           setActiveView={setActiveView}
+          theme={theme}
+          toggleTheme={toggleTheme}
         />
 
         <Routes>
