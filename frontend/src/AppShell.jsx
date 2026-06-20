@@ -487,7 +487,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   }
 
   return (
-    <div className="grid grid-cols-[280px_minmax(0,1fr)] min-h-screen">
+    <div className="grid grid-cols-[130px_minmax(0,1fr)] min-h-screen">
 
       {importing && (
         <div
