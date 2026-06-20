@@ -152,7 +152,6 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const [activeFilter, setActiveFilter] = useState('todos');
   const [activeActionFilter, setActiveActionFilter] = useState('enviar');
   const [activeTimingFilter, setActiveTimingFilter] = useState('todos');
-  const [activePipelineActionFilter, setActivePipelineActionFilter] = useState('todos');
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
 
@@ -202,6 +201,14 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       }, {}),
     [actionScopedContacts],
   );
+
+  const statusDistribution = useMemo(() => {
+    const ORDER = ['prioridad', 'mantener', 'revisar', 'seguimiento', 'portal', 'sacar'];
+    return ORDER.map(status => ({
+      status,
+      count: contacts.filter(c => String(c.status || '').toLowerCase() === status).length,
+    }));
+  }, [contacts]);
 
   const actionableContacts = useMemo(
     () =>
@@ -571,11 +578,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
                 selectedContact={actionableContacts.find((contact) => contact.id === selectedWorktrayId) || null}
                 historyItems={selectedHistory}
                 loadingHistory={loadingHistory}
-                contacts={contacts}
-                activePipelineActionFilter={activePipelineActionFilter}
-                onPipelineActionFilterChange={setActivePipelineActionFilter}
-                onOpenInWorktray={openInWorktray}
-                onUpdateContact={updateContact}
+                statusDistribution={statusDistribution}
               />
             }
           />
