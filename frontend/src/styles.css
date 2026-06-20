@@ -136,7 +136,7 @@ button {
 
 .shell {
   display: grid;
-  grid-template-columns: 115px minmax(0, 1fr);
+  grid-template-columns: 130px minmax(0, 1fr);
   min-height: 100vh;
 }
 
