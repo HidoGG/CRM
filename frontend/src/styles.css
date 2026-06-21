@@ -230,7 +230,6 @@ button {
 }
 
 .sidebar-card {
-  margin-top: auto;
   padding: 12px;
   border-radius: 10px;
   background: var(--surface-subtle);
