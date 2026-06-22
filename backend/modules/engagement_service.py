@@ -9,6 +9,7 @@ no lo tiene, las funciones devuelven un resultado informativo sin lanzar.
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -18,6 +19,115 @@ from sqlalchemy import bindparam, text
 from modules.database import get_session, insert_history, now_utc, row_to_dict
 
 EMAIL_RE = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.IGNORECASE)
+
+# ── Bounce reason helpers ──────────────────────────────────────────────────────
+# Clasificación basada en:
+#   RFC 3463 (Enhanced Mail System Status Codes): https://www.rfc-editor.org/rfc/rfc3463
+#   RFC 3464 (DSN format): https://www.rfc-editor.org/rfc/rfc3464
+
+# Mapeo de prefijo de status code (RFC 3463) → razón clasificada
+_STATUS_CODE_MAP = [
+    ("5.1.1", "usuario_inexistente"),   # Bad destination mailbox address
+    ("5.1.2", "dominio_invalido"),      # Bad destination system address
+    ("5.1.3", "direccion_invalida"),    # Bad destination mailbox address syntax
+    ("5.1.6", "usuario_inexistente"),   # Mailbox moved permanently (no forwarding)
+    ("5.2.1", "casilla_desactivada"),   # Mailbox disabled, not accepting messages
+    ("5.2.2", "casilla_llena"),         # Mailbox full
+    ("5.2.3", "tamano_excedido"),       # Message length exceeds administrative limit
+]
+
+# Frases heurísticas para servidores que no implementan RFC 3464 correctamente
+_HEURISTIC_RULES = [
+    (["user unknown", "no such user", "does not exist", "invalid user",
+      "no mailbox", "address rejected", "bad destination", "user not found",
+      "mailbox not found", "recipient not found"], "usuario_inexistente"),
+    (["mailbox full", "over quota", "quota exceeded", "storage limit",
+      "mailbox size limit", "user over quota"], "casilla_llena"),
+    (["domain not found", "host not found", "no mx", "invalid domain",
+      "name or service not known", "domain lookup failed"], "dominio_invalido"),
+    (["account disabled", "account closed", "account deactivated",
+      "mailbox disabled", "account does not exist", "inactive account"], "casilla_desactivada"),
+    (["spam", "blocked", "blacklist", "dmarc", "spf", "policy violation",
+      "policy rejection", "rejected due to"], "rechazado_politica"),
+    (["no longer works", "has left", "person has", "left the company",
+      "no longer with", "no longer employed", "no longer at"], "persona_no_trabaja"),
+]
+
+
+def _decode_part_data(data: str) -> str:
+    """Decodifica base64url de Gmail API a string UTF-8."""
+    if not data:
+        return ""
+    try:
+        return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _find_mime_parts(payload: dict, mime_prefix: str) -> list[dict]:
+    """Recorre recursivamente las partes MIME y devuelve las que coinciden."""
+    results = []
+    if payload.get("mimeType", "").lower().startswith(mime_prefix.lower()):
+        results.append(payload)
+    for part in payload.get("parts", []):
+        results.extend(_find_mime_parts(part, mime_prefix))
+    return results
+
+
+def _parse_bounce_reason(payload: dict) -> str:
+    """
+    Clasifica el motivo de rebote a partir del payload de Gmail API (format=full).
+
+    Estrategia en dos niveles:
+    1. RFC 3464 DSN: busca la parte MIME message/delivery-status y extrae
+       los campos 'Status' y 'Diagnostic-Code' (fuente autoritativa).
+    2. Heurística: analiza el texto plano del mensaje buscando frases conocidas.
+
+    Referencias:
+    - RFC 3464: https://www.rfc-editor.org/rfc/rfc3464
+    - RFC 3463: https://www.rfc-editor.org/rfc/rfc3463
+    """
+    status_code = ""
+    diagnostic_text = ""
+
+    # Nivel 1: buscar parte message/delivery-status (RFC 3464)
+    dsn_parts = _find_mime_parts(payload, "message/delivery-status")
+    for part in dsn_parts:
+        raw = _decode_part_data(part.get("body", {}).get("data", ""))
+        for line in raw.splitlines():
+            key, _, val = line.partition(":")
+            key_low = key.strip().lower()
+            if key_low == "status" and not status_code:
+                status_code = val.strip()
+            elif key_low == "diagnostic-code" and not diagnostic_text:
+                # Formato: "smtp; 550 5.1.1 User unknown"
+                diagnostic_text = val.strip().lower()
+
+    # Clasificar por código de status (RFC 3463) — fuente más confiable
+    if status_code:
+        for prefix, reason in _STATUS_CODE_MAP:
+            if status_code.startswith(prefix):
+                return reason
+        # Rebote temporario: código 4.x.x
+        if status_code.startswith("4."):
+            return "rebote_temporario"
+        # Cualquier otro 5.x.x no mapeado
+        if status_code.startswith("5."):
+            return "direccion_invalida"
+
+    # Nivel 2: heurística sobre texto plano + diagnostic code
+    plain_parts = _find_mime_parts(payload, "text/plain")
+    all_text = diagnostic_text
+    for part in plain_parts:
+        all_text += " " + _decode_part_data(part.get("body", {}).get("data", "")).lower()
+    # También el snippet de Gmail (preview del mensaje)
+    all_text += " " + payload.get("snippet", "").lower()
+
+    for keywords, reason in _HEURISTIC_RULES:
+        if any(kw in all_text for kw in keywords):
+            return reason
+
+    return "rebote_email"  # fallback genérico si no se pudo clasificar
 
 # Ventanas y límites conservadores de cuota:
 # threads.get cuesta 10 unidades; 40 threads/ciclo = 400 unidades,
@@ -158,9 +268,19 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
 def _check_bounces(service) -> int:
     """Busca avisos de mailer-daemon/postmaster y marca contactos rebotados.
 
-    El destinatario fallido se extrae del header X-Failed-Recipients (cuando
-    existe) y de los emails presentes en el snippet del aviso. Idempotente:
-    sólo actúa sobre contactos con bounced_at IS NULL.
+    Cambio respecto a la versión anterior: usa format='full' (mismo costo de
+    quota que 'metadata': 5 unidades/llamada según la Gmail API) para obtener
+    el cuerpo MIME completo y así clasificar el motivo del rebote via RFC 3464
+    DSN o heurística de texto.
+
+    Construye un dict {email_lower: reason} en vez de un set, para asociar
+    cada dirección con el motivo específico de su bounce message.
+
+    Idempotente: sólo actúa sobre contactos con bounced_at IS NULL.
+
+    Referencias:
+    - Gmail API quota: https://developers.google.com/gmail/api/reference/quota
+    - RFC 3464 (DSN): https://www.rfc-editor.org/rfc/rfc3464
     """
     try:
         listing = service.users().messages().list(
@@ -170,25 +290,40 @@ def _check_bounces(service) -> int:
         print(f"[engagement] No se pudieron listar rebotes: {exc}")
         return 0
 
-    candidates: set[str] = set()
+    # Dict email_lower → reason (si hay dos mensajes para el mismo email, gana el último)
+    candidates: dict[str, str] = {}
+
     for item in listing.get("messages", []):
         try:
             msg = service.users().messages().get(
                 userId="me", id=item["id"],
-                format="metadata", metadataHeaders=["X-Failed-Recipients", "Subject"],
+                format="full",
             ).execute()
         except Exception as exc:
             print(f"[engagement] No se pudo leer aviso {item.get('id')}: {exc}")
             continue
-        headers = msg.get("payload", {}).get("headers", [])
+
+        payload = msg.get("payload", {})
+        headers = payload.get("headers", [])
+
+        # Extraer emails candidatos: primero X-Failed-Recipients (más preciso),
+        # luego snippet del mensaje (fallback).
         failed_header = next(
             (h.get("value", "") for h in headers
              if h.get("name", "").lower() == "x-failed-recipients"),
             "",
         )
         text_sources = f"{failed_header} {msg.get('snippet', '')}"
-        for email in EMAIL_RE.findall(text_sources):
-            candidates.add(email.lower())
+        emails_in_msg = [e.lower() for e in EMAIL_RE.findall(text_sources)]
+
+        if not emails_in_msg:
+            continue
+
+        # Clasificar el motivo usando el payload completo
+        reason = _parse_bounce_reason(payload)
+
+        for email in emails_in_msg:
+            candidates[email] = reason
 
     if not candidates:
         return 0
@@ -201,39 +336,48 @@ def _check_bounces(service) -> int:
                 SELECT id, email FROM contacts
                 WHERE lower(email) IN :emails AND bounced_at IS NULL
             """).bindparams(bindparam("emails", expanding=True)),
-            {"emails": sorted(candidates)},
+            {"emails": sorted(candidates.keys())},
         ).fetchall()
+
         for row in rows:
             contact = row_to_dict(row)
+            reason = candidates.get(contact["email"].lower(), "rebote_email")
+
             session.execute(
                 text("""
                     UPDATE contacts
-                    SET bounced_at = :now, status = 'sacar', next_action = 'descartar',
+                    SET bounced_at = :now,
+                        status = 'sacar',
+                        next_action = 'descartar',
                         discard_reason = COALESCE(discard_reason, 'rebote_email'),
+                        bounce_reason = :reason,
                         updated_at = :now
                     WHERE id = :id
                 """),
-                {"now": now, "id": contact["id"]},
+                {"now": now, "reason": reason, "id": contact["id"]},
             )
             session.execute(
                 text("""
                     UPDATE email_jobs
                     SET status = 'failed',
-                        error_message = 'Rebote: dirección inválida o dominio inexistente'
+                        error_message = :err
                     WHERE contact_id = :id AND status = 'sent'
                 """),
-                {"id": contact["id"]},
+                {"err": f"Rebote: {reason}", "id": contact["id"]},
             )
             insert_history(
                 session,
                 event_type="email.bounced",
                 entity_type="contact",
                 entity_id=str(contact["id"]),
-                message=f"Rebote detectado para {contact['email']} — contacto marcado para sacar",
-                metadata_json=json.dumps({"email": contact["email"]}, ensure_ascii=True),
+                message=f"Rebote detectado para {contact['email']} — motivo: {reason}",
+                metadata_json=json.dumps(
+                    {"email": contact["email"], "bounce_reason": reason},
+                    ensure_ascii=True,
+                ),
             )
             bounced += 1
-            print(f"[engagement] Rebote: {contact['email']} marcado como inválido.")
+            print(f"[engagement] Rebote: {contact['email']} — motivo: {reason}")
     return bounced
 
 
