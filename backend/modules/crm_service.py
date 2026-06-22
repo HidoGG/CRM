@@ -745,7 +745,7 @@ def create_contact(payload: dict) -> dict:
             {"email": email},
         ).fetchone()
         if existing is not None:
-            raise ServiceError("contact email already exists", HTTPStatus.CONFLICT)
+            raise ServiceError("El email ya está registrado en la base de datos", HTTPStatus.CONFLICT)
 
         result = session.execute(
             text(f"""
@@ -849,7 +849,7 @@ def update_contact(contact_id: int, payload: dict) -> dict:
                 {"email": updates["email"], "id": contact_id},
             ).fetchone()
             if duplicate is not None:
-                raise ServiceError("contact email already exists", HTTPStatus.CONFLICT)
+                raise ServiceError("El email ya está registrado en la base de datos", HTTPStatus.CONFLICT)
 
         updates["updated_at"] = now_utc()
         set_clause = ", ".join(f"{field} = :{field}" for field in updates)
