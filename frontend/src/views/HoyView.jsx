@@ -8,6 +8,25 @@ const IconReply   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="
 const IconClock   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const IconWarning = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
 
+// ── Clasificación de motivos de rebote ────────────────────────────────────────
+// Espeja los valores del backend (engagement_service.py → _parse_bounce_reason)
+const BOUNCE_REASON_LABEL = {
+  usuario_inexistente: 'Usuario inexistente',
+  casilla_llena:       'Casilla llena',
+  dominio_invalido:    'Dominio inválido',
+  casilla_desactivada: 'Casilla desactivada',
+  rechazado_politica:  'Rechazado por spam',
+  persona_no_trabaja:  'Persona no trabaja',
+  rebote_temporario:   'Rebote temporario',
+  direccion_invalida:  'Dirección inválida',
+  tamano_excedido:     'Tamaño excedido',
+  rebote_email:        'Permanente',
+};
+
+function bounceLabel(contact) {
+  return BOUNCE_REASON_LABEL[contact.bounce_reason] || 'Permanente';
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -142,7 +161,7 @@ export function HoyView({ summary, contacts, emailJobs }) {
               company={c.company || '—'}
               detail={c.email}
               date={fmtDate(c.bounced_at)}
-              badge={c.discard_reason === 'rebote_email' ? 'Permanente' : c.discard_reason}
+              badge={bounceLabel(c)}
               badgeBg="var(--red-bg)"
               badgeColor="var(--red-text)"
             />

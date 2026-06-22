@@ -10,6 +10,19 @@ import {
   formatDate,
 } from '../../lib/utils';
 
+const BOUNCE_REASON_LABEL = {
+  usuario_inexistente: 'Usuario inexistente',
+  casilla_llena:       'Casilla llena',
+  dominio_invalido:    'Dominio inválido',
+  casilla_desactivada: 'Casilla desactivada',
+  rechazado_politica:  'Rechazado por spam',
+  persona_no_trabaja:  'Persona no trabaja',
+  rebote_temporario:   'Rebote temporario',
+  direccion_invalida:  'Dirección inválida',
+  tamano_excedido:     'Tamaño excedido',
+  rebote_email:        'Permanente',
+};
+
 const STATUS_STYLE = {
   prioridad:   { background: 'var(--red-bg)',      color: 'var(--red-text)'    },
   mantener:    { background: 'var(--green-bg)',    color: 'var(--green-text)'  },
@@ -315,7 +328,9 @@ export function Worktray({
                             <strong style={{ color: 'var(--text-primary)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.company || '—'}</strong>
                             {contact.discard_reason && (
                               <span style={{ display: 'inline-flex', alignSelf: 'start', borderRadius: 6, padding: '1px 6px', fontSize: '0.72rem', fontWeight: 600, background: 'var(--gray-bg)', color: 'var(--gray-text)', fontFamily: "'Barlow Condensed', sans-serif" }}>
-                                {contact.discard_reason === 'rebote_email' ? 'Rebote' : contact.discard_reason}
+                                {contact.bounce_reason
+                                  ? (BOUNCE_REASON_LABEL[contact.bounce_reason] || 'Rebote')
+                                  : (contact.discard_reason === 'rebote_email' ? 'Rebote' : contact.discard_reason)}
                               </span>
                             )}
                           </div>
@@ -447,6 +462,21 @@ export function Worktray({
                   );
                 })()}
               </div>
+
+              {/* Alerta de rebote si aplica */}
+              {selectedContact.bounced_at && (
+                <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-text)', borderRadius: 8, padding: '10px 12px', display: 'grid', gap: 4 }}>
+                  <span style={{ color: 'var(--red-text)', fontWeight: 700, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: "'Barlow Condensed', sans-serif" }}>
+                    Email rebotado
+                  </span>
+                  <span style={{ color: 'var(--red-text)', fontSize: '0.85rem', fontWeight: 600 }}>
+                    {BOUNCE_REASON_LABEL[selectedContact.bounce_reason] || 'Permanente'}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                    Detectado el {formatDate(selectedContact.bounced_at)}
+                  </span>
+                </div>
+              )}
 
               <div style={{ height: 1, background: 'var(--border-faint)' }} />
 
