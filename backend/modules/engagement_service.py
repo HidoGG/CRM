@@ -34,23 +34,50 @@ _STATUS_CODE_MAP = [
     ("5.2.1", "casilla_desactivada"),   # Mailbox disabled, not accepting messages
     ("5.2.2", "casilla_llena"),         # Mailbox full
     ("5.2.3", "tamano_excedido"),       # Message length exceeds administrative limit
+    ("5.4.4", "dominio_invalido"),      # Unable to route (DNS failure)
+    ("5.7.0", "rechazado_politica"),    # Other security/policy status
+    ("5.7.1", "rechazado_politica"),    # Delivery not authorized
 ]
 
-# Frases heurísticas para servidores que no implementan RFC 3464 correctamente
+# Frases heurísticas: inglés + español (Gmail genera notificaciones en el idioma del usuario).
+# Las frases en español cubren los rebotes generados por Google (mailer-daemon@googlemail.com)
+# cuando no hay parte MIME message/delivery-status separada.
 _HEURISTIC_RULES = [
+    # Usuario inexistente
     (["user unknown", "no such user", "does not exist", "invalid user",
-      "no mailbox", "address rejected", "bad destination", "user not found",
-      "mailbox not found", "recipient not found"], "usuario_inexistente"),
+      "no mailbox", "bad destination", "user not found",
+      "mailbox not found", "recipient not found",
+      # español (Gmail)
+      "no se encuentra o no puede recibir"], "usuario_inexistente"),
+    # Casilla llena
     (["mailbox full", "over quota", "quota exceeded", "storage limit",
-      "mailbox size limit", "user over quota"], "casilla_llena"),
+      "mailbox size limit", "user over quota",
+      # español
+      "casilla llena", "cuota excedida"], "casilla_llena"),
+    # Dominio inválido / DNS
     (["domain not found", "host not found", "no mx", "invalid domain",
-      "name or service not known", "domain lookup failed"], "dominio_invalido"),
+      "name or service not known", "domain lookup failed",
+      "nxdomain", "domain name not found", "dns error",
+      # español (Gmail: "no encontramos el dominio")
+      "no encontramos el dominio", "dominio no encontrado"], "dominio_invalido"),
+    # Cuenta desactivada
     (["account disabled", "account closed", "account deactivated",
-      "mailbox disabled", "account does not exist", "inactive account"], "casilla_desactivada"),
+      "mailbox disabled", "account does not exist", "inactive account",
+      # variantes con "account" genérico + rechazo
+      "account suspended"], "casilla_desactivada"),
+    # Rechazado por política / spam
     (["spam", "blocked", "blacklist", "dmarc", "spf", "policy violation",
-      "policy rejection", "rejected due to"], "rechazado_politica"),
+      "policy rejection", "rejected due to", "address rejected"], "rechazado_politica"),
+    # Persona ya no trabaja ahí
     (["no longer works", "has left", "person has", "left the company",
-      "no longer with", "no longer employed", "no longer at"], "persona_no_trabaja"),
+      "no longer with", "no longer employed", "no longer at",
+      # español
+      "ya no trabaja", "no trabaja más"], "persona_no_trabaja"),
+    # Rebote temporario
+    (["temporary", "try again", "temporarily",
+      # español (Gmail: "Hubo un problema temporal")
+      "problema temporal", "entrega no se completó",
+      "seguirá intentando"], "rebote_temporario"),
 ]
 
 
@@ -78,10 +105,11 @@ def _parse_bounce_reason(payload: dict) -> str:
     """
     Clasifica el motivo de rebote a partir del payload de Gmail API (format=full).
 
-    Estrategia en dos niveles:
-    1. RFC 3464 DSN: busca la parte MIME message/delivery-status y extrae
-       los campos 'Status' y 'Diagnostic-Code' (fuente autoritativa).
-    2. Heurística: analiza el texto plano del mensaje buscando frases conocidas.
+    Estrategia en tres niveles:
+    1. RFC 3464 DSN MIME: busca la parte message/delivery-status (fuente autoritativa).
+    2. Regex sobre texto plano: Gmail embebe los campos Status/Diagnostic-Code
+       directamente en el body text/plain en lugar de una parte MIME separada.
+    3. Heurística de frases: cubre inglés y español para servidores no estándar.
 
     Referencias:
     - RFC 3464: https://www.rfc-editor.org/rfc/rfc3464
@@ -90,7 +118,14 @@ def _parse_bounce_reason(payload: dict) -> str:
     status_code = ""
     diagnostic_text = ""
 
-    # Nivel 1: buscar parte message/delivery-status (RFC 3464)
+    # Recopilar todo el texto plano del mensaje
+    plain_parts = _find_mime_parts(payload, "text/plain")
+    all_text = ""
+    for part in plain_parts:
+        all_text += " " + _decode_part_data(part.get("body", {}).get("data", "")).lower()
+    all_text += " " + payload.get("snippet", "").lower()
+
+    # Nivel 1: buscar parte MIME message/delivery-status (RFC 3464)
     dsn_parts = _find_mime_parts(payload, "message/delivery-status")
     for part in dsn_parts:
         raw = _decode_part_data(part.get("body", {}).get("data", ""))
@@ -100,34 +135,37 @@ def _parse_bounce_reason(payload: dict) -> str:
             if key_low == "status" and not status_code:
                 status_code = val.strip()
             elif key_low == "diagnostic-code" and not diagnostic_text:
-                # Formato: "smtp; 550 5.1.1 User unknown"
                 diagnostic_text = val.strip().lower()
+
+    # Nivel 2: si no hubo parte DSN separada, extraer Status del texto plano.
+    # Gmail embebe los campos RFC 3464 directamente en el text/plain body.
+    if not status_code:
+        m = re.search(r"\bstatus:\s*([45]\.\d+\.\d+)", all_text, re.IGNORECASE)
+        if m:
+            status_code = m.group(1).strip()
+    if not diagnostic_text:
+        m = re.search(r"diagnostic-code:\s*smtp;\s*(.+?)(?:\n|$)", all_text, re.IGNORECASE)
+        if m:
+            diagnostic_text = m.group(1).strip().lower()
+
+    all_text = diagnostic_text + " " + all_text
 
     # Clasificar por código de status (RFC 3463) — fuente más confiable
     if status_code:
         for prefix, reason in _STATUS_CODE_MAP:
             if status_code.startswith(prefix):
                 return reason
-        # Rebote temporario: código 4.x.x
         if status_code.startswith("4."):
             return "rebote_temporario"
-        # Cualquier otro 5.x.x no mapeado
         if status_code.startswith("5."):
             return "direccion_invalida"
 
-    # Nivel 2: heurística sobre texto plano + diagnostic code
-    plain_parts = _find_mime_parts(payload, "text/plain")
-    all_text = diagnostic_text
-    for part in plain_parts:
-        all_text += " " + _decode_part_data(part.get("body", {}).get("data", "")).lower()
-    # También el snippet de Gmail (preview del mensaje)
-    all_text += " " + payload.get("snippet", "").lower()
-
+    # Nivel 3: heurística sobre texto (inglés + español)
     for keywords, reason in _HEURISTIC_RULES:
         if any(kw in all_text for kw in keywords):
             return reason
 
-    return "rebote_email"  # fallback genérico si no se pudo clasificar
+    return "rebote_email"  # fallback genérico
 
 # Ventanas y límites conservadores de cuota:
 # threads.get cuesta 10 unidades; 40 threads/ciclo = 400 unidades,
