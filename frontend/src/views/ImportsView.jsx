@@ -26,6 +26,7 @@ export function ImportsView({
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [selectedCvId, setSelectedCvId] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
+  const [previewFilter, setPreviewFilter] = useState('todos');
 
   function handleConfirm() {
     const scheduleId = selectedScheduleId === ''
@@ -72,21 +73,26 @@ export function ImportsView({
 
         {importPreview && (
           <div className="preview-stack">
+            {/* KPIs — el de duplicados se resalta si hay alguno */}
             <div className="mini-kpis">
               <div>
                 <strong>{importPreview.stats.total_contacts}</strong>
                 <span>detectados</span>
               </div>
               <div>
-                <strong>{importPreview.stats.total_ready}</strong>
+                <strong style={{ color: 'var(--green)' }}>{importPreview.stats.total_ready}</strong>
                 <span>listos</span>
               </div>
               <div>
-                <strong>{importPreview.stats.total_duplicates}</strong>
+                <strong style={{ color: importPreview.stats.total_duplicates > 0 ? 'var(--amber-text)' : undefined }}>
+                  {importPreview.stats.total_duplicates}
+                </strong>
                 <span>duplicados</span>
               </div>
               <div>
-                <strong>{importPreview.stats.total_invalid}</strong>
+                <strong style={{ color: importPreview.stats.total_invalid > 0 ? 'var(--red-text)' : undefined }}>
+                  {importPreview.stats.total_invalid}
+                </strong>
                 <span>invalidos</span>
               </div>
             </div>
@@ -98,6 +104,29 @@ export function ImportsView({
               </span>
             </div>
 
+            {/* Banner de aviso cuando hay duplicados */}
+            {importPreview.stats.total_duplicates > 0 && (
+              <div style={{
+                background: 'var(--amber-bg)',
+                border: '1px solid var(--amber-text)',
+                borderRadius: 10,
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                fontSize: '0.88rem',
+                color: 'var(--amber-text)',
+                fontWeight: 500,
+              }}>
+                <span style={{ fontSize: '1.1rem' }}>⚠</span>
+                <span>
+                  Se detectaron <strong>{importPreview.stats.total_duplicates}</strong> contacto
+                  {importPreview.stats.total_duplicates !== 1 ? 's' : ''} duplicado
+                  {importPreview.stats.total_duplicates !== 1 ? 's' : ''} — ya están en tu base de datos y no se importarán.
+                </span>
+              </div>
+            )}
+
             {importPreview.warnings?.length ? (
               <div className="warning-box">
                 {importPreview.warnings.map((warning) => (
@@ -105,6 +134,36 @@ export function ImportsView({
                 ))}
               </div>
             ) : null}
+
+            {/* Filtro de candidatos */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[
+                { key: 'todos',     label: `Todos (${importPreview.candidates.length})` },
+                { key: 'approve',   label: `Listos (${importPreview.stats.total_ready})` },
+                { key: 'duplicate', label: `Duplicados (${importPreview.stats.total_duplicates})` },
+                { key: 'invalid',   label: `Inválidos (${importPreview.stats.total_invalid})` },
+                { key: 'skip',      label: 'Omitidos' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setPreviewFilter(key)}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 7,
+                    border: '1px solid var(--border-faint)',
+                    background: previewFilter === key ? 'var(--accent)' : 'var(--surface-subtle)',
+                    color: previewFilter === key ? 'var(--accent-text)' : 'var(--text-secondary)',
+                    fontSize: '0.82rem',
+                    fontWeight: previewFilter === key ? 700 : 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
             <div className="table-shell">
               <table>
@@ -121,8 +180,21 @@ export function ImportsView({
                   </tr>
                 </thead>
                 <tbody>
-                  {importPreview.candidates.map((candidate) => (
-                    <tr key={candidate.id}>
+                  {importPreview.candidates
+                    .filter(c => previewFilter === 'todos' || c.decision === previewFilter)
+                    .map((candidate) => (
+                    <tr
+                      key={candidate.id}
+                      style={
+                        candidate.decision === 'duplicate'
+                          ? { background: 'var(--amber-bg)' }
+                          : candidate.decision === 'invalid'
+                          ? { background: 'var(--red-bg)' }
+                          : candidate.decision === 'skip'
+                          ? { background: 'var(--surface-subtle)', opacity: 0.7 }
+                          : undefined
+                      }
+                    >
                       <td>
                         <select
                           value={candidate.decision}
