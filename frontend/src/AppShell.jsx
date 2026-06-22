@@ -497,12 +497,12 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   }
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[167px_minmax(0,1fr)]">
+    <div className="min-h-screen md:grid md:grid-cols-[167px_minmax(0,1fr)]">
 
       {/* ── Overlay mobile: cierra el drawer al tocar fuera ── */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 lg:hidden"
+          className="fixed inset-0 z-40 md:hidden"
           style={{ background: 'rgba(0,0,0,0.45)' }}
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
@@ -552,11 +552,11 @@ function AuthenticatedApp({ theme, toggleTheme }) {
         onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="flex flex-col gap-4 p-4 pt-[60px] lg:p-6 lg:gap-6 lg:pt-6">
+      <main className="flex flex-col gap-4 p-4 pt-[60px] md:p-6 md:gap-6">
 
         {/* ── Header mobile: hamburguesa + título de página ── */}
         <header
-          className="lg:hidden fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-4"
+          className="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-4"
           style={{
             height: 56,
             background: 'var(--surface)',

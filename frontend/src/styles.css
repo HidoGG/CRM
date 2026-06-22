@@ -1573,68 +1573,123 @@ tr:last-child td {
 .status-sacar      { background: var(--gray-bg);   color: var(--gray-text);   }
 .status-portal     { background: var(--purple-bg); color: var(--purple-text); }
 
-/* ── Responsive ──────────────────────────────────────────────────────────────
-   Estrategia mobile-first (Tailwind docs): estilos base para mobile,
-   sobreescribir hacia arriba.
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE DESIGN — Estrategia de breakpoints
+   ───────────────────────────────────────────────
+   Threshold principal: 768px (Tailwind md:)
+     < 768px  → Mobile: sidebar drawer, contenido full-width
+     ≥ 768px  → Tablet + Desktop: sidebar siempre visible en columna
+   Threshold de grids: 1100px (igual que diseño original)
+     < 1100px → Layouts de 2 paneles colapsan a 1 columna
+   Threshold de tamaño: 600px
+     < 600px  → Grids de 4 columnas → 2 columnas (teléfonos)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-   Breakpoints adoptados:
-     < 640px  → mobile (phones)
-     640–1023px → tablet
-     ≥ 1024px  → desktop (lg: en Tailwind) — sidebar siempre visible
-   ────────────────────────────────────────────────────────────────────────── */
-
-/* Botón cerrar sidebar: oculto por defecto (solo aparece en mobile) */
+/* ── Botón cerrar (×) del drawer: oculto por defecto ── */
 .sidebar-close-btn {
   display: none;
   align-items: center;
   justify-content: flex-end;
   width: 100%;
-  padding: 4px 2px 4px;
-  margin-bottom: 2px;
+  padding: 4px 2px 6px;
   background: transparent;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 8px;
   transition: color 0.15s ease;
+  flex-shrink: 0;
 }
 .sidebar-close-btn:hover {
   color: var(--text-primary);
 }
 
-/* ── Sidebar: drawer en mobile/tablet (< 1024px) ── */
-@media (max-width: 1023px) {
+/* ════════════════════════════════════════════════════
+   MOBILE < 768px — Sidebar se convierte en drawer
+   ════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* Sidebar: fijo, deslizable desde la izquierda */
   .sidebar {
     position: fixed;
-    inset-block: 0;
+    top: 0;
+    bottom: 0;
     left: 0;
     height: 100vh;
-    width: 220px;
+    width: 240px;
     z-index: 50;
     transform: translateX(-100%);
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.28s ease;
     border-right: 1px solid var(--border-faint);
     box-shadow: none;
+    padding: 12px;
   }
 
   .sidebar.is-open {
     transform: translateX(0);
-    box-shadow: 4px 0 32px rgba(0, 0, 0, 0.25);
+    box-shadow: 8px 0 40px rgba(0, 0, 0, 0.3);
   }
 
   .sidebar-close-btn {
     display: flex;
   }
 
+  /* Paneles de detalle: no quedan pegados en mobile */
   .detail-panel {
     position: static;
   }
+
+  /* Layouts de dos paneles: stack vertical */
+  .hero-grid,
+  .pipeline-hero,
+  .trends-hero,
+  .comparison-grid,
+  .snapshot-trends,
+  .snapshot-trends-wide,
+  .secondary-grid,
+  .contacts-layout,
+  .worktray-hero,
+  .report-strip,
+  .worktray-layout,
+  .today-inbox-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .worktray-reading {
+    min-width: 0;
+  }
+
+  /* Grids de 4 columnas → 2 columnas en teléfono */
+  .hero-stats,
+  .report-kpis,
+  .worktray-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Topbar */
+  .topbar {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Tablas: border-radius reducido */
+  .table-shell {
+    border-radius: 12px;
+  }
+
+  /* Selects: ancho completo */
+  .confirm-options select {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
-/* ── Grids: colapsar en tablet/mobile ── */
-
-/* Layouts de dos paneles → 1 columna en tablet y mobile */
-@media (max-width: 1023px) {
+/* ════════════════════════════════════════════════════
+   TABLET + LAPTOP < 1100px — Mantener sidebar visible,
+   colapsar layouts de dos paneles a una columna
+   (replica el comportamiento original del sitio)
+   ════════════════════════════════════════════════════ */
+@media (max-width: 1100px) {
   .hero-grid,
   .pipeline-hero,
   .trends-hero,
@@ -1647,61 +1702,36 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 
-  /* Paneles de detalle: sin min-width agresivo */
+  .detail-panel {
+    position: static;
+  }
+
   .worktray-reading {
     min-width: 0;
   }
 }
 
-/* Grids de 4 columnas → 2 columnas en tablet (640–1023px) */
-@media (min-width: 640px) and (max-width: 1023px) {
-  .comparison-grid,
-  .snapshot-trends-wide,
-  .report-kpis,
-  .hero-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  /* Inbox de hoy: 2 columnas en tablet */
-  .today-inbox-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-/* Grids de 4 columnas → 1 columna en mobile (<640px) */
-@media (max-width: 639px) {
+/* ════════════════════════════════════════════════════
+   TABLET MEDIANO < 900px — Grids de 4 cols → 2 cols
+   ════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
   .comparison-grid,
   .snapshot-trends-wide {
-    grid-template-columns: 1fr;
-  }
-
-  .today-inbox-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* ── Mobile (< 640px): ajustes adicionales ── */
-@media (max-width: 639px) {
-  .hero-stats {
+/* ════════════════════════════════════════════════════
+   TABLET PEQUEÑO / MOBILE LANDSCAPE < 720px
+   ════════════════════════════════════════════════════ */
+@media (max-width: 720px) {
+  .hero-stats,
+  .report-kpis,
+  .worktray-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .report-kpis,
-  .worktray-metrics {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .topbar {
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .table-shell {
-    border-radius: 14px;
-  }
-
-  .confirm-options select {
-    min-width: 0;
-    width: 100%;
+  .today-inbox-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
