@@ -330,37 +330,34 @@ def _check_bounces(service) -> int:
 
     now = now_utc()
     bounced = 0
+    emails_sorted = sorted(candidates.keys())
+
     with get_session() as session:
-        rows = session.execute(
+        # ── Caso 1: nuevos rebotes (bounced_at IS NULL) — registro completo ──
+        new_rows = session.execute(
             text("""
                 SELECT id, email FROM contacts
                 WHERE lower(email) IN :emails AND bounced_at IS NULL
             """).bindparams(bindparam("emails", expanding=True)),
-            {"emails": sorted(candidates.keys())},
+            {"emails": emails_sorted},
         ).fetchall()
 
-        for row in rows:
+        for row in new_rows:
             contact = row_to_dict(row)
             reason = candidates.get(contact["email"].lower(), "rebote_email")
-
             session.execute(
                 text("""
                     UPDATE contacts
-                    SET bounced_at = :now,
-                        status = 'sacar',
-                        next_action = 'descartar',
+                    SET bounced_at = :now, status = 'sacar', next_action = 'descartar',
                         discard_reason = COALESCE(discard_reason, 'rebote_email'),
-                        bounce_reason = :reason,
-                        updated_at = :now
+                        bounce_reason = :reason, updated_at = :now
                     WHERE id = :id
                 """),
                 {"now": now, "reason": reason, "id": contact["id"]},
             )
             session.execute(
                 text("""
-                    UPDATE email_jobs
-                    SET status = 'failed',
-                        error_message = :err
+                    UPDATE email_jobs SET status = 'failed', error_message = :err
                     WHERE contact_id = :id AND status = 'sent'
                 """),
                 {"err": f"Rebote: {reason}", "id": contact["id"]},
@@ -377,7 +374,30 @@ def _check_bounces(service) -> int:
                 ),
             )
             bounced += 1
-            print(f"[engagement] Rebote: {contact['email']} — motivo: {reason}")
+            print(f"[engagement] Rebote nuevo: {contact['email']} — {reason}")
+
+        # ── Caso 2: rebotes ya registrados sin razón clasificada ──
+        # Contactos marcados antes de implementar la clasificación.
+        # Solo se actualiza bounce_reason; bounced_at y status no se tocan.
+        stale_rows = session.execute(
+            text("""
+                SELECT id, email FROM contacts
+                WHERE lower(email) IN :emails
+                  AND bounced_at IS NOT NULL
+                  AND bounce_reason IS NULL
+            """).bindparams(bindparam("emails", expanding=True)),
+            {"emails": emails_sorted},
+        ).fetchall()
+
+        for row in stale_rows:
+            contact = row_to_dict(row)
+            reason = candidates.get(contact["email"].lower(), "rebote_email")
+            session.execute(
+                text("UPDATE contacts SET bounce_reason = :reason WHERE id = :id"),
+                {"reason": reason, "id": contact["id"]},
+            )
+            print(f"[engagement] Razón actualizada: {contact['email']} — {reason}")
+
     return bounced
 
 
