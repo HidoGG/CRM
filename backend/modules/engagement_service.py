@@ -198,9 +198,10 @@ def sync_replies_and_bounces() -> dict:
     my_email = gmail_service.get_profile_email().lower()
     replies, threads_checked = _check_replies(service, my_email)
     bounces = _check_bounces(service)
+    reclassified = _backfill_bounce_reasons(service)
     print(
         f"[engagement] Sync — threads revisados: {threads_checked}, "
-        f"respuestas: {replies}, rebotes: {bounces}"
+        f"respuestas: {replies}, rebotes: {bounces}, reclasificados: {reclassified}"
     )
     return {
         "ok": True,
@@ -438,6 +439,65 @@ def _check_bounces(service) -> int:
             print(f"[engagement] Razón actualizada: {contact['email']} — {reason}")
 
     return bounced
+
+
+def _backfill_bounce_reasons(service) -> int:
+    """Busca en Gmail el bounce email específico de cada contacto sin clasificar.
+
+    A diferencia de _check_bounces (que toma los 25 más recientes), este
+    método busca por dirección de email individual, garantizando que contactos
+    con bounces antiguos también se reclasifiquen.
+
+    Procesa hasta 20 contactos por Sync para no exceder cuota de Gmail API.
+    Cada iteración usa ~6 unidades (1 list + 5 get); 20 × 6 = 120 unidades.
+    """
+    import time
+
+    with get_session() as session:
+        rows = session.execute(
+            text("""
+                SELECT id, email FROM contacts
+                WHERE bounced_at IS NOT NULL
+                  AND (bounce_reason IS NULL OR bounce_reason = 'rebote_email')
+                ORDER BY bounced_at DESC
+                LIMIT 20
+            """)
+        ).fetchall()
+
+    if not rows:
+        return 0
+
+    updated = 0
+    for row in rows:
+        contact = row_to_dict(row)
+        email = contact["email"]
+        try:
+            listing = service.users().messages().list(
+                userId="me",
+                q=f"from:(mailer-daemon OR postmaster) {email} newer_than:90d",
+                maxResults=1,
+            ).execute()
+            msgs = listing.get("messages", [])
+            if not msgs:
+                continue
+            msg = service.users().messages().get(
+                userId="me", id=msgs[0]["id"], format="full"
+            ).execute()
+            reason = _parse_bounce_reason(msg.get("payload", {}))
+            if reason == "rebote_email":
+                continue  # sin mejora, mantener para el próximo intento
+            with get_session() as session:
+                session.execute(
+                    text("UPDATE contacts SET bounce_reason = :reason WHERE id = :id"),
+                    {"reason": reason, "id": contact["id"]},
+                )
+            updated += 1
+            print(f"[engagement] Razón actualizada (backfill): {email} — {reason}")
+            time.sleep(0.3)  # evitar rate limiting de la API
+        except Exception as exc:
+            print(f"[engagement] Error en backfill para {email}: {exc}")
+
+    return updated
 
 
 def send_daily_reminder() -> dict:
