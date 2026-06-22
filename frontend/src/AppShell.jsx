@@ -112,14 +112,24 @@ function AppShell() {
   return <AuthenticatedApp theme={theme} toggleTheme={toggleTheme} />;
 }
 
+const HamburgerIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+    <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+  </svg>
+);
+
 function AuthenticatedApp({ theme, toggleTheme }) {
   const navigate = useNavigate();
   const location = useLocation();
   const refresh = useRefresh();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const activeView = pathToViewId(location.pathname);
   const setActiveView = (viewId) => navigate(VIEW_ROUTES[viewId] || '/');
   const pageTitle = PATH_TITLES[location.pathname] || 'Hoy';
+
+  // Cerrar sidebar al cambiar de ruta en mobile
+  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
 
   // ── Datos críticos (cargados al inicio) ──
   const contactsQuery = useContacts();
@@ -487,7 +497,17 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   }
 
   return (
-    <div className="grid grid-cols-[167px_minmax(0,1fr)] min-h-screen">
+    <div className="min-h-screen lg:grid lg:grid-cols-[167px_minmax(0,1fr)]">
+
+      {/* ── Overlay mobile: cierra el drawer al tocar fuera ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       {importing && (
         <div
@@ -528,9 +548,41 @@ function AuthenticatedApp({ theme, toggleTheme }) {
         overdueCount={reporting.queue.overdue}
         theme={theme}
         toggleTheme={toggleTheme}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="p-6 flex flex-col gap-6">
+      <main className="flex flex-col gap-4 p-4 pt-[60px] lg:p-6 lg:gap-6 lg:pt-6">
+
+        {/* ── Header mobile: hamburguesa + título de página ── */}
+        <header
+          className="lg:hidden fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-4"
+          style={{
+            height: 56,
+            background: 'var(--surface)',
+            borderBottom: '1px solid var(--border-faint)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Abrir menú"
+            aria-expanded={sidebarOpen}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 40, height: 40, borderRadius: 8, flexShrink: 0,
+              background: 'transparent', border: 'none',
+              color: 'var(--text-primary)', cursor: 'pointer',
+            }}
+          >
+            <HamburgerIcon />
+          </button>
+          <div className="brand-mark" aria-hidden="true" style={{ flexShrink: 0 }}>C</div>
+          <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {pageTitle}
+          </span>
+        </header>
+
         <Topbar
           pageTitle={pageTitle}
           refreshData={() => refresh()}

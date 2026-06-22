@@ -10,7 +10,7 @@ export function Topbar({
 }) {
   return (
     <header className="topbar" role="banner">
-      <div>
+      <div className="hidden lg:block">
         <p className="eyebrow">CRM laboral</p>
         <h1 className="m-0 font-bold tracking-tight text-[var(--text-primary)]">
           {pageTitle}

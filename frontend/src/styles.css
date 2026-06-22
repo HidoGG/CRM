@@ -1573,15 +1573,72 @@ tr:last-child td {
 .status-sacar      { background: var(--gray-bg);   color: var(--gray-text);   }
 .status-portal     { background: var(--purple-bg); color: var(--purple-text); }
 
-/* ── Responsive ── */
-@media (max-width: 1100px) {
-  .shell,
+/* ── Responsive ──────────────────────────────────────────────────────────────
+   Estrategia mobile-first (Tailwind docs): estilos base para mobile,
+   sobreescribir hacia arriba.
+
+   Breakpoints adoptados:
+     < 640px  → mobile (phones)
+     640–1023px → tablet
+     ≥ 1024px  → desktop (lg: en Tailwind) — sidebar siempre visible
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Botón cerrar sidebar: oculto por defecto (solo aparece en mobile) */
+.sidebar-close-btn {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  padding: 4px 2px 4px;
+  margin-bottom: 2px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.15s ease;
+}
+.sidebar-close-btn:hover {
+  color: var(--text-primary);
+}
+
+/* ── Sidebar: drawer en mobile/tablet (< 1024px) ── */
+@media (max-width: 1023px) {
+  .sidebar {
+    position: fixed;
+    inset-block: 0;
+    left: 0;
+    height: 100vh;
+    width: 220px;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    border-right: 1px solid var(--border-faint);
+    box-shadow: none;
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 32px rgba(0, 0, 0, 0.25);
+  }
+
+  .sidebar-close-btn {
+    display: flex;
+  }
+
+  .detail-panel {
+    position: static;
+  }
+}
+
+/* ── Grids: colapsar en tablet/mobile ── */
+
+/* Layouts de dos paneles → 1 columna en tablet y mobile */
+@media (max-width: 1023px) {
   .hero-grid,
   .pipeline-hero,
   .trends-hero,
-  .comparison-grid,
   .snapshot-trends,
-  .today-inbox-grid,
   .secondary-grid,
   .contacts-layout,
   .worktray-hero,
@@ -1590,43 +1647,41 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--border-faint);
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    padding: 16px 24px;
-    gap: 16px;
-  }
-
-  .nav {
-    grid-auto-flow: column;
-    grid-auto-columns: auto;
-    overflow-x: auto;
-  }
-
-  .sidebar-card {
-    margin-top: 0;
-    display: none;
-  }
-
-  .detail-panel {
-    position: static;
+  /* Paneles de detalle: sin min-width agresivo */
+  .worktray-reading {
+    min-width: 0;
   }
 }
 
-@media (max-width: 720px) {
-  .main,
-  .sidebar {
-    padding: 14px 16px;
+/* Grids de 4 columnas → 2 columnas en tablet (640–1023px) */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .comparison-grid,
+  .snapshot-trends-wide,
+  .report-kpis,
+  .hero-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .topbar {
-    flex-direction: column;
-    gap: 12px;
+  /* Inbox de hoy: 2 columnas en tablet */
+  .today-inbox-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Grids de 4 columnas → 1 columna en mobile (<640px) */
+@media (max-width: 639px) {
+  .comparison-grid,
+  .snapshot-trends-wide {
+    grid-template-columns: 1fr;
   }
 
+  .today-inbox-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Mobile (< 640px): ajustes adicionales ── */
+@media (max-width: 639px) {
   .hero-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1636,7 +1691,17 @@ tr:last-child td {
     grid-template-columns: 1fr 1fr;
   }
 
+  .topbar {
+    flex-direction: column;
+    gap: 12px;
+  }
+
   .table-shell {
     border-radius: 14px;
+  }
+
+  .confirm-options select {
+    min-width: 0;
+    width: 100%;
   }
 }

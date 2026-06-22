@@ -25,10 +25,32 @@ const navItems = [
   { id: 'estadisticas',  label: 'Estadísticas',  note: 'Análisis e historial'         },
 ];
 
-export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount = 0, theme, toggleTheme }) {
+const CloseIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+);
+
+export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount = 0, theme, toggleTheme, isOpen, onClose }) {
   const isDark = theme === 'dark';
+
+  function handleNavClick(id) {
+    setActiveView(id);
+    onClose?.();
+  }
+
   return (
-    <aside className="sidebar" role="navigation" aria-label="Navegación principal">
+    <aside className={`sidebar${isOpen ? ' is-open' : ''}`} role="navigation" aria-label="Navegación principal">
+      {/* Botón cerrar — solo visible en mobile */}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Cerrar menú"
+        className="sidebar-close-btn"
+      >
+        <CloseIcon />
+      </button>
+
       {/* Brand */}
       <div className="brand">
         <div className="brand-mark" aria-hidden="true">C</div>
@@ -56,7 +78,7 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
               key={item.id}
               type="button"
               className={`nav-item ${isActive ? 'is-active' : ''}`}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => handleNavClick(item.id)}
               aria-current={isActive ? 'page' : undefined}
               aria-label={showBadge ? `${item.label} — ${overdueCount} vencidos` : item.label}
             >
