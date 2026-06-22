@@ -414,15 +414,16 @@ def _check_bounces(service) -> int:
             bounced += 1
             print(f"[engagement] Rebote nuevo: {contact['email']} — {reason}")
 
-        # ── Caso 2: rebotes ya registrados sin razón clasificada ──
-        # Contactos marcados antes de implementar la clasificación.
-        # Solo se actualiza bounce_reason; bounced_at y status no se tocan.
+        # ── Caso 2: rebotes ya registrados sin razón específica ──
+        # Cubre: bounce_reason IS NULL (anteriores a la feature) y
+        # bounce_reason = 'rebote_email' (clasificados con el fallback genérico
+        # antes del fix del parser). Solo se actualiza bounce_reason.
         stale_rows = session.execute(
             text("""
                 SELECT id, email FROM contacts
                 WHERE lower(email) IN :emails
                   AND bounced_at IS NOT NULL
-                  AND bounce_reason IS NULL
+                  AND (bounce_reason IS NULL OR bounce_reason = 'rebote_email')
             """).bindparams(bindparam("emails", expanding=True)),
             {"emails": emails_sorted},
         ).fetchall()
