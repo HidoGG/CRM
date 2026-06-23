@@ -40,9 +40,16 @@ DOMAIN_OVERRIDES = {
 
 def get_runtime_capabilities() -> dict:
     openai_enabled = bool(os.getenv("OPENAI_API_KEY"))
+    ocr_space_enabled = bool(os.getenv("OCR_SPACE_API_KEY"))
+    providers = []
+    if openai_enabled:
+        providers.append("openai")
+    if ocr_space_enabled:
+        providers.append("ocr_space")
     return {
         "openai_enabled": openai_enabled,
-        "providers": ["openai"] if openai_enabled else [],
+        "ocr_space_enabled": ocr_space_enabled,
+        "providers": providers,
     }
 
 
@@ -97,9 +104,28 @@ def extract_candidates_from_file(filename: str, mime_type: str, raw_bytes: bytes
                 text = extract_text_with_openai(raw_bytes, filename, mime_type)
                 provider = "openai_image"
             except Exception as exc:
-                warnings.append(f"No pude hacer OCR de la imagen por API: {exc}")
+                exc_str = str(exc)
+                is_quota = "429" in exc_str or "insufficient_quota" in exc_str or "quota" in exc_str.lower()
+                reason = "Cuota de OpenAI agotada" if is_quota else f"OpenAI falló: {exc_str[:80]}"
+                if capabilities["ocr_space_enabled"]:
+                    print(f"[ocr] {reason} — usando OCR.Space como fallback")
+                    try:
+                        text = extract_text_with_ocr_space(raw_bytes)
+                        provider = "ocr_space"
+                    except Exception as exc2:
+                        warnings.append(f"OpenAI y OCR.Space fallaron: {str(exc2)[:120]}")
+                else:
+                    warnings.append(f"{reason}. Configurá OCR_SPACE_API_KEY en Render como alternativa gratuita.")
+        elif capabilities["ocr_space_enabled"]:
+            try:
+                text = extract_text_with_ocr_space(raw_bytes)
+                provider = "ocr_space"
+            except Exception as exc:
+                warnings.append(f"No pude hacer OCR de la imagen: {str(exc)[:120]}")
         else:
-            warnings.append("Las imagenes necesitan OPENAI_API_KEY para extraer texto.")
+            warnings.append(
+                "Las imágenes necesitan OPENAI_API_KEY u OCR_SPACE_API_KEY para extraer texto."
+            )
     else:
         text = decode_text(raw_bytes)
 
@@ -161,6 +187,68 @@ def extract_text_with_openai(raw_bytes: bytes, filename: str, mime_type: str) ->
     if not extracted.strip():
         raise RuntimeError("OpenAI no devolvio texto util.")
     return extracted
+
+
+def _compress_image_for_ocr(raw_bytes: bytes, max_bytes: int = 900_000) -> bytes:
+    """Reduce una imagen a menos de max_bytes usando Pillow. Devuelve JPEG comprimido."""
+    from PIL import Image
+    if len(raw_bytes) <= max_bytes:
+        return raw_bytes
+    img = Image.open(io.BytesIO(raw_bytes))
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    for max_dim in (1600, 1200, 900, 700):
+        candidate = img.copy()
+        candidate.thumbnail((max_dim, max_dim), Image.LANCZOS)
+        buf = io.BytesIO()
+        candidate.save(buf, format="JPEG", quality=85)
+        if buf.tell() <= max_bytes:
+            return buf.getvalue()
+    buf = io.BytesIO()
+    img.thumbnail((600, 600), Image.LANCZOS)
+    img.save(buf, format="JPEG", quality=50)
+    return buf.getvalue()
+
+
+def extract_text_with_ocr_space(raw_bytes: bytes) -> str:
+    """Extrae texto de una imagen usando OCR.Space API. Comprime la imagen si supera 1MB."""
+    import httpx
+
+    api_key = os.getenv("OCR_SPACE_API_KEY")
+    if not api_key:
+        raise RuntimeError("OCR_SPACE_API_KEY no está configurada.")
+
+    compressed = _compress_image_for_ocr(raw_bytes)
+
+    with httpx.Client(timeout=45) as client:
+        response = client.post(
+            "https://api.ocr.space/parse/image",
+            data={
+                "apikey": api_key,
+                "language": "spa",
+                "isOverlayRequired": "false",
+                "OCREngine": "2",
+                "detectOrientation": "true",
+            },
+            files={"filename": ("image.jpg", compressed, "image/jpeg")},
+        )
+    response.raise_for_status()
+    result = response.json()
+
+    if result.get("IsErroredOnProcessing"):
+        errors = result.get("ErrorMessage") or ["Error desconocido"]
+        msg = errors[0] if isinstance(errors, list) else str(errors)
+        raise RuntimeError(f"OCR.Space: {msg}")
+
+    parsed = result.get("ParsedResults") or []
+    if not parsed:
+        raise RuntimeError("OCR.Space no devolvió resultados.")
+
+    text = "\n".join(p.get("ParsedText", "") for p in parsed)
+    if not text.strip():
+        raise RuntimeError("OCR.Space no detectó texto en la imagen.")
+
+    return text
 
 
 def extract_text_from_pdf(raw_bytes: bytes) -> str:

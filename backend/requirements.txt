@@ -25,6 +25,10 @@ pdfplumber>=0.11.0
 
 # Integracion OpenAI (OCR por API y clasificacion asistida)
 openai>=1.30.0
+httpx>=0.27.0
+
+# Procesamiento de imágenes (compresión antes de OCR.Space)
+Pillow>=10.0.0
 
 # Gmail API
 google-auth>=2.0.0
