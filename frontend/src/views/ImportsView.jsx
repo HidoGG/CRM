@@ -50,8 +50,13 @@ export function ImportsView({
         </div>
 
         <div className="provider-row">
-          <span className={`provider-pill ${capabilities.openai_enabled ? 'is-ready' : ''}`}>
-            OCR: {capabilities.openai_enabled ? 'OpenAI activo' : 'OPENAI_API_KEY ausente'}
+          <span className={`provider-pill ${capabilities.openai_enabled || capabilities.ocr_space_enabled ? 'is-ready' : ''}`}>
+            OCR:{' '}
+            {capabilities.openai_enabled
+              ? 'OpenAI activo'
+              : capabilities.ocr_space_enabled
+              ? 'OCR.Space activo'
+              : 'Sin API de imágenes'}
           </span>
           <span className={`provider-pill ${capabilities.openai_enabled ? 'is-ready' : ''}`}>
             Clasificacion: {capabilities.openai_enabled ? 'OpenAI + heuristica' : 'Heuristica local'}
