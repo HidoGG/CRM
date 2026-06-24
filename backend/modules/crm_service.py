@@ -802,6 +802,7 @@ def create_contact(payload: dict) -> dict:
         _auto_create_email_job(
             session, contact_id, payload.get("next_action", ""),
             schedule_id=payload.get("schedule_id"),
+            contact_industry=industry,
         )
         row = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
@@ -1366,6 +1367,7 @@ def confirm_import(import_id: int, payload: dict) -> dict:
             _auto_create_email_job(
                 session, contact_id, next_action, job_template_id, job_cv_file_id,
                 schedule_id=schedule_id, job_index=job_idx,
+                contact_industry=candidate_industry,
             )
 
         session.execute(
@@ -1523,11 +1525,23 @@ def _auto_create_email_job(
     cv_file_id: int | None = None,
     schedule_id: int | None = None,
     job_index: int = 0,
+    contact_industry: str | None = None,
 ) -> None:
     """Crea un email_job para un contacto. Solo actúa para acciones enviar/seguir.
-    Si se provee schedule_id, calcula scheduled_at respetando la ventana horaria ART."""
+    Si se provee schedule_id, calcula scheduled_at respetando la ventana horaria ART.
+    Resuelve template/cv en orden: argumento explícito → sector_defaults → is_default."""
     if normalize_next_action(next_action) not in {"enviar", "seguir"}:
         return
+
+    # Intentar resolver desde sector_defaults si falta alguno
+    if (template_id is None or cv_file_id is None) and contact_industry:
+        sd_tmpl, sd_cv = industry_service.get_template_cv_for_sector(session, contact_industry)
+        if template_id is None:
+            template_id = sd_tmpl
+        if cv_file_id is None:
+            cv_file_id = sd_cv
+
+    # Fallback a is_default si aún falta
     if template_id is None:
         tmpl = session.execute(
             text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
