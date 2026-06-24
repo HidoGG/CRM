@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { API_BASE, apiFetch } from '../lib/api';
 
 // ── Iconos inline (sin dependencias externas) ──────────────────────────────────
 const IconSend    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
@@ -7,9 +8,9 @@ const IconX       = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="
 const IconReply   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>;
 const IconClock   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const IconWarning = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+const IconGmail   = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>;
 
 // ── Clasificación de motivos de rebote ────────────────────────────────────────
-// Espeja los valores del backend (engagement_service.py → _parse_bounce_reason)
 const BOUNCE_REASON_LABEL = {
   usuario_inexistente: 'Usuario inexistente',
   casilla_llena:       'Casilla llena',
@@ -37,17 +38,17 @@ function fmtDateTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' +
-    d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' a. m.';
 }
 
 function buildStats(contacts, emailJobs) {
   const sent    = emailJobs.filter(j => j.status === 'sent' || j.status === 'completed').length;
   const failed  = emailJobs.filter(j => j.status === 'failed' || j.status === 'error').length;
   const pending = emailJobs.filter(j => j.status === 'pending').length;
-  const total   = sent + failed; // total alguna vez procesados (sin pendientes)
+  const total   = sent + failed;
 
-  const bounced = contacts.filter(c => c.bounced_at).length;
-  const replied = contacts.filter(c => c.replied_at).length;
+  const bounced   = contacts.filter(c => c.bounced_at).length;
+  const replied   = contacts.filter(c => c.replied_at).length;
   const delivered = Math.max(0, total - bounced);
 
   const deliveryRate = total > 0 ? Math.round((delivered / total) * 100) : null;
@@ -58,7 +59,9 @@ function buildStats(contacts, emailJobs) {
 }
 
 // ── Componente principal ───────────────────────────────────────────────────────
-export function HoyView({ summary, contacts, emailJobs }) {
+export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
+  const [processing, setProcessing] = useState(new Set());
+
   const stats = useMemo(() => buildStats(contacts, emailJobs), [contacts, emailJobs]);
 
   const recentBounced = useMemo(() =>
@@ -85,10 +88,64 @@ export function HoyView({ summary, contacts, emailJobs }) {
     [emailJobs]
   );
 
+  // Índice contact_id → thread_id del último job enviado con respuesta
+  const threadByContact = useMemo(() => {
+    const map = {};
+    for (const j of emailJobs) {
+      if (j.thread_id && (j.status === 'sent' || j.status === 'completed')) {
+        map[j.contact_id] = j.thread_id;
+      }
+    }
+    return map;
+  }, [emailJobs]);
+
+  function isProcessing(key) { return processing.has(key); }
+  function startProcessing(key) { setProcessing(prev => new Set(prev).add(key)); }
+  function stopProcessing(key)  { setProcessing(prev => { const s = new Set(prev); s.delete(key); return s; }); }
+
+  async function handleSacar(contact) {
+    const key = `sacar-${contact.id}`;
+    if (isProcessing(key)) return;
+    startProcessing(key);
+    try {
+      // Cancelar todos los jobs pendientes de este contacto
+      const pendingJobs = emailJobs.filter(j => j.contact_id === contact.id && j.status === 'pending');
+      await Promise.all(pendingJobs.map(j =>
+        apiFetch(`${API_BASE}/email-jobs/${j.id}`, { method: 'DELETE' })
+      ));
+      // Marcar contacto como "sacar" (queda en DB como registro histórico)
+      await apiFetch(`${API_BASE}/contacts/${contact.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'sacar', next_action: 'revisar_manual' }),
+      });
+      await onRefresh?.('contacts');
+      await onRefresh?.('jobs');
+    } catch (e) {
+      console.error('[sacar]', e);
+    } finally {
+      stopProcessing(key);
+    }
+  }
+
+  async function handleCancelJob(jobId) {
+    const key = `job-${jobId}`;
+    if (isProcessing(key)) return;
+    startProcessing(key);
+    try {
+      await apiFetch(`${API_BASE}/email-jobs/${jobId}`, { method: 'DELETE' });
+      await onRefresh?.('jobs');
+    } catch (e) {
+      console.error('[cancel-job]', e);
+    } finally {
+      stopProcessing(key);
+    }
+  }
+
   return (
     <section className="page">
 
-      {/* ── KPIs — fila de 5 números (patrón Instantly/Lemlist) ── */}
+      {/* ── KPIs ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         <KpiCard
           icon={<IconSend />}
@@ -137,13 +194,13 @@ export function HoyView({ summary, contacts, emailJobs }) {
         />
       </div>
 
-      {/* ── Barra de composición visual (patrón Mailchimp) ── */}
+      {/* ── Barra de composición ── */}
       {stats.total > 0 && <DeliveryBar stats={stats} />}
 
       {/* ── Tres columnas de detalle ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
 
-        {/* Columna 1 — Rebotes recientes */}
+        {/* Columna 1 — Rebotes */}
         <DetailPanel
           title="Rebotes detectados"
           count={stats.bounced}
@@ -164,7 +221,15 @@ export function HoyView({ summary, contacts, emailJobs }) {
               badge={bounceLabel(c)}
               badgeBg="var(--red-bg)"
               badgeColor="var(--red-text)"
-            />
+            >
+              <ActionButton
+                label="Sacar de cola"
+                loading={isProcessing(`sacar-${c.id}`)}
+                variant="danger"
+                onClick={() => handleSacar(c)}
+                title="Cancela todos los emails pendientes y marca el contacto como descartado. El contacto queda en la base de datos como registro."
+              />
+            </ContactRow>
           ))}
         </DetailPanel>
 
@@ -186,7 +251,18 @@ export function HoyView({ summary, contacts, emailJobs }) {
               company={j.contact_company || '—'}
               detail={j.contact_email}
               date={fmtDateTime(j.scheduled_at)}
-            />
+              badge={j.template_name || null}
+              badgeBg="var(--surface-subtle)"
+              badgeColor="var(--text-muted)"
+            >
+              <ActionButton
+                label="Cancelar envío"
+                loading={isProcessing(`job-${j.id}`)}
+                variant="neutral"
+                onClick={() => handleCancelJob(j.id)}
+                title="Elimina este email de la cola. El contacto no se modifica."
+              />
+            </ContactRow>
           ))}
         </DetailPanel>
 
@@ -198,22 +274,52 @@ export function HoyView({ summary, contacts, emailJobs }) {
           countColor="var(--green-text)"
           countBg="var(--green-bg)"
         >
-          {recentReplied.map(c => (
-            <ContactRow
-              key={c.id}
-              icon={<IconReply />}
-              iconColor="var(--green-text)"
-              iconBg="var(--green-bg)"
-              name={c.name || 'Sin nombre'}
-              company={c.company || '—'}
-              detail={c.email}
-              date={fmtDate(c.replied_at)}
-            />
-          ))}
+          {recentReplied.map(c => {
+            const threadId = threadByContact[c.id];
+            const gmailUrl = threadId
+              ? `https://mail.google.com/mail/u/0/#inbox/${threadId}`
+              : null;
+            return (
+              <ContactRow
+                key={c.id}
+                icon={<IconReply />}
+                iconColor="var(--green-text)"
+                iconBg="var(--green-bg)"
+                name={c.name || 'Sin nombre'}
+                company={c.company || '—'}
+                detail={c.email}
+                date={fmtDate(c.replied_at)}
+              >
+                {gmailUrl && (
+                  <a
+                    href={gmailUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      padding: '3px 8px',
+                      borderRadius: 5,
+                      background: 'var(--green-bg)',
+                      color: 'var(--green-text)',
+                      border: '1px solid var(--green-text)',
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <IconGmail /> Ver en Gmail
+                  </a>
+                )}
+              </ContactRow>
+            );
+          })}
         </DetailPanel>
       </div>
 
-      {/* ── Alerta de bounce rate alto ── */}
+      {/* ── Alerta bounce rate ── */}
       {stats.bounceRate > 15 && (
         <BounceAlert bounceRate={stats.bounceRate} bounced={stats.bounced} />
       )}
@@ -271,13 +377,11 @@ function DeliveryBar({ stats }) {
           {stats.total + stats.pending} total
         </span>
       </div>
-      {/* Barra de progreso segmentada */}
       <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', background: 'var(--surface-subtle)', gap: 1 }}>
         {pDelivered > 0 && <div style={{ width: `${pDelivered}%`, background: 'var(--green-text)', borderRadius: pBounced === 0 && pPending === 0 ? 99 : '99px 0 0 99px' }} />}
         {pBounced   > 0 && <div style={{ width: `${pBounced}%`,   background: 'var(--red-text)' }} />}
         {pPending   > 0 && <div style={{ width: `${pPending}%`,   background: 'var(--amber-text)', borderRadius: '0 99px 99px 0' }} />}
       </div>
-      {/* Leyenda */}
       <div style={{ display: 'flex', gap: 20, marginTop: 8 }}>
         <LegendItem color="var(--green-text)" label="Entregados" value={stats.delivered} pct={stats.deliveryRate} />
         <LegendItem color="var(--red-text)"   label="Rebotes"    value={stats.bounced}   pct={stats.bounceRate} />
@@ -322,41 +426,77 @@ function DetailPanel({ title, count, emptyMsg, countColor, countBg, children }) 
   );
 }
 
-function ContactRow({ icon, iconColor, iconBg, name, company, detail, date, badge, badgeBg, badgeColor }) {
+function ContactRow({ icon, iconColor, iconBg, name, company, detail, date, badge, badgeBg, badgeColor, children }) {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '24px 1fr auto',
-      gap: 8,
-      alignItems: 'start',
+      gap: 6,
       padding: '8px 10px',
       borderRadius: 8,
       background: 'var(--surface-subtle)',
       border: '1px solid var(--border-faint)',
     }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: iconBg, color: iconColor, flexShrink: 0, marginTop: 1 }}>
-        {icon}
-      </span>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: '0.84rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {name}
+      <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto', gap: 8, alignItems: 'start' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: iconBg, color: iconColor, flexShrink: 0, marginTop: 1 }}>
+          {icon}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: '0.84rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {name}
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {company}
+          </div>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {detail}
+          </div>
         </div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {company}
-        </div>
-        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {detail}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{date}</span>
+          {badge && (
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: badgeBg, color: badgeColor, whiteSpace: 'nowrap', fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {badge}
+            </span>
+          )}
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{date}</span>
-        {badge && (
-          <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: badgeBg, color: badgeColor, whiteSpace: 'nowrap', fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            {badge}
-          </span>
-        )}
-      </div>
+      {children && (
+        <div style={{ display: 'flex', gap: 6, paddingLeft: 32 }}>
+          {children}
+        </div>
+      )}
     </div>
+  );
+}
+
+function ActionButton({ label, loading, variant, onClick, title }) {
+  const styles = {
+    danger:  { background: 'var(--red-bg)',    color: 'var(--red-text)',    border: '1px solid var(--red-text)'    },
+    neutral: { background: 'var(--surface-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-faint)' },
+  };
+  const s = styles[variant] || styles.neutral;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      title={title}
+      style={{
+        ...s,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: '0.72rem',
+        fontWeight: 600,
+        padding: '3px 8px',
+        borderRadius: 5,
+        cursor: loading ? 'not-allowed' : 'pointer',
+        opacity: loading ? 0.6 : 1,
+        transition: 'opacity 0.15s',
+      }}
+    >
+      {loading ? '…' : label}
+    </button>
   );
 }
 
@@ -378,7 +518,8 @@ function BounceAlert({ bounceRate, bounced }) {
         </strong>
         <p style={{ margin: '4px 0 0', fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
           {bounced} emails rebotaron. Un bounce rate mayor a 15% puede afectar la reputación del remitente en Gmail.
-          Revisá los rebotes y eliminá esas direcciones de futuros envíos. Presioná <strong>Sync Gmail</strong> en la sección de Envíos para actualizar la detección.
+          Revisá los rebotes y usá el botón <strong>Sacar de cola</strong> para removerlos de futuros envíos.
+          Presioná <strong>Sync Gmail</strong> en la sección de Envíos para actualizar la detección.
         </p>
       </div>
     </div>

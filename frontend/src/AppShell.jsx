@@ -603,6 +603,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
                 imports={imports}
                 emailJobs={emailJobs}
                 onOpenInWorktray={openInWorktray}
+                onRefresh={refresh}
               />
             }
           />
