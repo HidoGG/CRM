@@ -29,7 +29,7 @@ const SECTOR_FILTERS = [
   { key: 'industria',   emoji: '⚙️', label: 'Industria' },
   { key: 'generalista', emoji: '🏢', label: 'Generalista' },
   { key: 'tecnologia',  emoji: '💻', label: 'Tecnología' },
-  { key: 'unset',       emoji: '❓', label: 'Sin rubro' },
+  { key: 'unset',       emoji: '❓', label: 'Sin empresa' },
 ];
 
 export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
@@ -47,7 +47,7 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
 
   const visibleContacts = contacts.filter(c => {
     if (sectorFilter === 'unset') {
-      if (c.industry) return false;
+      if (c.company?.trim()) return false;
     } else if (sectorFilter) {
       if (c.industry !== sectorFilter) return false;
     }
@@ -304,7 +304,7 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
             </button>
             {SECTOR_FILTERS.map(sf => {
               const count = contacts.filter(c =>
-                sf.key === 'unset' ? !c.industry : c.industry === sf.key
+                sf.key === 'unset' ? !c.company?.trim() : c.industry === sf.key
               ).length;
               const isActive = sectorFilter === sf.key;
               return (
