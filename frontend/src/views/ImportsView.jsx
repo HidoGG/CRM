@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { capitalize, formatDate, prettifyAction } from '../lib/utils';
-import { useCapabilities, useCvFiles, useSchedules, useTemplates } from '../lib/queries';
+import { useCapabilities, useCvFiles, useSchedules, useTemplates, useSectorDefaults } from '../lib/queries';
+import { SectorBadge, SECTORS } from '../components/SectorBadge';
 
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
@@ -20,6 +21,7 @@ export function ImportsView({
   const templates = useTemplates().data || [];
   const cvFiles = useCvFiles().data || [];
   const schedules = useSchedules().data || [];
+  const sectorDefaults = useSectorDefaults().data || [];
   const defaultTemplate = templates.find((t) => t.is_default) ?? templates[0];
   const defaultCv = cvFiles.find((c) => c.is_default) ?? cvFiles[0];
   const defaultSchedule = schedules.find((s) => s.is_default) ?? schedules[0];
@@ -177,6 +179,7 @@ export function ImportsView({
                     <th>Decision</th>
                     <th>Contacto</th>
                     <th>Empresa</th>
+                    <th>Rubro</th>
                     <th>Email</th>
                     <th>Estado</th>
                     <th>Accion</th>
@@ -223,6 +226,20 @@ export function ImportsView({
                           type="text"
                           value={candidate.company || ''}
                           onChange={(event) => onCandidateChange(candidate.id, 'company', event.target.value)}
+                        />
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <SectorBadge
+                          sector={candidate.industry || 'generalista'}
+                          onChange={(newSector) => {
+                            onCandidateChange(candidate.id, 'industry', newSector);
+                            // Auto-seleccionar template/cv del rubro si no hay selección global
+                            const sd = sectorDefaults.find(d => d.sector === newSector);
+                            if (sd) {
+                              if (sd.template_id && !selectedTemplateId) setSelectedTemplateId(sd.template_id);
+                              if (sd.cv_file_id && !selectedCvId) setSelectedCvId(sd.cv_file_id);
+                            }
+                          }}
                         />
                       </td>
                       <td>

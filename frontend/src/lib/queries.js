@@ -92,6 +92,15 @@ export function useTemplateStats() {
   });
 }
 
+export function useSectorDefaults() {
+  return useQuery({
+    queryKey: ['sectorDefaults'],
+    queryFn: fetchers.sectorDefaults,
+    placeholderData: [],
+    staleTime: 5 * 60_000,
+  });
+}
+
 // Mapa scope → query keys (compatible con el viejo refreshData(scope))
 const SCOPE_KEYS = {
   jobs: [['emailJobs'], ['gmailStatus']],
@@ -99,6 +108,7 @@ const SCOPE_KEYS = {
   templates: [['templates']],
   schedules: [['schedules']],
   contacts: [['contacts'], ['summary'], ['reporting'], ['templateStats']],
+  sectorDefaults: [['sectorDefaults']],
 };
 
 export function useRefresh() {

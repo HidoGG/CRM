@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { capitalize, prettifyAction } from '../lib/utils';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useSchedules } from '../lib/queries';
+import { SectorBadge, SECTORS, getSectorLabel } from '../components/SectorBadge';
 
 const EDIT_FIELDS = [
   { key: 'name',    label: 'Nombre',  type: 'text'  },
@@ -44,6 +45,7 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
       notes: contact.notes || '',
       status: contact.status || 'mantener',
       next_action: contact.next_action || 'revisar_manual',
+      industry: contact.industry || 'generalista',
     });
     setEditError('');
   }
@@ -129,6 +131,18 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                   ))}
                 </select>
               </div>
+            </div>
+            <div className="detail-field">
+              <span>Rubro</span>
+              <select
+                value={editForm.industry || 'generalista'}
+                onChange={e => setEditForm(prev => ({ ...prev, industry: e.target.value }))}
+                aria-label="Rubro de la empresa"
+              >
+                {SECTORS.map(s => (
+                  <option key={s.key} value={s.key}>{s.emoji} {s.label}</option>
+                ))}
+              </select>
             </div>
             <div className="detail-field">
               <span>Notas</span>
@@ -247,7 +261,19 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                         <td style={{ padding: '10px 12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           <strong style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{contact.name || '—'}</strong>
                         </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.company || '—'}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <SectorBadge
+                              sector={contact.industry || 'generalista'}
+                              size="sm"
+                              onChange={async (newSector) => {
+                                try { await onUpdate(contact.id, { industry: newSector }); }
+                                catch { /* error silencioso en tabla */ }
+                              }}
+                            />
+                            {contact.company || '—'}
+                          </span>
+                        </td>
                         <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.email}</td>
                         <td style={{ padding: '10px 12px' }}>
                           <span

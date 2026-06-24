@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { API_BASE, apiFetch } from '../lib/api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { SectorDefaultsPanel } from '../components/SectorDefaultsPanel';
 
 export function TemplatesView({ templates, onRefresh }) {
   const [editing, setEditing]       = useState(null);
@@ -240,6 +241,8 @@ export function TemplatesView({ templates, onRefresh }) {
           ))}
         </div>
       </section>
+
+      <SectorDefaultsPanel />
     </div>
   );
 }

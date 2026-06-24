@@ -61,4 +61,18 @@ export const fetchers = {
   emailJobs: () => getJson('/email-jobs'),
   gmailStatus: () => getJson('/gmail/status'),
   templateStats: () => getJson('/engagement/template-stats'),
+  sectorDefaults: () => getJson('/sector-defaults'),
 };
+
+export async function patchSectorDefault(sector, templateId, cvFileId) {
+  const res = await apiFetch(`${API_BASE}/sector-defaults/${sector}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template_id: templateId ?? null, cv_file_id: cvFileId ?? null }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Error ${res.status}`);
+  }
+  return res.json();
+}
