@@ -65,7 +65,7 @@ export function HoyView({ summary, contacts, emailJobs }) {
     contacts
       .filter(c => c.bounced_at)
       .sort((a, b) => new Date(b.bounced_at) - new Date(a.bounced_at))
-      .slice(0, 10),
+      .slice(0, 50),
     [contacts]
   );
 
@@ -73,7 +73,7 @@ export function HoyView({ summary, contacts, emailJobs }) {
     contacts
       .filter(c => c.replied_at)
       .sort((a, b) => new Date(b.replied_at) - new Date(a.replied_at))
-      .slice(0, 8),
+      .slice(0, 50),
     [contacts]
   );
 
@@ -81,7 +81,7 @@ export function HoyView({ summary, contacts, emailJobs }) {
     emailJobs
       .filter(j => j.status === 'pending')
       .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
-      .slice(0, 8),
+      .slice(0, 50),
     [emailJobs]
   );
 
@@ -311,7 +311,7 @@ function DetailPanel({ title, count, emptyMsg, countColor, countBg, children }) 
           {count}
         </span>
       </div>
-      <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ display: 'grid', gap: 6, maxHeight: 272, overflowY: 'auto', paddingRight: 2 }}>
         {hasContent ? children : (
           <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem', padding: '16px 0', lineHeight: 1.5 }}>
             {emptyMsg}
