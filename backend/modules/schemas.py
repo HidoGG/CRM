@@ -30,6 +30,7 @@ class ContactCreate(BaseModel):
     source: str = "manual"
     notes: str | None = None
     schedule_id: int | None = None
+    industry: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -54,6 +55,7 @@ class ContactUpdate(BaseModel):
     portal_status: str | None = None
     discard_reason: str | None = None
     notes: str | None = None
+    industry: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -99,6 +101,7 @@ class ImportCandidate(BaseModel):
     notes: str | None = None
     decision: str = "pending"
     reason: str | None = None
+    industry: str | None = None
 
 
 class ImportConfirm(BaseModel):
@@ -142,6 +145,15 @@ class EmailJobCreate(BaseModel):
     cv_file_id: int | None = None
     frequency_days: int = Field(default=0, ge=0)
     scheduled_at: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Rubros / Sectores
+# ---------------------------------------------------------------------------
+
+class SectorDefaultUpdate(BaseModel):
+    template_id: int | None = None
+    cv_file_id: int | None = None
 
 
 # ---------------------------------------------------------------------------
