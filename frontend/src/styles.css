@@ -1666,10 +1666,88 @@ tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* Topbar */
+  /* Topbar: fila única con scroll horizontal — no se parte en 2 filas */
   .topbar {
-    flex-direction: column;
-    gap: 10px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .topbar-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .topbar-actions::-webkit-scrollbar { display: none; }
+
+  /* Botones del topbar: más compactos para que entren en una línea */
+  .topbar-actions .ghost-button,
+  .topbar-actions .primary-button {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border-radius: 7px;
+  }
+
+  /* Tabs de navegación interna: scroll horizontal sin texto partido */
+  [role="tablist"] {
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  [role="tablist"]::-webkit-scrollbar { display: none; }
+
+  [role="tab"] {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    padding: 6px 12px !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Métricas de acciones Worktray: 2x2 en lugar de fila horizontal */
+  .worktray-action-chips {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .worktray-action-chips .worktray-metric {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Stats de Worktray (3 columnas): stack vertical */
+  .worktray-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Tabla de contactos Worktray: scroll horizontal */
+  .worktray-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .worktray-table-wrap > div {
+    min-width: 480px;
+  }
+
+  /* Drawer de historial: stack debajo de tabla en mobile */
+  .worktray-detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Columnas opcionales que se ocultan en mobile */
+  .col-hide-mobile {
+    display: none !important;
   }
 
   /* Tablas: border-radius reducido */
@@ -1681,6 +1759,16 @@ tr:last-child td {
   .confirm-options select {
     min-width: 0;
     width: 100%;
+  }
+
+  /* .page: menos gap en mobile */
+  .page {
+    gap: 10px !important;
+  }
+
+  /* .card: menos padding en mobile */
+  .card {
+    padding: 10px 12px;
   }
 }
 

@@ -104,7 +104,7 @@ export function Worktray({
       )}
 
       {/* ── 2. Métricas horizontales (chips clickeables) ── */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="worktray-action-chips" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {worktrayActions.map(action => (
           <button
             key={action}
@@ -132,7 +132,7 @@ export function Worktray({
 
       {/* ── 3. Stats opcionales (solo modo no-compact) ── */}
       {!compact && (
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18 }}>
+        <section className="worktray-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18 }}>
           <article className="card">
             <span className="eyebrow mb-3 block">Seguimientos</span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -233,9 +233,10 @@ export function Worktray({
         </div>
 
         {/* Tabla + Drawer de historial lado a lado */}
-        <div style={{ display: 'grid', gridTemplateColumns: selectedContact ? '1fr 280px' : '1fr', gap: 12, alignItems: 'start' }}>
+        <div className="worktray-detail-grid" style={{ display: 'grid', gridTemplateColumns: selectedContact ? '1fr 280px' : '1fr', gap: 12, alignItems: 'start' }}>
 
           {/* Tabla */}
+          <div className="worktray-table-wrap">
           <div style={{ borderRadius: 12, border: '1px solid var(--border-faint)', background: 'var(--surface-raised)', overflow: 'clip' }}>
             <table className="w-full border-collapse" style={{ tableLayout: 'fixed', width: '100%' }}>
               <colgroup>
@@ -394,6 +395,7 @@ export function Worktray({
                 )}
               </tbody>
             </table>
+          </div>
           </div>
 
           {/* ── Panel de historial (separado de la tabla) ── */}
