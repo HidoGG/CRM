@@ -276,14 +276,19 @@ def build_structured_action_note(
     return None
 
 
-def build_action_draft(contact: dict, action: str) -> dict | None:
+def build_action_draft(contact: dict, action: str, db_template: dict | None = None) -> dict | None:
     if action not in {"enviar", "seguir"}:
         return None
     email = clean_optional(contact.get("email"))
     if not email:
         return None
-    subject = build_draft_subject(contact, action)
-    body = build_draft_body(contact, action)
+    if db_template and action == "enviar":
+        rendered = render_template(db_template, contact)
+        subject = rendered["subject"]
+        body = rendered["body"]
+    else:
+        subject = build_draft_subject(contact, action)
+        body = build_draft_body(contact, action)
     query = urlencode({"subject": subject, "body": body}, quote_via=quote)
     return {
         "to": email,
@@ -1012,12 +1017,27 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
             {"id": contact_id},
         ).fetchone()
 
+        # Buscar plantilla por sector para el draft
+        db_template = None
+        if action == "enviar":
+            tmpl_id, _ = industry_service.get_template_cv_for_sector(session, contact.get("industry"))
+            if tmpl_id is None:
+                tmpl_row = session.execute(
+                    text("SELECT * FROM message_templates WHERE is_default = 1 LIMIT 1")
+                ).fetchone()
+            else:
+                tmpl_row = session.execute(
+                    text("SELECT * FROM message_templates WHERE id = :id"), {"id": tmpl_id}
+                ).fetchone()
+            if tmpl_row:
+                db_template = row_to_dict(tmpl_row)
+
     result = {
         "contact": row_to_dict(updated_row),
         "executed_action": action,
         "message": default_note,
     }
-    draft = build_action_draft(contact, action)
+    draft = build_action_draft(contact, action, db_template=db_template)
     if draft is not None:
         result["draft"] = draft
     return result
