@@ -146,7 +146,7 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
     <section className="page">
 
       {/* ── KPIs ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
         <KpiCard
           icon={<IconSend />}
           label="Enviados"
@@ -334,26 +334,26 @@ function KpiCard({ icon, label, value, sub, subColor = 'neutral', iconBg, iconCo
   const subColors = { green: 'var(--green-text)', red: 'var(--red-text)', amber: 'var(--amber-text)', neutral: 'var(--text-secondary)' };
   return (
     <article style={{
-      borderRadius: 10,
-      padding: '14px',
+      borderRadius: 8,
+      padding: '10px',
       border: highlight ? '1px solid var(--red-text)' : '1px solid var(--border-faint)',
       background: highlight ? 'var(--red-bg)' : 'var(--surface-raised)',
       display: 'grid',
-      gap: 8,
+      gap: 5,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: "'Barlow Condensed', sans-serif" }}>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.62rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: "'Barlow Condensed', sans-serif" }}>
           {label}
         </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 7, background: iconBg, color: iconColor }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 5, background: iconBg, color: iconColor }}>
           {icon}
         </span>
       </div>
-      <strong style={{ fontSize: '1.85rem', lineHeight: 1, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+      <strong style={{ fontSize: '1.3rem', lineHeight: 1, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
         {value ?? '—'}
       </strong>
       {sub && (
-        <span style={{ fontSize: '0.79rem', fontWeight: 500, color: subColors[subColor] }}>
+        <span style={{ fontSize: '0.62rem', fontWeight: 500, color: subColors[subColor] }}>
           {sub}
         </span>
       )}
