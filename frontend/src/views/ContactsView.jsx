@@ -24,16 +24,42 @@ const STATUS_STYLE = {
   portal:       { background: 'var(--purple-bg)', color: 'var(--purple-text)'},
 };
 
+const SECTOR_FILTERS = [
+  { key: 'oilgas',      emoji: '🛢️', label: 'Petróleo & Gas' },
+  { key: 'industria',   emoji: '⚙️', label: 'Industria' },
+  { key: 'generalista', emoji: '🏢', label: 'Generalista' },
+  { key: 'tecnologia',  emoji: '💻', label: 'Tecnología' },
+  { key: 'unset',       emoji: '❓', label: 'Sin rubro' },
+];
+
 export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
   const schedules = useSchedules().data || [];
-  const [activeTab, setActiveTab]   = useState('lista');
-  const [confirmId, setConfirmId]   = useState(null);
+  const [activeTab, setActiveTab]     = useState('lista');
+  const [confirmId, setConfirmId]     = useState(null);
   const [editContact, setEditContact] = useState(null);
-  const [editForm, setEditForm]     = useState({});
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError]   = useState('');
+  const [editForm, setEditForm]       = useState({});
+  const [editSaving, setEditSaving]   = useState(false);
+  const [editError, setEditError]     = useState('');
+  const [sectorFilter, setSectorFilter] = useState(null);
+  const [searchQuery, setSearchQuery]   = useState('');
   const defaultSchedule = schedules.find(s => s.is_default) ?? schedules[0];
   const confirmContact  = contacts.find(c => c.id === confirmId);
+
+  const visibleContacts = contacts.filter(c => {
+    if (sectorFilter === 'unset') {
+      if (c.industry) return false;
+    } else if (sectorFilter) {
+      if (c.industry !== sectorFilter) return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      if (
+        !(c.name || '').toLowerCase().includes(q) &&
+        !(c.company || '').toLowerCase().includes(q)
+      ) return false;
+    }
+    return true;
+  });
 
   function openEdit(contact) {
     setEditContact(contact);
@@ -187,7 +213,43 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
       {/* ── Tab: Lista ── */}
       {activeTab === 'lista' && (
         <div className="grid gap-4">
-          {/* Filtros + contador */}
+          {/* Buscador */}
+          <div style={{ position: 'relative' }}>
+            <svg
+              style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }}
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="search"
+              placeholder="Buscar por nombre o empresa…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 36px 9px 38px',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                background: 'var(--surface-input)',
+                color: 'var(--text-primary)',
+                fontSize: '0.9rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+              aria-label="Buscar contactos por nombre o empresa"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1rem', lineHeight: 1, padding: 2 }}
+                aria-label="Limpiar búsqueda"
+              >×</button>
+            )}
+          </div>
+
+          {/* Filtros de estado + contador */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado">
               {filterOptions.map(filter => (
@@ -216,8 +278,72 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
               style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.83rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}
               aria-live="polite"
             >
-              {contacts.length} visibles
+              {visibleContacts.length} visibles
             </span>
+          </div>
+
+          {/* Filtros de rubro */}
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por rubro">
+            <button
+              type="button"
+              onClick={() => setSectorFilter(null)}
+              aria-pressed={sectorFilter === null}
+              style={{
+                borderRadius: 999,
+                padding: '5px 14px',
+                fontSize: '0.83rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: sectorFilter === null ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: sectorFilter === null ? 'var(--accent)' : 'transparent',
+                color: sectorFilter === null ? 'var(--accent-text)' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              Todos los rubros
+            </button>
+            {SECTOR_FILTERS.map(sf => {
+              const count = contacts.filter(c =>
+                sf.key === 'unset' ? !c.industry : c.industry === sf.key
+              ).length;
+              const isActive = sectorFilter === sf.key;
+              return (
+                <button
+                  key={sf.key}
+                  type="button"
+                  onClick={() => setSectorFilter(isActive ? null : sf.key)}
+                  aria-pressed={isActive}
+                  style={{
+                    borderRadius: 999,
+                    padding: '5px 14px',
+                    fontSize: '0.83rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: isActive ? 'var(--accent)' : 'transparent',
+                    color: isActive ? 'var(--accent-text)' : 'var(--text-secondary)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>{sf.emoji}</span>
+                  <span>{sf.label}</span>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    background: isActive ? 'rgba(255,255,255,0.25)' : 'var(--surface-subtle)',
+                    color: isActive ? 'var(--accent-text)' : 'var(--text-muted)',
+                    borderRadius: 999,
+                    padding: '1px 6px',
+                    marginLeft: 2,
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Tabla */}
@@ -249,8 +375,8 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                 </tr>
               </thead>
               <tbody>
-                {contacts.length ? (
-                  contacts.map(contact => {
+                {visibleContacts.length ? (
+                  visibleContacts.map(contact => {
                     const statusKey = String(contact.status || '').toLowerCase();
                     const statusStyle = STATUS_STYLE[statusKey] || { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
                     return (
@@ -337,7 +463,9 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                 ) : (
                   <tr>
                     <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: '0.9rem' }}>
-                      No hay contactos para este filtro.
+                      {searchQuery || sectorFilter
+                        ? 'No hay contactos que coincidan con los filtros aplicados.'
+                        : 'No hay contactos para este filtro.'}
                     </td>
                   </tr>
                 )}
