@@ -2036,6 +2036,30 @@ def process_pending_email_jobs() -> dict:
                     "thread_id": send_result.get("thread_id"), "id": j["id"],
                 })
 
+                # Avanzar el contacto en el pipeline igual que el botón manual
+                contact_row = s.execute(
+                    text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
+                    {"id": j["contact_id"]},
+                ).fetchone()
+                if contact_row:
+                    contact_data = row_to_dict(contact_row)
+                    current_action = normalize_next_action(contact_data.get("next_action"))
+                    next_status, next_action, follow_up, _ = resolve_contact_action_result(
+                        current_action, contact_data
+                    )
+                    s.execute(text("""
+                        UPDATE contacts
+                        SET status = :status, next_action = :next_action,
+                            follow_up_date = :follow_up_date, updated_at = :now
+                        WHERE id = :id
+                    """), {
+                        "status": next_status,
+                        "next_action": next_action,
+                        "follow_up_date": follow_up,
+                        "now": now_utc(),
+                        "id": j["contact_id"],
+                    })
+
                 if j["frequency_days"] and int(j["frequency_days"]) > 0:
                     next_send = (
                         datetime.now(timezone.utc) + timedelta(days=int(j["frequency_days"]))
