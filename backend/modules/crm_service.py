@@ -656,7 +656,7 @@ def build_reporting_overview_csv(overview: dict) -> str:
 _CONTACT_COLS = (
     "id, email, name, company, title, status, next_action, suggested_message, "
     "follow_up_date, portal_url, portal_status, discard_reason, source, notes, "
-    "bounced_at, bounce_reason, industry, created_at, updated_at"
+    "bounced_at, bounce_reason, industry, replied_at, created_at, updated_at"
 )
 
 
