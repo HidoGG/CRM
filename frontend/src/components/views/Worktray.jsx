@@ -207,30 +207,8 @@ export function Worktray({
           </span>
         </div>
 
-        {/* Filtros acción + timing */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} role="group" aria-label="Filtros de acción y tiempo">
-          {worktrayActions.map(action => (
-            <button
-              key={action}
-              type="button"
-              aria-pressed={activeActionFilter === action}
-              onClick={() => onActionFilterChange(action)}
-              style={{
-                borderRadius: 999,
-                padding: '6px 16px',
-                fontSize: '0.88rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: activeActionFilter === action ? '1px solid var(--accent)' : '1px solid var(--border)',
-                background: activeActionFilter === action ? 'var(--accent)' : 'transparent',
-                color: activeActionFilter === action ? 'var(--accent-text)' : 'var(--text-secondary)',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {prettifyAction(action)} ({counts[action] || 0})
-            </button>
-          ))}
-          <span style={{ width: 1, background: 'var(--border-faint)', margin: '0 4px', alignSelf: 'stretch' }} aria-hidden="true" />
+        {/* Filtros de timing */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} role="group" aria-label="Filtrar por tiempo">
           {timingFilters.map(filter => (
             <button
               key={filter}
