@@ -347,8 +347,8 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
           </div>
 
           {/* Tabla */}
-          <div
-            style={{ width: '100%', borderRadius: 20, border: '1px solid var(--border-faint)', background: 'var(--surface-raised)', overflow: 'hidden' }}
+          <div className="contacts-table-wrap"
+            style={{ width: '100%', borderRadius: 20, border: '1px solid var(--border-faint)', background: 'var(--surface-raised)', overflow: 'auto' }}
           >
             <table className="w-full table-fixed border-collapse text-sm">
               <colgroup>

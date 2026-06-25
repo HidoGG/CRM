@@ -30,7 +30,7 @@ export function Topbar({
         <button
           type="button"
           onClick={createMockImport}
-          className="ghost-button hidden md:inline-flex"
+          className="ghost-button topbar-btn-secondary"
           aria-label="Registrar importación manual"
         >
           Registrar importación

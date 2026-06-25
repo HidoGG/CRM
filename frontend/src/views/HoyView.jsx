@@ -146,7 +146,7 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
     <section className="page">
 
       {/* ── KPIs ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+      <div className="hoy-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
         <KpiCard
           icon={<IconSend />}
           label="Enviados"
@@ -198,7 +198,7 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
       {stats.total > 0 && <DeliveryBar stats={stats} />}
 
       {/* ── Tres columnas de detalle ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+      <div className="hoy-detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
 
         {/* Columna 1 — Rebotes */}
         <DetailPanel

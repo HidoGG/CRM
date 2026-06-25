@@ -1770,6 +1770,48 @@ tr:last-child td {
   .card {
     padding: 10px 12px;
   }
+
+  /* Botón secundario del topbar: oculto en mobile */
+  .topbar-btn-secondary {
+    display: none !important;
+  }
+
+  /* HoyView — KPI grid: scroll horizontal en una fila */
+  .hoy-kpi-grid {
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 8px !important;
+    padding-bottom: 4px;
+  }
+
+  .hoy-kpi-grid::-webkit-scrollbar { display: none; }
+
+  .hoy-kpi-grid > * {
+    flex: 0 0 130px !important;
+    min-width: 0 !important;
+  }
+
+  /* HoyView — 3 columnas de detalle: stack vertical */
+  .hoy-detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Contactos — tabla con scroll horizontal */
+  .contacts-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .contacts-table-wrap table {
+    min-width: 560px;
+  }
+
+  /* Estadísticas — snapshot grid: stack vertical */
+  .stats-snapshot-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* ════════════════════════════════════════════════════

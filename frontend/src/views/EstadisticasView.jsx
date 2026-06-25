@@ -222,7 +222,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
         </div>
 
         {hasSnapshotData ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="stats-snapshot-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             {[
               { label: 'Contactos totales', valueKey: 'total_contacts', snapshotKey: 'total_contacts', color: 'var(--accent)', deltaKey: 'total_contacts' },
               { label: 'Vencidos',          valueKey: 'overdue_count',  snapshotKey: 'overdue_count',  color: 'var(--red-text)', deltaKey: 'overdue_count' },
