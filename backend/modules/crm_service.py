@@ -1710,7 +1710,21 @@ def update_schedule(schedule_id: int, payload: dict) -> dict:
         row = session.execute(
             text("SELECT * FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
         ).fetchone()
-        return row_to_dict(row)
+        new_schedule = row_to_dict(row)
+
+        # Redistribuir los jobs pendientes de este cronograma con la nueva configuración
+        pending_jobs = session.execute(text("""
+            SELECT id FROM email_jobs
+            WHERE schedule_id = :sid AND status = 'pending'
+            ORDER BY scheduled_at ASC, id ASC
+        """), {"sid": schedule_id}).fetchall()
+        for idx, job_row in enumerate(pending_jobs):
+            new_scheduled_at = calc_job_scheduled_at(new_schedule, job_index=idx)
+            session.execute(text("""
+                UPDATE email_jobs SET scheduled_at = :sat WHERE id = :jid
+            """), {"sat": new_scheduled_at, "jid": job_row[0]})
+
+        return new_schedule
 
 
 def set_default_schedule(schedule_id: int) -> list[dict]:
