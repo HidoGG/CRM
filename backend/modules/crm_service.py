@@ -831,9 +831,6 @@ def update_contact(contact_id: int, payload: dict) -> dict:
         email = updates["email"]
         if not email or not VALID_EMAIL_RE.fullmatch(email):
             raise ServiceError("invalid email format", HTTPStatus.UNPROCESSABLE_ENTITY)
-    if "name" in updates and not updates["name"]:
-        raise ServiceError("El nombre no puede quedar vacío.", HTTPStatus.UNPROCESSABLE_ENTITY)
-
     with get_session() as session:
         row = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
