@@ -13,7 +13,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import bindparam, text
 
 from modules.database import get_session, insert_history, now_utc, row_to_dict
-from modules import industry_service
 
 
 # ---------------------------------------------------------------------------
@@ -276,19 +275,14 @@ def build_structured_action_note(
     return None
 
 
-def build_action_draft(contact: dict, action: str, db_template: dict | None = None) -> dict | None:
+def build_action_draft(contact: dict, action: str) -> dict | None:
     if action not in {"enviar", "seguir"}:
         return None
     email = clean_optional(contact.get("email"))
     if not email:
         return None
-    if db_template and action == "enviar":
-        rendered = render_template(db_template, contact)
-        subject = rendered["subject"]
-        body = rendered["body"]
-    else:
-        subject = build_draft_subject(contact, action)
-        body = build_draft_body(contact, action)
+    subject = build_draft_subject(contact, action)
+    body = build_draft_body(contact, action)
     query = urlencode({"subject": subject, "body": body}, quote_via=quote)
     return {
         "to": email,
@@ -656,7 +650,7 @@ def build_reporting_overview_csv(overview: dict) -> str:
 _CONTACT_COLS = (
     "id, email, name, company, title, status, next_action, suggested_message, "
     "follow_up_date, portal_url, portal_status, discard_reason, source, notes, "
-    "bounced_at, bounce_reason, industry, replied_at, created_at, updated_at"
+    "bounced_at, bounce_reason, created_at, updated_at"
 )
 
 
@@ -751,32 +745,24 @@ def create_contact(payload: dict) -> dict:
             {"email": email},
         ).fetchone()
         if existing is not None:
-            raise ServiceError("El email ya está registrado en la base de datos", HTTPStatus.CONFLICT)
+            raise ServiceError("contact email already exists", HTTPStatus.CONFLICT)
 
-        company = clean_optional(payload.get("company"))
-        industry = (
-            payload.get("industry")
-            if payload.get("industry") in industry_service.VALID_SECTORS
-            else industry_service.resolve_industry(session, company)
-        )
         result = session.execute(
             text(f"""
                 INSERT INTO contacts (
                     email, name, company, title, status, next_action, suggested_message,
-                    follow_up_date, portal_url, portal_status, discard_reason, source, notes,
-                    industry, created_at, updated_at
+                    follow_up_date, portal_url, portal_status, discard_reason, source, notes, created_at, updated_at
                 )
                 VALUES (
                     :email, :name, :company, :title, :status, :next_action, :suggested_message,
-                    :follow_up_date, :portal_url, :portal_status, :discard_reason, :source, :notes,
-                    :industry, :created_at, :updated_at
+                    :follow_up_date, :portal_url, :portal_status, :discard_reason, :source, :notes, :created_at, :updated_at
                 )
                 RETURNING id
             """),
             {
                 "email": email,
                 "name": name,
-                "company": company,
+                "company": clean_optional(payload.get("company")),
                 "title": clean_optional(payload.get("title")),
                 "status": normalize_status(payload.get("status", "mantener")),
                 "next_action": normalize_next_action(payload.get("next_action")),
@@ -790,7 +776,6 @@ def create_contact(payload: dict) -> dict:
                 "discard_reason": clean_optional(payload.get("discard_reason")),
                 "source": str(payload.get("source", "manual")).strip() or "manual",
                 "notes": clean_optional(payload.get("notes")),
-                "industry": industry,
                 "created_at": now,
                 "updated_at": now,
             },
@@ -807,19 +792,12 @@ def create_contact(payload: dict) -> dict:
         _auto_create_email_job(
             session, contact_id, payload.get("next_action", ""),
             schedule_id=payload.get("schedule_id"),
-            contact_industry=industry,
         )
         row = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
             {"id": contact_id},
         ).fetchone()
     return row_to_dict(row)
-
-
-def _normalize_industry(value: str | None) -> str | None:
-    if value in industry_service.VALID_SECTORS:
-        return value
-    return None
 
 
 # Campos editables vía PATCH y su normalizador correspondiente
@@ -836,7 +814,6 @@ _UPDATABLE_CONTACT_FIELDS = {
     "portal_status": clean_optional,
     "discard_reason": clean_optional,
     "notes": clean_optional,
-    "industry": _normalize_industry,
 }
 
 
@@ -872,16 +849,7 @@ def update_contact(contact_id: int, payload: dict) -> dict:
                 {"email": updates["email"], "id": contact_id},
             ).fetchone()
             if duplicate is not None:
-                raise ServiceError("El email ya está registrado en la base de datos", HTTPStatus.CONFLICT)
-
-        # Si cambió la empresa pero no se especificó industry → reclasificar
-        if "company" in updates and "industry" not in updates:
-            updates["industry"] = industry_service.resolve_industry(session, updates["company"])
-        # Si se cambió industry manualmente → persistir en company_sectors
-        elif "industry" in updates and updates["industry"]:
-            contact_company = updates.get("company") or previous.get("company")
-            if contact_company:
-                industry_service.save_company_sector(session, contact_company, updates["industry"])
+                raise ServiceError("contact email already exists", HTTPStatus.CONFLICT)
 
         updates["updated_at"] = now_utc()
         set_clause = ", ".join(f"{field} = :{field}" for field in updates)
@@ -907,6 +875,18 @@ def update_contact(contact_id: int, payload: dict) -> dict:
                 default=str,
             ),
         )
+
+        # Si next_action cambió a enviar/seguir y no hay job pendiente, crear uno
+        new_action = normalize_next_action(updates.get("next_action", ""))
+        prev_action = normalize_next_action(previous.get("next_action", ""))
+        if new_action in {"enviar", "seguir"} and new_action != prev_action:
+            existing_job = session.execute(
+                text("SELECT id FROM email_jobs WHERE contact_id = :id AND status = 'pending' LIMIT 1"),
+                {"id": contact_id},
+            ).fetchone()
+            if existing_job is None:
+                _auto_create_email_job(session, contact_id, new_action)
+
         updated = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
             {"id": contact_id},
@@ -1017,27 +997,12 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
             {"id": contact_id},
         ).fetchone()
 
-        # Buscar plantilla por sector para el draft
-        db_template = None
-        if action == "enviar":
-            tmpl_id, _ = industry_service.get_template_cv_for_sector(session, contact.get("industry"))
-            if tmpl_id is None:
-                tmpl_row = session.execute(
-                    text("SELECT * FROM message_templates WHERE is_default = 1 LIMIT 1")
-                ).fetchone()
-            else:
-                tmpl_row = session.execute(
-                    text("SELECT * FROM message_templates WHERE id = :id"), {"id": tmpl_id}
-                ).fetchone()
-            if tmpl_row:
-                db_template = row_to_dict(tmpl_row)
-
     result = {
         "contact": row_to_dict(updated_row),
         "executed_action": action,
         "message": default_note,
     }
-    draft = build_action_draft(contact, action, db_template=db_template)
+    draft = build_action_draft(contact, action)
     if draft is not None:
         result["draft"] = draft
     return result
@@ -1337,30 +1302,15 @@ def confirm_import(import_id: int, payload: dict) -> dict:
                 )
                 continue
 
-            # Clasificar rubro: usar el del candidato si ya fue editado, si no detectar
-            candidate_industry = candidate.get("industry")
-            if candidate_industry not in industry_service.VALID_SECTORS:
-                candidate_industry = industry_service.resolve_industry(session, company)
-            else:
-                industry_service.save_company_sector(session, company, candidate_industry)
-
-            # Resolver template/cv: usar sector_default si no se indicó uno global
-            job_template_id = template_id
-            job_cv_file_id = cv_file_id
-            if job_template_id is None and job_cv_file_id is None:
-                job_template_id, job_cv_file_id = industry_service.get_template_cv_for_sector(
-                    session, candidate_industry
-                )
-
             result = session.execute(
                 text("""
                     INSERT INTO contacts (
                         email, name, company, title, status, next_action, suggested_message,
-                        follow_up_date, source, notes, industry, created_at, updated_at
+                        follow_up_date, source, notes, created_at, updated_at
                     )
                     VALUES (
                         :email, :name, :company, :title, :status, :next_action, :suggested_message,
-                        :follow_up_date, :source, :notes, :industry, :created_at, :updated_at
+                        :follow_up_date, :source, :notes, :created_at, :updated_at
                     )
                     RETURNING id
                 """),
@@ -1368,8 +1318,7 @@ def confirm_import(import_id: int, payload: dict) -> dict:
                     "email": email, "name": name, "company": company, "title": title,
                     "status": status, "next_action": next_action, "suggested_message": suggested_message,
                     "follow_up_date": infer_follow_up_date_for_action(next_action),
-                    "source": source, "notes": notes, "industry": candidate_industry,
-                    "created_at": now, "updated_at": now,
+                    "source": source, "notes": notes, "created_at": now, "updated_at": now,
                 },
             )
             contact_id = int(result.fetchone()[0])
@@ -1385,9 +1334,8 @@ def confirm_import(import_id: int, payload: dict) -> dict:
             job_idx = _schedule_job_index.get(schedule_id, 0)
             _schedule_job_index[schedule_id] = job_idx + 1
             _auto_create_email_job(
-                session, contact_id, next_action, job_template_id, job_cv_file_id,
+                session, contact_id, next_action, template_id, cv_file_id,
                 schedule_id=schedule_id, job_index=job_idx,
-                contact_industry=candidate_industry,
             )
 
         session.execute(
@@ -1545,23 +1493,11 @@ def _auto_create_email_job(
     cv_file_id: int | None = None,
     schedule_id: int | None = None,
     job_index: int = 0,
-    contact_industry: str | None = None,
 ) -> None:
     """Crea un email_job para un contacto. Solo actúa para acciones enviar/seguir.
-    Si se provee schedule_id, calcula scheduled_at respetando la ventana horaria ART.
-    Resuelve template/cv en orden: argumento explícito → sector_defaults → is_default."""
+    Si se provee schedule_id, calcula scheduled_at respetando la ventana horaria ART."""
     if normalize_next_action(next_action) not in {"enviar", "seguir"}:
         return
-
-    # Intentar resolver desde sector_defaults si falta alguno
-    if (template_id is None or cv_file_id is None) and contact_industry:
-        sd_tmpl, sd_cv = industry_service.get_template_cv_for_sector(session, contact_industry)
-        if template_id is None:
-            template_id = sd_tmpl
-        if cv_file_id is None:
-            cv_file_id = sd_cv
-
-    # Fallback a is_default si aún falta
     if template_id is None:
         tmpl = session.execute(
             text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
@@ -2035,30 +1971,6 @@ def process_pending_email_jobs() -> dict:
                     "now": now_utc(), "msg_id": send_result["id"],
                     "thread_id": send_result.get("thread_id"), "id": j["id"],
                 })
-
-                # Avanzar el contacto en el pipeline igual que el botón manual
-                contact_row = s.execute(
-                    text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
-                    {"id": j["contact_id"]},
-                ).fetchone()
-                if contact_row:
-                    contact_data = row_to_dict(contact_row)
-                    current_action = normalize_next_action(contact_data.get("next_action"))
-                    next_status, next_action, follow_up, _ = resolve_contact_action_result(
-                        current_action, contact_data
-                    )
-                    s.execute(text("""
-                        UPDATE contacts
-                        SET status = :status, next_action = :next_action,
-                            follow_up_date = :follow_up_date, updated_at = :now
-                        WHERE id = :id
-                    """), {
-                        "status": next_status,
-                        "next_action": next_action,
-                        "follow_up_date": follow_up,
-                        "now": now_utc(),
-                        "id": j["contact_id"],
-                    })
 
                 if j["frequency_days"] and int(j["frequency_days"]) > 0:
                     next_send = (
