@@ -128,9 +128,20 @@ function getFollowUpTimingBucket(followUpDate) {
   return 'future';
 }
 
+const EVENT_LABELS = {
+  'email.sent':               'Correo enviado',
+  'contact.created':          'Contacto creado',
+  'contact.updated':          'Contacto actualizado',
+  'contact.imported':         'Contacto importado',
+  'contact.action_executed':  'Acción ejecutada',
+  'contact.deleted':          'Contacto eliminado',
+  'import.confirmed':         'Importación confirmada',
+  'import.preview_created':   'Vista previa creada',
+  'import.mock_created':      'Importación de prueba',
+};
+
 export function prettifyEvent(value) {
-  const text = String(value || '').replaceAll('.', ' ');
-  return capitalize(text);
+  return EVENT_LABELS[value] ?? capitalize(String(value || '').replaceAll('.', ' '));
 }
 
 export function matchesTimingFilter(value, filter) {
