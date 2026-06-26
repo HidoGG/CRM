@@ -61,31 +61,48 @@ function buildStats(contacts, emailJobs) {
 // ── Componente principal ───────────────────────────────────────────────────────
 export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
   const [processing, setProcessing] = useState(new Set());
+  const [viewMode, setViewMode] = useState('total'); // 'total' | 'hoy'
 
-  const stats = useMemo(() => buildStats(contacts, emailJobs), [contacts, emailJobs]);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const activeJobs = useMemo(() => {
+    if (viewMode === 'total') return emailJobs;
+    return emailJobs.filter(j => (j.scheduled_at || '').startsWith(todayStr));
+  }, [emailJobs, viewMode, todayStr]);
+
+  const activeContacts = useMemo(() => {
+    if (viewMode === 'total') return contacts;
+    return contacts.map(c => ({
+      ...c,
+      bounced_at: c.bounced_at?.startsWith(todayStr) ? c.bounced_at : null,
+      replied_at: c.replied_at?.startsWith(todayStr) ? c.replied_at : null,
+    }));
+  }, [contacts, viewMode, todayStr]);
+
+  const stats = useMemo(() => buildStats(activeContacts, activeJobs), [activeContacts, activeJobs]);
 
   const recentBounced = useMemo(() =>
-    contacts
+    activeContacts
       .filter(c => c.bounced_at)
       .sort((a, b) => new Date(b.bounced_at) - new Date(a.bounced_at))
       .slice(0, 50),
-    [contacts]
+    [activeContacts]
   );
 
   const recentReplied = useMemo(() =>
-    contacts
+    activeContacts
       .filter(c => c.replied_at)
       .sort((a, b) => new Date(b.replied_at) - new Date(a.replied_at))
       .slice(0, 50),
-    [contacts]
+    [activeContacts]
   );
 
   const upcomingJobs = useMemo(() =>
-    emailJobs
+    activeJobs
       .filter(j => j.status === 'pending')
       .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
       .slice(0, 50),
-    [emailJobs]
+    [activeJobs]
   );
 
   // Índice contact_id → thread_id del último job enviado con respuesta
@@ -145,13 +162,46 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
   return (
     <section className="page">
 
+      {/* ── Toggle Hoy / Total ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <button
+          type="button"
+          onClick={() => setViewMode('hoy')}
+          style={{
+            fontSize: '0.8rem', fontWeight: 600, padding: '5px 14px', borderRadius: 99, cursor: 'pointer', transition: 'all 0.15s',
+            background: viewMode === 'hoy' ? 'var(--accent)' : 'var(--surface-subtle)',
+            color: viewMode === 'hoy' ? '#fff' : 'var(--text-secondary)',
+            border: viewMode === 'hoy' ? '1px solid var(--accent)' : '1px solid var(--border-faint)',
+          }}
+        >
+          Solo hoy
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('total')}
+          style={{
+            fontSize: '0.8rem', fontWeight: 600, padding: '5px 14px', borderRadius: 99, cursor: 'pointer', transition: 'all 0.15s',
+            background: viewMode === 'total' ? 'var(--accent)' : 'var(--surface-subtle)',
+            color: viewMode === 'total' ? '#fff' : 'var(--text-secondary)',
+            border: viewMode === 'total' ? '1px solid var(--accent)' : '1px solid var(--border-faint)',
+          }}
+        >
+          Total histórico
+        </button>
+        {viewMode === 'hoy' && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 4 }}>
+            {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })}
+          </span>
+        )}
+      </div>
+
       {/* ── KPIs ── */}
       <div className="hoy-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
         <KpiCard
           icon={<IconSend />}
           label="Enviados"
           value={stats.total}
-          sub={stats.pending > 0 ? `+ ${stats.pending} en cola` : 'Total histórico'}
+          sub={stats.pending > 0 ? `+ ${stats.pending} en cola` : viewMode === 'hoy' ? 'enviados hoy' : 'Total histórico'}
           iconBg="var(--blue-subtle)"
           iconColor="var(--blue)"
         />
