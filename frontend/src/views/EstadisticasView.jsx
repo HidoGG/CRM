@@ -286,8 +286,8 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
         </div>
 
         {imports.length ? (
-          <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border-faint)' }}>
-            <table className="w-full border-collapse" style={{ minWidth: 600 }}>
+          <div className="stats-imports-table-wrap" style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border-faint)' }}>
+            <table className="w-full border-collapse stats-imports-table" style={{ minWidth: 480 }}>
               <thead>
                 <tr>
                   {['Archivo', 'Contactos', 'Estado', 'Notas', 'Fecha'].map(col => (

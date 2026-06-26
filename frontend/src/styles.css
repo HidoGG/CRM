@@ -1609,6 +1609,32 @@ tr:last-child td {
    MOBILE < 768px — Sidebar se convierte en drawer
    ════════════════════════════════════════════════════ */
 @media (max-width: 767px) {
+  /* ── Contenedor principal: no permitir overflow horizontal ── */
+  main {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  /* ── Tablas: remover min-width forzado (760px) que rompe el viewport ──
+     Los table-shell tienen overflow-x:auto, las tablas scrollean dentro de ellos */
+  table {
+    min-width: 0 !important;
+  }
+
+  /* ── Stats: tabla de importaciones sin min-width inline ── */
+  .stats-imports-table {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  /* ── Evitar que secciones/cards expandan el viewport ── */
+  .page > section,
+  .card,
+  section.card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   /* Sidebar: fijo, deslizable desde la izquierda */
   .sidebar {
     position: fixed;
