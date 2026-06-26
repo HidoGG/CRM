@@ -349,6 +349,8 @@ function Chip({ label, value, bg, color, border = false }) {
       background: bg,
       color,
       fontSize: '0.85rem',
+      whiteSpace: 'nowrap',
+      flexShrink: 0,
       ...(border ? { border: '1px solid var(--border-faint)' } : {}),
     }}>
       {label}: <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</strong>

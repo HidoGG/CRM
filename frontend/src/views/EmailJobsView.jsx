@@ -505,6 +505,7 @@ function JobRow({ job, onDelete }) {
   return (
     <div
       role="listitem"
+      className="job-row"
       style={{
         border: '1px solid var(--border-faint)',
         borderRadius: 12,
@@ -516,7 +517,7 @@ function JobRow({ job, onDelete }) {
         background: 'var(--surface-raised)',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+      <div className="job-row-info" style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {job.contact_name || '—'}{' '}
           <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>— {job.contact_email}</span>
@@ -535,7 +536,7 @@ function JobRow({ job, onDelete }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+      <div className="job-row-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
           {job.status === 'sent' ? `Enviado ${formatDate(job.sent_at)}` : `Programado ${formatDate(job.scheduled_at)}`}
         </span>

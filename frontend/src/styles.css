@@ -1798,19 +1798,52 @@ tr:last-child td {
     grid-template-columns: 1fr !important;
   }
 
-  /* Contactos — tabla con scroll horizontal */
+  /* Contactos — tabla con scroll horizontal, layout auto para columna de acciones */
   .contacts-table-wrap {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
   }
 
   .contacts-table-wrap table {
-    min-width: 560px;
+    min-width: 680px;
+    table-layout: auto !important;
   }
 
   /* Estadísticas — snapshot grid: stack vertical */
   .stats-snapshot-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  /* Envíos — JobRow: stack vertical en mobile */
+  .job-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  .job-row-info {
+    width: 100%;
+  }
+
+  .job-row-info span:first-child {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .job-row-actions {
+    flex-wrap: wrap !important;
+    flex-shrink: 1 !important;
+    gap: 6px !important;
+  }
+
+  /* Importaciones — reducir min-width de tabla historial */
+  .table-shell table {
+    min-width: 480px;
+  }
+
+  /* Importaciones — upload panel texto wrapping */
+  .upload-panel {
+    padding: 14px !important;
   }
 }
 
