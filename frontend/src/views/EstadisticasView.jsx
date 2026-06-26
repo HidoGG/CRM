@@ -69,7 +69,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
         </div>
 
         {/* Pasos del funnel */}
-        <div style={{ display: 'flex', alignItems: 'stretch', overflowX: 'auto', gap: 0 }}>
+        <div className="funnel-steps" style={{ display: 'flex', alignItems: 'stretch', overflowX: 'auto', gap: 0, WebkitOverflowScrolling: 'touch' }}>
           {[
             { label: 'Total',        count: funnel.total,          pct: 100,                                                                                          color: 'var(--accent)'      },
             { label: 'Contactados',  count: funnel.contactados,    pct: funnel.total > 0 ? Math.round(funnel.contactados   / funnel.total * 100) : 0,                 color: 'var(--blue)'        },
@@ -165,14 +165,14 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
                 ? updatedAt.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                 : '—';
               return (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'var(--surface-subtle)', border: '1px solid var(--border-faint)' }}>
-                  <span style={{ flex: 1, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {c.company_name || c.contact_name || c.email || '—'}
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, background: 'var(--surface-subtle)', border: '1px solid var(--border-faint)' }}>
+                  <span style={{ flex: 1, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                    {c.name || c.company || c.email || '—'}
                   </span>
-                  <span style={{ flexShrink: 0, padding: '3px 10px', borderRadius: 999, background: actionColor.bg, color: actionColor.fg, fontSize: '0.78rem', fontWeight: 700 }}>
+                  <span style={{ flexShrink: 0, padding: '3px 10px', borderRadius: 999, background: actionColor.bg, color: actionColor.fg, fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {prettifyAction(action)}
                   </span>
-                  <span style={{ flexShrink: 0, color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                  <span className="stats-activity-time" style={{ flexShrink: 0, color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                     {timeLabel}
                   </span>
                 </div>
@@ -184,7 +184,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
 
       {/* ── 3. Stock en el tiempo ── */}
       <section className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
             <span className="eyebrow">Evolución de stock</span>
             <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Estado del pipeline</h3>
@@ -272,7 +272,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
 
       {/* ── 4. Historial de importaciones ── */}
       <section className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             <span className="eyebrow">Historial</span>
             <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Importaciones</h3>

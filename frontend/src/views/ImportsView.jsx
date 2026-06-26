@@ -354,15 +354,13 @@ export function ImportsView({
             <p>Historial de previews y confirmaciones generadas desde la app.</p>
           </div>
         </div>
-        <div className="table-shell">
-          <table>
+        <div className="table-shell imports-history-shell">
+          <table className="imports-history-table">
             <thead>
               <tr>
                 <th>Archivo</th>
-                <th>Origen</th>
-                <th>Total</th>
-                <th>Listos</th>
                 <th>Estado</th>
+                <th>Contactos</th>
                 <th>Fecha</th>
               </tr>
             </thead>
@@ -370,17 +368,17 @@ export function ImportsView({
               {imports.length ? (
                 imports.map((item) => (
                   <tr key={item.id}>
-                    <td>{item.filename}</td>
-                    <td>{item.source}</td>
-                    <td>{item.total_contacts}</td>
-                    <td>{item.total_ready}</td>
+                    <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.filename}>
+                      {item.filename}
+                    </td>
                     <td>{item.status}</td>
-                    <td>{formatDate(item.created_at)}</td>
+                    <td>{item.total_contacts}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(item.created_at)}</td>
                   </tr>
                 ))
               ) : (
                 <tr className="empty-row">
-                  <td colSpan="6">Todavia no hay importaciones registradas.</td>
+                  <td colSpan="4">Todavia no hay importaciones registradas.</td>
                 </tr>
               )}
             </tbody>

@@ -465,6 +465,7 @@ button {
 .section-head {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: flex-start;
   margin-bottom: 10px;
@@ -1836,14 +1837,33 @@ tr:last-child td {
     gap: 6px !important;
   }
 
-  /* Importaciones — reducir min-width de tabla historial */
-  .table-shell table {
-    min-width: 480px;
+  /* Importaciones — tabla historial compacta, sin scroll */
+  .imports-history-table {
+    min-width: 0 !important;
+    width: 100%;
   }
 
-  /* Importaciones — upload panel texto wrapping */
+  /* Estadísticas — ocultar columna de tiempo en filas de actividad */
+  .stats-activity-time {
+    display: none !important;
+  }
+
+  /* Estadísticas — funnel scroll con cards visibles */
+  .funnel-steps {
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+
+  .funnel-steps::-webkit-scrollbar { display: none; }
+
+  /* Importaciones — upload panel padding reducido */
   .upload-panel {
     padding: 14px !important;
+  }
+
+  /* Fix global: section-head con flex-wrap (ya en CSS global, redundante pero refuerza) */
+  .section-head {
+    flex-wrap: wrap !important;
   }
 }
 
