@@ -32,7 +32,7 @@ const SECTOR_FILTERS = [
   { key: 'unset',       emoji: '❓', label: 'Sin empresa' },
 ];
 
-export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
+export function ContactsView({ contacts, allContacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
   const schedules = useSchedules().data || [];
   const [activeTab, setActiveTab]     = useState('lista');
   const [confirmId, setConfirmId]     = useState(null);
@@ -44,6 +44,16 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
   const [searchQuery, setSearchQuery]   = useState('');
   const defaultSchedule = schedules.find(s => s.is_default) ?? schedules[0];
   const confirmContact  = contacts.find(c => c.id === confirmId);
+
+  const statusCountMap = (() => {
+    const all = allContacts || contacts;
+    const map = { todos: all.length };
+    for (const c of all) {
+      const s = (c.status || '').toLowerCase();
+      map[s] = (map[s] || 0) + 1;
+    }
+    return map;
+  })();
 
   const visibleContacts = contacts.filter(c => {
     if (sectorFilter === 'unset') {
@@ -271,6 +281,21 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                   }}
                 >
                   {capitalize(filter)}
+                  {statusCountMap[filter] != null && (
+                    <span style={{
+                      marginLeft: 6,
+                      background: activeFilter === filter ? 'rgba(255,255,255,0.25)' : 'var(--surface-subtle)',
+                      color: activeFilter === filter ? 'var(--accent-text)' : 'var(--text-muted)',
+                      borderRadius: 999,
+                      padding: '0px 7px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      lineHeight: '1.6',
+                      display: 'inline-block',
+                    }}>
+                      {statusCountMap[filter]}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

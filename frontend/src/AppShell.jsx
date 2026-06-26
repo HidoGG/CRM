@@ -651,6 +651,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
             element={
               <ContactsView
                 contacts={filteredContacts}
+                allContacts={contacts}
                 activeFilter={activeFilter}
                 onFilterChange={setActiveFilter}
                 form={form}
