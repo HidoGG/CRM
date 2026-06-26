@@ -328,7 +328,8 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
               Todos los rubros
             </button>
             {SECTOR_FILTERS.map(sf => {
-              const count = contacts.filter(c =>
+              const all = allContacts || contacts;
+              const count = all.filter(c =>
                 sf.key === 'unset' ? !c.company?.trim() : c.industry === sf.key
               ).length;
               const isActive = sectorFilter === sf.key;
