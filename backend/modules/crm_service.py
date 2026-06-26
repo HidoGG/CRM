@@ -875,6 +875,18 @@ def update_contact(contact_id: int, payload: dict) -> dict:
                 default=str,
             ),
         )
+
+        # Si next_action cambió a enviar/seguir y no hay job pendiente, crear uno
+        new_action = normalize_next_action(updates.get("next_action", ""))
+        prev_action = normalize_next_action(previous.get("next_action", ""))
+        if new_action in {"enviar", "seguir"} and new_action != prev_action:
+            existing_job = session.execute(
+                text("SELECT id FROM email_jobs WHERE contact_id = :id AND status = 'pending' LIMIT 1"),
+                {"id": contact_id},
+            ).fetchone()
+            if existing_job is None:
+                _auto_create_email_job(session, contact_id, new_action)
+
         updated = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
             {"id": contact_id},
