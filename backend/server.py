@@ -371,13 +371,6 @@ def update_cv_comment(cv_id: int, payload: schemas.CvComment):
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
-@app.put("/cv-files/{cv_id}/default")
-def set_default_cv(cv_id: int):
-    try:
-        return crm_service.set_default_cv(cv_id)
-    except ServiceError as exc:
-        raise HTTPException(status_code=exc.status.value, detail=exc.message)
-
 
 @app.delete("/cv-files/{cv_id}")
 def delete_cv_file(cv_id: int):
@@ -421,13 +414,6 @@ def run_email_jobs_now():
 def retry_failed_email_jobs():
     return crm_service.retry_failed_email_jobs()
 
-
-@app.post("/email-jobs/assign-default-cv")
-def assign_default_cv_to_jobs():
-    try:
-        return crm_service.assign_default_cv_to_jobs()
-    except ServiceError as exc:
-        raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
 # ---------------------------------------------------------------------------

@@ -315,7 +315,7 @@ export function ImportsView({
                   <option value="">Sin CV</option>
                   {cvFiles.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.original_name}{c.is_default ? ' (por defecto)' : ''}
+                      {c.original_name}
                     </option>
                   ))}
                 </select>

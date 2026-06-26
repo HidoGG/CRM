@@ -60,11 +60,6 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     }
   }
 
-  async function setDefaultCv(id) {
-    await apiFetch(`${API_BASE}/cv-files/${id}/default`, { method: 'PUT' });
-    await onRefresh('cvs');
-  }
-
   function deleteCv(id) { setConfirmCv(id); }
   async function confirmDeleteCv() {
     const id = confirmCv;
@@ -95,13 +90,6 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     setRunResult({ sent: 0, failed: 0, retried: data.retried });
   }
 
-  async function assignDefaultCv() {
-    const res  = await apiFetch(`${API_BASE}/email-jobs/assign-default-cv`, { method: 'POST' });
-    const data = res.ok ? await res.json() : { updated: 0 };
-    await onRefresh('jobs');
-    setRunResult({ sent: 0, failed: 0, assigned: data.updated });
-  }
-
   async function authorize() {
     try {
       const res = await apiFetch(`${API_BASE}/gmail/auth-url`);
@@ -120,7 +108,6 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   const pendingJobs = emailJobs.filter(j => j.status === 'pending' || j.status === 'processing');
   const doneJobs    = emailJobs.filter(j => j.status !== 'pending' && j.status !== 'processing');
   const failedCount = emailJobs.filter(j => j.status === 'failed').length;
-  const hasPendingOrFailed = emailJobs.some(j => j.status === 'pending' || j.status === 'failed');
 
   /* ─── Textos de resultado ─── */
   function resultTitle() {
@@ -134,10 +121,6 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   }
 
   function resultMessage() {
-    if (runResult?.assigned != null)
-      return runResult.assigned > 0
-        ? `CV por defecto asignado a ${runResult.assigned} job(s). Ahora presioná "Reintentar fallidos" o "Enviar ahora".`
-        : 'Todos los jobs ya tienen un CV válido asignado.';
     if (runResult?.retried > 0)
       return `${runResult.retried} job(s) reseteados a pendiente. El scheduler los procesa en el próximo ciclo. También podés presionar "Enviar ahora".`;
     if (runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0)
@@ -313,7 +296,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
         ) : (
           <div className="flex flex-col gap-2" role="list" aria-label="Lista de CVs">
             {cvFiles.map(cv => (
-              <CvRow key={cv.id} cv={cv} onSetDefault={setDefaultCv} onDelete={deleteCv} onRefresh={() => onRefresh('cvs')} />
+              <CvRow key={cv.id} cv={cv} onDelete={deleteCv} onRefresh={() => onRefresh('cvs')} />
             ))}
           </div>
         )}
@@ -348,16 +331,6 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
                 Reintentar fallidos ({failedCount})
               </button>
             )}
-            {hasPendingOrFailed && (
-              <button
-                type="button"
-                onClick={assignDefaultCv}
-                className="ghost-button"
-                aria-label="Asignar CV por defecto a todos los jobs pendientes y fallidos"
-              >
-                Adjuntar CV por defecto
-              </button>
-            )}
           </div>
         </div>
 
@@ -390,7 +363,7 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
   );
 }
 
-function CvRow({ cv, onSetDefault, onDelete, onRefresh }) {
+function CvRow({ cv, onDelete, onRefresh }) {
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState(cv.comment || '');
   const [saving, setSaving]   = useState(false);
@@ -463,28 +436,9 @@ function CvRow({ cv, onSetDefault, onDelete, onRefresh }) {
           </button>
         )}
 
-        {cv.is_default === 1 && (
-          <span
-            style={{ fontSize: '0.78rem', background: 'var(--accent-subtle)', color: 'var(--accent)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}
-            aria-label="CV por defecto"
-          >
-            Por defecto
-          </span>
-        )}
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        {!cv.is_default && (
-          <button
-            type="button"
-            onClick={() => onSetDefault(cv.id)}
-            className="ghost-button"
-            style={{ fontSize: '0.82rem', padding: '5px 12px' }}
-            aria-label={`Usar ${cv.original_name} como CV por defecto`}
-          >
-            Usar por defecto
-          </button>
-        )}
         <button
           type="button"
           onClick={() => onDelete(cv.id)}

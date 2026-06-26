@@ -1496,15 +1496,31 @@ def _auto_create_email_job(
     if normalize_next_action(next_action) not in {"enviar", "seguir"}:
         return
     if template_id is None:
-        tmpl = session.execute(
-            text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
-        ).fetchone()
-        template_id = tmpl[0] if tmpl else None
+        sd_tmpl = session.execute(text("""
+            SELECT sd.template_id FROM sector_defaults sd
+            JOIN contacts c ON c.industry = sd.sector
+            WHERE c.id = :cid AND sd.template_id IS NOT NULL LIMIT 1
+        """), {"cid": contact_id}).fetchone()
+        if sd_tmpl:
+            template_id = sd_tmpl[0]
+        else:
+            tmpl = session.execute(
+                text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
+            ).fetchone()
+            template_id = tmpl[0] if tmpl else None
     if cv_file_id is None:
-        cv = session.execute(
-            text("SELECT id FROM cv_files WHERE is_default = 1 LIMIT 1")
-        ).fetchone()
-        cv_file_id = cv[0] if cv else None
+        sd_cv = session.execute(text("""
+            SELECT sd.cv_file_id FROM sector_defaults sd
+            JOIN contacts c ON c.industry = sd.sector
+            WHERE c.id = :cid AND sd.cv_file_id IS NOT NULL LIMIT 1
+        """), {"cid": contact_id}).fetchone()
+        if sd_cv:
+            cv_file_id = sd_cv[0]
+        else:
+            cv = session.execute(
+                text("SELECT id FROM cv_files WHERE is_default = 1 LIMIT 1")
+            ).fetchone()
+            cv_file_id = cv[0] if cv else None
 
     # Calcular scheduled_at según el cronograma asignado
     if schedule_id is not None:
@@ -1566,16 +1582,14 @@ def get_cv_files() -> list[dict]:
 def save_cv_file(original_name: str, file_path: str, comment: str = "") -> dict:
     now = now_utc()
     with get_session() as session:
-        count = session.execute(text("SELECT COUNT(*) FROM cv_files")).scalar()
-        is_default = 1 if count == 0 else 0
         result = session.execute(
             text("""
                 INSERT INTO cv_files (original_name, file_path, is_default, comment, created_at)
-                VALUES (:original_name, :file_path, :is_default, :comment, :now)
+                VALUES (:original_name, :file_path, 0, :comment, :now)
                 RETURNING id
             """),
             {"original_name": original_name, "file_path": file_path,
-             "is_default": is_default, "comment": comment, "now": now},
+             "comment": comment, "now": now},
         )
         new_id = result.fetchone()[0]
         row = session.execute(
@@ -1600,20 +1614,6 @@ def update_cv_comment(cv_id: int, comment: str) -> dict:
         ).fetchone()
         return row_to_dict(row)
 
-
-def set_default_cv(cv_id: int) -> list[dict]:
-    with get_session() as session:
-        existing = session.execute(
-            text("SELECT id FROM cv_files WHERE id = :id"), {"id": cv_id}
-        ).fetchone()
-        if not existing:
-            raise ServiceError("CV no encontrado.", HTTPStatus.NOT_FOUND)
-        session.execute(text("UPDATE cv_files SET is_default = 0"))
-        session.execute(text("UPDATE cv_files SET is_default = 1 WHERE id = :id"), {"id": cv_id})
-        rows = session.execute(
-            text("SELECT * FROM cv_files ORDER BY is_default DESC, id ASC")
-        ).fetchall()
-        return [row_to_dict(r) for r in rows]
 
 
 def delete_cv_file(cv_id: int) -> dict:
@@ -2032,26 +2032,6 @@ def process_pending_email_jobs() -> dict:
     )
     return {"sent": sent, "failed": failed, "skipped": skipped}
 
-
-def assign_default_cv_to_jobs() -> dict:
-    """Asigna el CV por defecto a TODOS los jobs pendientes/fallidos, sin excepción.
-    Útil para re-sincronizar después de un redeploy que borró CVs del disco.
-    """
-    with get_session() as session:
-        cv_row = session.execute(text(
-            "SELECT id FROM cv_files WHERE is_default = 1 ORDER BY id DESC LIMIT 1"
-        )).fetchone()
-        if not cv_row:
-            raise ServiceError("No hay CV marcado como por defecto.")
-        cv_id = cv_row[0]
-        result = session.execute(text("""
-            UPDATE email_jobs
-            SET cv_file_id = :cv_id
-            WHERE status IN ('pending', 'failed')
-        """), {"cv_id": cv_id})
-        updated = result.rowcount
-    print(f"[email_jobs] Asignado CV id={cv_id} a {updated} jobs (forzado).")
-    return {"updated": updated, "cv_id": cv_id}
 
 
 def retry_failed_email_jobs() -> dict:
