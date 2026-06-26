@@ -8,6 +8,7 @@ import { OperacionesView } from './views/OperacionesView';
 import { ContactsView } from './views/ContactsView';
 import { ImportsView } from './views/ImportsView';
 import { EnviosView } from './views/EnviosView';
+import { CareerView } from './views/CareerView';
 import { LoginView } from './views/LoginView';
 import { API_BASE, apiFetch, setAccessToken } from './lib/api';
 import { authEnabled, supabase } from './lib/supabaseClient';
@@ -46,6 +47,7 @@ const VIEW_ROUTES = {
   cronogramas: '/envios',
   estadisticas: '/estadisticas',
   tendencias: '/estadisticas',
+  asistente: '/asistente',
 };
 
 const PATH_TITLES = {
@@ -55,6 +57,7 @@ const PATH_TITLES = {
   '/importaciones': 'Importaciones',
   '/envios': 'Envíos',
   '/estadisticas': 'Estadísticas',
+  '/asistente': 'Asistente IA',
 };
 
 function pathToViewId(pathname) {
@@ -63,6 +66,7 @@ function pathToViewId(pathname) {
   if (pathname.startsWith('/importaciones')) return 'importaciones';
   if (pathname.startsWith('/envios')) return 'envios';
   if (pathname.startsWith('/estadisticas')) return 'estadisticas';
+  if (pathname.startsWith('/asistente')) return 'asistente';
   return 'dashboard';
 }
 
@@ -693,6 +697,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
               />
             }
           />
+          <Route path="/asistente" element={<CareerView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

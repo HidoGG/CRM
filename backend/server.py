@@ -4,6 +4,7 @@ from __future__ import annotations
 from dotenv import load_dotenv
 load_dotenv()
 
+import base64
 import io
 import os
 import secrets
@@ -23,7 +24,9 @@ import modules.engagement_service as engagement_service
 import modules.ocr_service as ocr_service
 from modules import schemas
 from modules.crm_service import ServiceError
-from modules.database import init_db, run_migrations
+from sqlalchemy import text
+from sqlmodel import Session
+from modules.database import engine, init_db, run_migrations
 
 _scheduler = BackgroundScheduler()
 
@@ -506,6 +509,157 @@ def gmail_callback(code: str):
         return RedirectResponse(url=f"{frontend_url}?gmail=error&reason={exc}")
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     return RedirectResponse(url=f"{frontend_url}?gmail=authorized")
+
+
+# ---------------------------------------------------------------------------
+# Agente de RRHH — Career Assistant
+# ---------------------------------------------------------------------------
+
+@app.get("/career/sessions")
+def list_career_sessions():
+    """Lista todas las sesiones guardadas, orden cronológico inverso."""
+    from modules.database import get_session as db_session, row_to_dict
+    with db_session() as db:
+        rows = db.execute(text("""
+            SELECT id, title, company, role, summary, created_at, updated_at
+            FROM career_sessions
+            ORDER BY updated_at DESC
+            LIMIT 100
+        """)).fetchall()
+    return [row_to_dict(r) for r in rows]
+
+
+@app.post("/career/sessions")
+def create_career_session():
+    """Crea una nueva sesión de chat vacía y devuelve su id."""
+    from modules.database import get_session as db_session
+    with db_session() as db:
+        result = db.execute(
+            text("INSERT INTO career_sessions (title) VALUES ('Nueva búsqueda') RETURNING id")
+        )
+        session_id = result.fetchone()[0]
+        db.commit()
+    return {"id": session_id}
+
+
+@app.get("/career/sessions/{session_id}")
+def get_career_session(session_id: int):
+    """Devuelve una sesión con todos sus mensajes."""
+    from modules.database import get_session as db_session, row_to_dict
+    with db_session() as db:
+        session_row = db.execute(
+            text("SELECT * FROM career_sessions WHERE id = :id"),
+            {"id": session_id},
+        ).fetchone()
+        if not session_row:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+        messages = db.execute(
+            text("SELECT id, role, content, has_image, created_at FROM career_messages WHERE session_id = :id ORDER BY id ASC"),
+            {"id": session_id},
+        ).fetchall()
+    return {
+        **row_to_dict(session_row),
+        "messages": [row_to_dict(m) for m in messages],
+    }
+
+
+@app.delete("/career/sessions/{session_id}")
+def delete_career_session(session_id: int):
+    """Elimina una sesión y todos sus mensajes."""
+    from modules.database import get_session as db_session
+    with db_session() as db:
+        db.execute(text("DELETE FROM career_sessions WHERE id = :id"), {"id": session_id})
+        db.commit()
+    return {"ok": True}
+
+
+@app.post("/career/sessions/{session_id}/chat")
+async def career_chat(session_id: int, request: Request):
+    """
+    Envía un mensaje al agente de RRHH y devuelve su respuesta.
+    Body (multipart/form o JSON):
+      - message: texto del usuario
+      - image: archivo de imagen opcional (multipart)
+    """
+    import modules.career_agent as career_agent
+    from modules.database import get_session as db_session, now_utc, row_to_dict
+
+    # Parsear body — acepta multipart (con imagen) o JSON (solo texto)
+    content_type = request.headers.get("content-type", "")
+    user_text = ""
+    image_b64 = None
+    image_mime = "image/jpeg"
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        user_text = str(form.get("message", "")).strip()
+        image_file = form.get("image")
+        if image_file and hasattr(image_file, "read"):
+            raw = await image_file.read()
+            image_b64 = base64.b64encode(raw).decode()
+            image_mime = image_file.content_type or "image/jpeg"
+    else:
+        body = await request.json()
+        user_text = str(body.get("message", "")).strip()
+
+    if not user_text and not image_b64:
+        raise HTTPException(status_code=400, detail="Mensaje vacío")
+
+    # Verificar que la sesión existe
+    with Session(engine) as db:
+        exists = db.execute(
+            text("SELECT 1 FROM career_sessions WHERE id = :id"), {"id": session_id}
+        ).fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
+        # Cargar historial previo
+        rows = db.execute(
+            text("SELECT role, content FROM career_messages WHERE session_id = :id ORDER BY id ASC"),
+            {"id": session_id},
+        ).fetchall()
+        history = [{"role": r[0], "content": r[1]} for r in rows]
+
+    # Correr el agente
+    try:
+        reply = await career_agent.run_chat(
+            session_id=session_id,
+            history=history,
+            user_text=user_text,
+            image_b64=image_b64,
+            image_mime=image_mime,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error del agente: {exc}")
+
+    # Guardar mensajes en DB
+    now = now_utc()
+    user_content_stored = user_text or "[imagen adjunta]"
+    if image_b64 and user_text:
+        user_content_stored = f"[imagen] {user_text}"
+
+    with Session(engine) as db:
+        db.execute(
+            text("""
+                INSERT INTO career_messages (session_id, role, content, has_image, created_at)
+                VALUES (:sid, 'user', :content, :has_img, :now)
+            """),
+            {"sid": session_id, "content": user_content_stored, "has_img": bool(image_b64), "now": now},
+        )
+        db.execute(
+            text("""
+                INSERT INTO career_messages (session_id, role, content, has_image, created_at)
+                VALUES (:sid, 'assistant', :content, false, :now)
+            """),
+            {"sid": session_id, "content": reply, "now": now},
+        )
+        db.execute(
+            text("UPDATE career_sessions SET updated_at = :now WHERE id = :id"),
+            {"now": now, "id": session_id},
+        )
+        db.commit()
+
+    return {"reply": reply}
 
 
 if __name__ == "__main__":

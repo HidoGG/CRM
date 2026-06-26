@@ -23,6 +23,7 @@ const navItems = [
   { id: 'importaciones', label: 'Importaciones', note: 'Cargar empresas'              },
   { id: 'envios',        label: 'Envíos',        note: 'Correos automáticos'          },
   { id: 'estadisticas',  label: 'Estadísticas',  note: 'Análisis e historial'         },
+  { id: 'asistente',     label: 'Asistente IA',  note: 'Búsqueda laboral'             },
 ];
 
 const CloseIcon = () => (

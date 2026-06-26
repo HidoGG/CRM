@@ -101,6 +101,15 @@ export function useSectorDefaults() {
   });
 }
 
+export function useCareerSessions() {
+  return useQuery({
+    queryKey: ['careerSessions'],
+    queryFn: () => import('./api').then(m => m.fetchCareerSessions()),
+    placeholderData: [],
+    staleTime: 30_000,
+  });
+}
+
 // Mapa scope → query keys (compatible con el viejo refreshData(scope))
 const SCOPE_KEYS = {
   jobs: [['emailJobs'], ['gmailStatus']],
