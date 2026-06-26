@@ -371,13 +371,6 @@ def update_cv_comment(cv_id: int, payload: schemas.CvComment):
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
-@app.put("/cv-files/{cv_id}/default")
-def set_default_cv(cv_id: int):
-    try:
-        return crm_service.set_default_cv(cv_id)
-    except ServiceError as exc:
-        raise HTTPException(status_code=exc.status.value, detail=exc.message)
-
 
 @app.delete("/cv-files/{cv_id}")
 def delete_cv_file(cv_id: int):
@@ -421,13 +414,6 @@ def run_email_jobs_now():
 def retry_failed_email_jobs():
     return crm_service.retry_failed_email_jobs()
 
-
-@app.post("/email-jobs/assign-default-cv")
-def assign_default_cv_to_jobs():
-    try:
-        return crm_service.assign_default_cv_to_jobs()
-    except ServiceError as exc:
-        raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
 # ---------------------------------------------------------------------------
@@ -520,39 +506,6 @@ def gmail_callback(code: str):
         return RedirectResponse(url=f"{frontend_url}?gmail=error&reason={exc}")
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     return RedirectResponse(url=f"{frontend_url}?gmail=authorized")
-
-
-# ---------------------------------------------------------------------------
-# Rubros / Sectores industriales
-# ---------------------------------------------------------------------------
-
-@app.get("/sector-defaults")
-def list_sector_defaults():
-    from modules.industry_service import get_sector_defaults
-    from modules.database import get_session
-    with get_session() as session:
-        return get_sector_defaults(session)
-
-
-@app.patch("/sector-defaults/{sector}")
-def update_sector_default(sector: str, payload: schemas.SectorDefaultUpdate):
-    from modules.industry_service import update_sector_default, VALID_SECTORS
-    from modules.database import get_session
-    if sector not in VALID_SECTORS:
-        raise HTTPException(status_code=422, detail=f"Sector inválido: {sector}")
-    with get_session() as session:
-        return update_sector_default(session, sector, payload.template_id, payload.cv_file_id)
-
-
-@app.get("/company-sectors")
-def list_company_sectors():
-    from modules.database import get_session
-    from sqlalchemy import text
-    with get_session() as session:
-        rows = session.execute(
-            text("SELECT company_name, industry, updated_at FROM company_sectors ORDER BY company_name")
-        ).fetchall()
-        return [dict(r._mapping) for r in rows]
 
 
 if __name__ == "__main__":
