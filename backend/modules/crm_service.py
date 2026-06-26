@@ -716,7 +716,7 @@ def get_contact_history(contact_id: int) -> list[dict]:
             {"id": contact_id},
         ).fetchone()
         if row is None:
-            raise ServiceError("Contact not found", HTTPStatus.NOT_FOUND)
+            raise ServiceError("Contacto no encontrado.", HTTPStatus.NOT_FOUND)
         # Consulta por entidad (indexada) — todos los eventos de contacto
         # registran entity_id, por lo que el match por substring ya no es necesario.
         rows = session.execute(
@@ -736,7 +736,7 @@ def create_contact(payload: dict) -> dict:
     email = str(payload.get("email", "")).strip().lower()
     name = str(payload.get("name", "")).strip()
     if not VALID_EMAIL_RE.fullmatch(email):
-        raise ServiceError("invalid email format", HTTPStatus.UNPROCESSABLE_ENTITY)
+        raise ServiceError("Formato de email inválido.", HTTPStatus.UNPROCESSABLE_ENTITY)
 
     now = now_utc()
     with get_session() as session:
@@ -745,7 +745,7 @@ def create_contact(payload: dict) -> dict:
             {"email": email},
         ).fetchone()
         if existing is not None:
-            raise ServiceError("contact email already exists", HTTPStatus.CONFLICT)
+            raise ServiceError("Ya existe un contacto con ese email.", HTTPStatus.CONFLICT)
 
         result = session.execute(
             text(f"""
@@ -786,7 +786,7 @@ def create_contact(payload: dict) -> dict:
             event_type="contact.created",
             entity_type="contact",
             entity_id=str(contact_id),
-            message=f"Created contact {email}",
+            message=f"Contacto {email} creado",
             metadata_json=json.dumps({"email": email, "name": name}, ensure_ascii=True),
         )
         _auto_create_email_job(
@@ -830,7 +830,7 @@ def update_contact(contact_id: int, payload: dict) -> dict:
     if "email" in updates:
         email = updates["email"]
         if not email or not VALID_EMAIL_RE.fullmatch(email):
-            raise ServiceError("invalid email format", HTTPStatus.UNPROCESSABLE_ENTITY)
+            raise ServiceError("Formato de email inválido.", HTTPStatus.UNPROCESSABLE_ENTITY)
     with get_session() as session:
         row = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
@@ -846,7 +846,7 @@ def update_contact(contact_id: int, payload: dict) -> dict:
                 {"email": updates["email"], "id": contact_id},
             ).fetchone()
             if duplicate is not None:
-                raise ServiceError("contact email already exists", HTTPStatus.CONFLICT)
+                raise ServiceError("Ya existe un contacto con ese email.", HTTPStatus.CONFLICT)
 
         updates["updated_at"] = now_utc()
         set_clause = ", ".join(f"{field} = :{field}" for field in updates)
@@ -861,7 +861,7 @@ def update_contact(contact_id: int, payload: dict) -> dict:
             event_type="contact.updated",
             entity_type="contact",
             entity_id=str(contact_id),
-            message=f"Updated contact {previous.get('email')}: {', '.join(changed_fields)}",
+            message=f"Contacto {previous.get('email')} actualizado: {', '.join(changed_fields)}",
             metadata_json=json.dumps(
                 {
                     "contact_id": contact_id,
@@ -907,13 +907,13 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
             {"id": contact_id},
         ).fetchone()
         if row is None:
-            raise ServiceError("Contact not found", HTTPStatus.NOT_FOUND)
+            raise ServiceError("Contacto no encontrado.", HTTPStatus.NOT_FOUND)
 
         contact = row_to_dict(row)
         current_action = normalize_next_action(contact.get("next_action"))
         action = requested_action or current_action
         if action == "revisar_manual" and manual_follow_up_date is None:
-            raise ServiceError("Action is required", HTTPStatus.UNPROCESSABLE_ENTITY)
+            raise ServiceError("Se requiere una acción.", HTTPStatus.UNPROCESSABLE_ENTITY)
 
         if manual_follow_up_date is not None and requested_action is None:
             next_status = normalize_status(contact.get("status"))
@@ -972,7 +972,7 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
             event_type="contact.action_executed",
             entity_type="contact",
             entity_id=str(contact_id),
-            message=f"Executed action {action} for {contact.get('email') or contact_id}",
+            message=f"Acción '{action}' ejecutada para {contact.get('email') or contact_id}",
             metadata_json=json.dumps(
                 {
                     "contact_id": contact_id,
@@ -1077,7 +1077,7 @@ def get_import_detail(import_id: int) -> dict:
             {"id": import_id},
         ).fetchone()
         if batch is None:
-            raise ServiceError("Import not found", HTTPStatus.NOT_FOUND)
+            raise ServiceError("Importación no encontrada.", HTTPStatus.NOT_FOUND)
         candidates = session.execute(
             text(f"SELECT {_CANDIDATE_COLS} FROM import_candidates WHERE import_id = :import_id ORDER BY id ASC"),
             {"import_id": import_id},
@@ -1120,7 +1120,7 @@ def create_mock_import(payload: dict) -> dict:
             event_type="import.mock_created",
             entity_type="import",
             entity_id=str(import_id),
-            message=f"Registered mock import {filename}",
+            message=f"Importación de prueba registrada: {filename}",
             metadata_json=json.dumps({"filename": filename, "total_contacts": total_contacts}, ensure_ascii=True),
         )
     return {
@@ -1200,7 +1200,7 @@ def preview_import(filename: str, mime_type: str, raw_bytes: bytes, source: str)
             event_type="import.preview_created",
             entity_type="import",
             entity_id=str(import_id),
-            message=f"Preview created for {filename}",
+            message=f"Vista previa generada para {filename}",
             metadata_json=json.dumps(
                 {
                     "filename": filename, "mime_type": mime_type,
@@ -1248,7 +1248,7 @@ def confirm_import(import_id: int, payload: dict) -> dict:
             {"id": import_id},
         ).fetchone()
         if batch is None:
-            raise ServiceError("Import not found", HTTPStatus.NOT_FOUND)
+            raise ServiceError("Importación no encontrada.", HTTPStatus.NOT_FOUND)
 
         for candidate in requested_candidates:
             candidate_id = int(candidate.get("id", 0))
@@ -1325,7 +1325,7 @@ def confirm_import(import_id: int, payload: dict) -> dict:
                 event_type="contact.imported",
                 entity_type="contact",
                 entity_id=str(contact_id),
-                message=f"Imported contact {email} from batch {import_id}",
+                message=f"Contacto {email} importado desde lote {import_id}",
                 metadata_json=json.dumps({"import_id": import_id, "email": email}, ensure_ascii=True),
             )
             job_idx = _schedule_job_index.get(schedule_id, 0)
@@ -1348,7 +1348,7 @@ def confirm_import(import_id: int, payload: dict) -> dict:
             event_type="import.confirmed",
             entity_type="import",
             entity_id=str(import_id),
-            message=f"Confirmed import batch {import_id}",
+            message=f"Importación lote {import_id} confirmada",
             metadata_json=json.dumps({"confirmed_contacts": len(inserted_contacts)}, ensure_ascii=True),
         )
         updated_batch = session.execute(
