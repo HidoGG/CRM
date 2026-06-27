@@ -135,6 +135,10 @@ class CvComment(BaseModel):
     comment: str = ""
 
 
+class CareerDraftRequest(BaseModel):
+    cv_id: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # Email jobs
 # ---------------------------------------------------------------------------

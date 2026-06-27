@@ -235,6 +235,52 @@ async def _describe_image(image_b64: str, image_mime: str) -> str:
     return resp.choices[0].message.content or "No se pudo leer la imagen."
 
 
+def _fetch_url(url: str) -> str:
+    """Descarga una URL y extrae el texto visible. Devuelve el texto o mensaje de error."""
+    import requests
+    from html.parser import HTMLParser
+
+    class _TextExtractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self._skip = False
+            self.parts: list[str] = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style", "nav", "footer", "head", "noscript"):
+                self._skip = True
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style", "nav", "footer", "head", "noscript"):
+                self._skip = False
+
+        def handle_data(self, data):
+            if not self._skip:
+                stripped = data.strip()
+                if stripped:
+                    self.parts.append(stripped)
+
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            )
+        }
+        resp = requests.get(url, headers=headers, timeout=12)
+        resp.raise_for_status()
+        extractor = _TextExtractor()
+        extractor.feed(resp.text)
+        text = "\n".join(extractor.parts)
+        return text[:10000]
+    except Exception as exc:
+        return (
+            f"No se pudo acceder al enlace ({exc}). "
+            "Por favor pegá el texto del aviso directamente o subí una captura de pantalla."
+        )
+
+
 async def run_chat(
     session_id: int,
     history: list[dict],
@@ -243,6 +289,12 @@ async def run_chat(
     image_mime: str = "image/jpeg",
 ) -> str:
     """Envía el mensaje al agente Groq (Llama) y devuelve su respuesta."""
+
+    # Si el usuario pegó una URL, la descargamos y la incluimos como texto
+    if user_text and not image_b64 and user_text.strip().startswith(("http://", "https://")):
+        url = user_text.strip()
+        fetched = _fetch_url(url)
+        user_text = f"Analizá este aviso de trabajo (fuente: {url}):\n\n{fetched}"
 
     # Groq: los modelos de visión no soportan tools, así que primero describimos
     # la imagen con el modelo de visión y luego la pasamos como texto al agente principal.

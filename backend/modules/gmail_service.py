@@ -327,6 +327,42 @@ def send_email(
     return {"id": result.get("id", ""), "thread_id": result.get("threadId", "")}
 
 
+def create_draft(
+    *,
+    subject: str,
+    body: str,
+    cv_bytes: bytes | None = None,
+    cv_filename: str | None = None,
+) -> dict:
+    """Crea un borrador en Gmail con asunto, cuerpo y CV adjunto opcional.
+
+    Retorna {"draft_id": ..., "url": "https://mail.google.com/mail/u/0/#drafts/<id>"}.
+    """
+    service = _build_service()
+
+    msg = MIMEMultipart()
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    if cv_bytes:
+        name = cv_filename or "cv.pdf"
+        part = MIMEApplication(cv_bytes, Name=name)
+        part["Content-Disposition"] = f'attachment; filename="{name}"'
+        msg.attach(part)
+
+    msg["Subject"] = subject
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    result = service.users().drafts().create(
+        userId="me",
+        body={"message": {"raw": raw}},
+    ).execute()
+    draft_id = result.get("id", "")
+    return {
+        "draft_id": draft_id,
+        "url": f"https://mail.google.com/mail/u/0/#drafts/{draft_id}",
+    }
+
+
 def get_status() -> dict:
     try:
         _get_client_config()

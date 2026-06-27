@@ -662,6 +662,54 @@ async def career_chat(session_id: int, request: Request):
     return {"reply": reply}
 
 
+@app.post("/career/sessions/{session_id}/draft")
+async def create_career_draft(session_id: int, payload: schemas.CareerDraftRequest):
+    """Crea un borrador en Gmail con el email generado por el asistente."""
+    from modules import gmail_service, supabase_storage
+
+    with Session(engine) as db:
+        session_row = db.execute(
+            text("SELECT email_subject, email_body FROM career_sessions WHERE id = :id"),
+            {"id": session_id},
+        ).fetchone()
+        if not session_row:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+        subject = session_row[0] or ""
+        body = session_row[1] or ""
+
+    if not subject and not body:
+        raise HTTPException(
+            status_code=400,
+            detail="Todavía no se generó el email para esta sesión. Pegá un aviso primero.",
+        )
+
+    cv_bytes = None
+    cv_filename = None
+    if payload.cv_id:
+        with Session(engine) as db:
+            cv_row = db.execute(
+                text("SELECT original_name, file_path FROM cv_files WHERE id = :id"),
+                {"id": payload.cv_id},
+            ).fetchone()
+        if cv_row:
+            cv_filename = cv_row[0]
+            try:
+                cv_bytes = supabase_storage.download(cv_row[1])
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"No se pudo descargar el CV: {exc}")
+
+    try:
+        result = gmail_service.create_draft(
+            subject=subject,
+            body=body,
+            cv_bytes=cv_bytes,
+            cv_filename=cv_filename,
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
