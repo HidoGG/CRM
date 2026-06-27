@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  apiFetch,
   createCareerSession,
   deleteCareerSession,
   fetchCareerSession,
@@ -68,21 +69,32 @@ const DownloadIcon = () => (
 // ── Modal de previsualización del CV ───────────────────────────────────────────
 
 function CvPreviewModal({ html, sessionId, onClose }) {
+  const [downloading, setDownloading] = useState(false);
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  function handleDownload() {
-    const url = getCareerCvPdfUrl(sessionId);
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    // El backend agrega auth header... pero las descargas directas no pasan headers.
-    // En dev local (sin auth) funciona directo. En prod con API key usamos window.open.
-    window.open(url, '_blank', 'noopener,noreferrer');
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const url = getCareerCvPdfUrl(sessionId);
+      const res = await apiFetch(url);
+      if (!res.ok) throw new Error('No se pudo descargar el PDF');
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = 'CV_Gabriel_Hidalgo.pdf';
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // silencioso — el usuario puede reintentar
+    } finally {
+      setDownloading(false);
+    }
   }
 
   return (
@@ -91,8 +103,13 @@ function CvPreviewModal({ html, sessionId, onClose }) {
         <div className="cv-modal-header">
           <span className="cv-modal-title">Vista previa del CV</span>
           <div className="cv-modal-actions">
-            <button type="button" className="cv-modal-download-btn" onClick={handleDownload}>
-              <DownloadIcon /> Descargar PDF
+            <button
+              type="button"
+              className="cv-modal-download-btn"
+              onClick={handleDownload}
+              disabled={downloading}
+            >
+              <DownloadIcon /> {downloading ? 'Descargando…' : 'Descargar PDF'}
             </button>
             <button type="button" className="cv-modal-close" onClick={onClose} aria-label="Cerrar">×</button>
           </div>
