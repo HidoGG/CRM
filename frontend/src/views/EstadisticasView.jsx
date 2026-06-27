@@ -151,7 +151,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
         {recentContacts.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Sin contactos cargados aún.</p>
         ) : (
-          <div style={{ display: 'grid', gap: 6 }}>
+          <div style={{ display: 'grid', gap: 6, maxHeight: 268, overflowY: 'auto', paddingRight: 2 }}>
             {recentContacts.map(c => {
               const action = c.next_action || 'sin acción';
               const actionColor =
