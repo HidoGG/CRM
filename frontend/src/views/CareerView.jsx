@@ -244,7 +244,10 @@ function GmailDraftButton({ sessionId, messageContent, hasCv }) {
       setDone(true);
       window.open(result.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      setError(err.message);
+      const msg = err.message === 'Failed to fetch'
+        ? 'No se pudo conectar al servidor. Esperá unos segundos y reintentá.'
+        : err.message;
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -289,7 +292,12 @@ function GmailDraftButton({ sessionId, messageContent, hasCv }) {
         <p className="career-draft-hint">Borrador creado{hasCv ? ' con CV ATS adjunto' : ''}. Abrió Gmail en una pestaña nueva.</p>
       )}
       {error && (
-        <p className="career-draft-error">{error}</p>
+        <div className="career-draft-error-row">
+          <p className="career-draft-error">{error}</p>
+          <button type="button" className="career-draft-retry-btn" onClick={handleCreate} disabled={loading}>
+            Reintentar
+          </button>
+        </div>
       )}
     </div>
   );

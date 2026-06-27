@@ -1475,10 +1475,36 @@ tr:last-child td {
   color: var(--green-text);
 }
 
+.career-draft-error-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
 .career-draft-error {
-  margin: 8px 0 0;
   font-size: 0.82rem;
   color: var(--red-text);
+  margin: 0;
+}
+
+.career-draft-retry-btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border: 1px solid var(--red-text);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--red-text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.career-draft-retry-btn:hover:not(:disabled) {
+  background: var(--red-text);
+  color: #fff;
 }
 
 .career-draft-cv-badge {
