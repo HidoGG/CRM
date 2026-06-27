@@ -224,17 +224,49 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
         {hasSnapshotData ? (
           <div className="stats-snapshot-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             {[
-              { label: 'Contactos totales', valueKey: 'total_contacts', snapshotKey: 'total_contacts', color: 'var(--accent)', deltaKey: 'total_contacts' },
-              { label: 'Vencidos',          valueKey: 'overdue_count',  snapshotKey: 'overdue_count',  color: 'var(--red-text)', deltaKey: 'overdue_count' },
-            ].map(({ label, valueKey, snapshotKey, color, deltaKey }) => {
+              {
+                label: 'Contactos totales',
+                description: 'Empresas y contactos cargados en la base de datos.',
+                valueKey: 'total_contacts',
+                snapshotKey: 'total_contacts',
+                color: 'var(--accent)',
+                deltaKey: 'total_contacts',
+              },
+              {
+                label: 'Vencidos',
+                description: 'Contactos con fecha de seguimiento ya vencida sin acción tomada.',
+                valueKey: 'overdue_count',
+                snapshotKey: 'overdue_count',
+                color: 'var(--red-text)',
+                deltaKey: 'overdue_count',
+              },
+            ].map(({ label, description, valueKey, snapshotKey, color, deltaKey }) => {
               const value = reporting.stock_comparison.current[valueKey];
               const delta = reporting.stock_comparison.deltas[deltaKey];
               const data = filteredSnapshots.map(s => s[snapshotKey]).reverse();
               const points = buildSparklinePoints(data);
               const total = reporting.stock_comparison.current['total_contacts'] || 1;
               const pct = valueKey === 'overdue_count' ? Math.round(value / total * 100) : null;
+
+              const validData = data.filter(v => Number.isFinite(v));
+              const firstVal = validData[0];
+              const lastVal = validData[validData.length - 1];
+              const periodDiff = validData.length >= 2 ? lastVal - firstVal : null;
+              const minVal = validData.length ? Math.min(...validData) : null;
+              const maxVal = validData.length ? Math.max(...validData) : null;
+
+              const trendColor =
+                periodDiff > 0 ? (valueKey === 'overdue_count' ? 'var(--red-text)' : 'var(--green-text)')
+                : periodDiff < 0 ? (valueKey === 'overdue_count' ? 'var(--green-text)' : 'var(--red-text)')
+                : 'var(--text-muted)';
+              const trendLabel =
+                periodDiff === null ? null
+                : periodDiff > 0 ? `▲ +${periodDiff} en el período`
+                : periodDiff < 0 ? `▼ ${periodDiff} en el período`
+                : '→ Sin cambio en el período';
+
               return (
-                <article key={label} style={{ background: 'var(--surface-subtle)', borderRadius: 14, padding: '18px 20px', display: 'grid', gap: 14, border: '1px solid var(--border-faint)' }}>
+                <article key={label} style={{ background: 'var(--surface-subtle)', borderRadius: 14, padding: '18px 20px', display: 'grid', gap: 10, border: '1px solid var(--border-faint)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     <div>
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</span>
@@ -242,18 +274,41 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
                       {pct !== null && (
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 4, display: 'block' }}>{pct}% del total</span>
                       )}
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 6, display: 'block', lineHeight: 1.4 }}>{description}</span>
                     </div>
                     {delta !== 0 && delta !== undefined && <DeltaBadge value={delta} />}
                   </div>
-                  <div style={{ height: 52 }} aria-hidden="true">
+                  <div style={{ position: 'relative', height: 52 }} aria-hidden="true">
                     {points ? (
-                      <svg viewBox="0 0 100 32" preserveAspectRatio="none" style={{ width: '100%', height: 52 }}>
-                        <polyline points={points} fill="none" style={{ stroke: color }} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                      <>
+                        {minVal !== null && maxVal !== null && minVal !== maxVal && (
+                          <>
+                            <span style={{ position: 'absolute', top: 0, right: 0, fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1 }}>
+                              máx {maxVal.toLocaleString('es-AR')}
+                            </span>
+                            <span style={{ position: 'absolute', bottom: 0, right: 0, fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1 }}>
+                              mín {minVal.toLocaleString('es-AR')}
+                            </span>
+                          </>
+                        )}
+                        <svg viewBox="0 0 100 32" preserveAspectRatio="none" style={{ width: '100%', height: 52 }}>
+                          <polyline points={points} fill="none" style={{ stroke: color }} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </>
                     ) : (
                       <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: 0 }}>Sin variación en este período</p>
                     )}
                   </div>
+                  {trendLabel && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-faint)', paddingTop: 8, gap: 8 }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Hace {activeRange} días: <strong style={{ color: 'var(--text-secondary)' }}>{firstVal?.toLocaleString('es-AR') ?? '—'}</strong>
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: trendColor, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {trendLabel}
+                      </span>
+                    </div>
+                  )}
                 </article>
               );
             })}
