@@ -1,24 +1,22 @@
 """Agente de RRHH personalizado para búsqueda laboral de Gabriel Hidalgo.
 
-Usa Google Gemini (google-generativeai) con function calling nativo.
-Modelo por defecto: gemini-2.0-flash (gratuito).
+Usa OpenAI (GPT-4o) reutilizando la OPENAI_API_KEY ya configurada en Render.
 """
 from __future__ import annotations
 
-import base64 as b64_module
-import io
+import json
 import os
 from typing import Optional
 
-import google.generativeai as genai
+from openai import AsyncOpenAI
 from sqlmodel import Session, text
 
 from modules.database import engine, now_utc
 
 # ── Cliente ───────────────────────────────────────────────────────────────────
 
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-_MODEL_NAME = os.getenv("CAREER_GEMINI_MODEL", "gemini-2.0-flash")
+_client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+_MODEL = os.getenv("CAREER_MODEL", "gpt-4o")
 
 # ── System prompt con perfil completo ────────────────────────────────────────
 
@@ -120,61 +118,61 @@ Disponibilidad: inmediata
 4. Si el usuario pregunta cómo llenar un formulario o qué responder, dá una respuesta concreta con ejemplos.
 5. Cuando el usuario confirme que va a aplicar, usá la herramienta guardar_resumen para registrar la búsqueda."""
 
+# ── Definición de tools ───────────────────────────────────────────────────────
 
-# ── Tool (función Python — Gemini extrae el schema automáticamente) ───────────
-
-def _make_guardar_resumen(session_id: int):
-    """Crea la función tool con session_id capturado en el closure."""
-
-    def guardar_resumen(
-        empresa: str,
-        cargo: str,
-        resumen_requisitos: str,
-        cv_recomendado: str,
-        asunto_email: str,
-        cuerpo_email: str,
-    ) -> str:
-        """Guarda en la base de datos un resumen de la búsqueda analizada.
-        Usá esta herramienta cuando el usuario confirme que va a aplicar,
-        que quiere guardar la búsqueda, o cuando el email generado esté listo.
-
-        Args:
-            empresa: Nombre de la empresa que publica la búsqueda.
-            cargo: Nombre del puesto o cargo.
-            resumen_requisitos: 2-4 líneas con los requisitos clave del aviso.
-            cv_recomendado: Cuál de los 4 CVs usar para esta búsqueda.
-            asunto_email: Asunto del email generado (cadena vacía si no se generó).
-            cuerpo_email: Cuerpo del email generado (cadena vacía si no se generó).
-        """
-        title = f"{empresa} — {cargo}" if empresa and cargo else (cargo or empresa or "Búsqueda sin título")
-        with Session(engine) as db:
-            db.execute(
-                text("""
-                    UPDATE career_sessions
-                    SET title         = :title,
-                        company       = :empresa,
-                        role          = :cargo,
-                        summary       = :resumen,
-                        email_subject = :asunto,
-                        email_body    = :cuerpo,
-                        updated_at    = :now
-                    WHERE id = :session_id
-                """),
-                {
-                    "title":      title[:200],
-                    "empresa":    empresa,
-                    "cargo":      cargo,
-                    "resumen":    resumen_requisitos,
-                    "asunto":     asunto_email,
-                    "cuerpo":     cuerpo_email,
-                    "now":        now_utc(),
-                    "session_id": session_id,
+_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "guardar_resumen",
+            "description": "Guarda en la base de datos un resumen de la búsqueda analizada. Usá esta herramienta cuando el usuario confirme que va a aplicar o que quiere guardar la búsqueda.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "empresa":            {"type": "string", "description": "Nombre de la empresa"},
+                    "cargo":              {"type": "string", "description": "Nombre del puesto"},
+                    "resumen_requisitos": {"type": "string", "description": "2-4 líneas con requisitos clave"},
+                    "cv_recomendado":     {"type": "string", "description": "Cuál de los 4 CVs usar"},
+                    "asunto_email":       {"type": "string", "description": "Asunto del email generado (vacío si no se generó)"},
+                    "cuerpo_email":       {"type": "string", "description": "Cuerpo del email generado (vacío si no se generó)"},
                 },
-            )
-            db.commit()
-        return f"Búsqueda guardada: {title}"
+                "required": ["empresa", "cargo", "resumen_requisitos", "cv_recomendado", "asunto_email", "cuerpo_email"],
+            },
+        },
+    }
+]
 
-    return guardar_resumen
+
+def _execute_guardar_resumen(session_id: int, args: dict) -> str:
+    empresa = args.get("empresa", "")
+    cargo   = args.get("cargo", "")
+    title   = f"{empresa} — {cargo}" if empresa and cargo else (cargo or empresa or "Búsqueda sin título")
+    with Session(engine) as db:
+        db.execute(
+            text("""
+                UPDATE career_sessions
+                SET title         = :title,
+                    company       = :empresa,
+                    role          = :cargo,
+                    summary       = :resumen,
+                    email_subject = :asunto,
+                    email_body    = :cuerpo,
+                    updated_at    = :now
+                WHERE id = :session_id
+            """),
+            {
+                "title":      title[:200],
+                "empresa":    empresa,
+                "cargo":      cargo,
+                "resumen":    args.get("resumen_requisitos", ""),
+                "asunto":     args.get("asunto_email", ""),
+                "cuerpo":     args.get("cuerpo_email", ""),
+                "now":        now_utc(),
+                "session_id": session_id,
+            },
+        )
+        db.commit()
+    return f"Búsqueda guardada: {title}"
 
 
 # ── Función principal de chat ────────────────────────────────────────────────
@@ -186,65 +184,43 @@ async def run_chat(
     image_b64: Optional[str] = None,
     image_mime: str = "image/jpeg",
 ) -> str:
-    """
-    Envía el mensaje del usuario al agente Gemini y devuelve su respuesta.
-    Maneja el bucle de function calling internamente.
-    """
-    import PIL.Image
+    """Envía el mensaje al agente GPT-4o y devuelve su respuesta."""
 
-    guardar_resumen_fn = _make_guardar_resumen(session_id)
-
-    model = genai.GenerativeModel(
-        model_name=_MODEL_NAME,
-        system_instruction=_SYSTEM_PROMPT,
-        tools=[guardar_resumen_fn],
-    )
-
-    # Convertir historial previo al formato de Gemini (user/model)
-    gemini_history = []
-    for m in history:
-        role = "model" if m["role"] == "assistant" else "user"
-        gemini_history.append({"role": role, "parts": [m["content"]]})
-
-    chat = model.start_chat(history=gemini_history)
-
-    # Construir el contenido del mensaje actual
     if image_b64:
-        image_bytes = b64_module.b64decode(image_b64)
-        pil_image = PIL.Image.open(io.BytesIO(image_bytes))
-        parts = [pil_image, user_text or "Analizá esta imagen."]
+        user_content = [
+            {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
+            {"type": "text", "text": user_text or "Analizá esta imagen."},
+        ]
     else:
-        parts = [user_text]
+        user_content = user_text
 
-    # Bucle de agentic loop: continuar mientras Gemini quiera llamar funciones
-    response = chat.send_message(parts)
+    messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    for m in history:
+        messages.append({"role": m["role"], "content": m["content"]})
+    messages.append({"role": "user", "content": user_content})
 
     while True:
-        # Revisar si hay function calls
-        fn_calls = [p.function_call for p in response.parts if p.function_call.name]
+        response = await _client.chat.completions.create(
+            model=_MODEL,
+            messages=messages,
+            tools=_TOOLS,
+            tool_choice="auto",
+        )
 
-        if not fn_calls:
-            # Sin function calls → extraer texto y devolver
-            text_parts = [p.text for p in response.parts if hasattr(p, "text") and p.text]
-            return "\n".join(text_parts).strip() or "Sin respuesta del agente."
+        msg = response.choices[0].message
 
-        # Ejecutar todas las function calls
-        fn_responses = []
-        for fn_call in fn_calls:
-            args = dict(fn_call.args)
-            if fn_call.name == "guardar_resumen":
-                result = guardar_resumen_fn(**args)
+        if not msg.tool_calls:
+            return msg.content or "Sin respuesta del agente."
+
+        messages.append(msg)
+        for tc in msg.tool_calls:
+            args = json.loads(tc.function.arguments)
+            if tc.function.name == "guardar_resumen":
+                result = _execute_guardar_resumen(session_id, args)
             else:
-                result = f"Función '{fn_call.name}' no reconocida."
-
-            fn_responses.append(
-                genai.protos.Part(
-                    function_response=genai.protos.FunctionResponse(
-                        name=fn_call.name,
-                        response={"result": result},
-                    )
-                )
-            )
-
-        # Enviar resultados y continuar el loop
-        response = chat.send_message(fn_responses)
+                result = f"Tool '{tc.function.name}' no reconocida."
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result,
+            })
