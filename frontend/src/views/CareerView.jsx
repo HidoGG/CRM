@@ -83,7 +83,18 @@ const GmailIcon = () => (
   </svg>
 );
 
-function GmailDraftButton({ sessionId }) {
+function extractContactEmail(text) {
+  const match = text.match(/📨\s*ENVIAR\s*A[\s\S]*?```([\s\S]*?)```/i);
+  if (match) {
+    const candidate = match[1].trim();
+    if (candidate.includes('@') && !candidate.toLowerCase().includes('no visible')) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function GmailDraftButton({ sessionId, messageContent }) {
   const cvFiles = useCvFiles();
   const cvs = cvFiles.data || [];
   const [selectedCvId, setSelectedCvId] = useState('');
@@ -91,7 +102,8 @@ function GmailDraftButton({ sessionId }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
 
-  // Pre-seleccionar el primer CV disponible
+  const detectedEmail = messageContent ? extractContactEmail(messageContent) : null;
+
   useEffect(() => {
     if (cvs.length > 0 && !selectedCvId) {
       setSelectedCvId(String(cvs[0].id));
@@ -102,7 +114,11 @@ function GmailDraftButton({ sessionId }) {
     setLoading(true);
     setError('');
     try {
-      const result = await createCareerDraft(sessionId, selectedCvId ? Number(selectedCvId) : null);
+      const result = await createCareerDraft(
+        sessionId,
+        selectedCvId ? Number(selectedCvId) : null,
+        detectedEmail || null,
+      );
       setDone(true);
       window.open(result.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
@@ -114,7 +130,10 @@ function GmailDraftButton({ sessionId }) {
 
   return (
     <div className="career-draft-box">
-      <p className="career-draft-label">Crear borrador en Gmail con el email generado</p>
+      <p className="career-draft-label">Crear borrador en Gmail</p>
+      {detectedEmail && (
+        <p className="career-draft-to">Para: <strong>{detectedEmail}</strong></p>
+      )}
       <div className="career-draft-row">
         {cvs.length > 0 ? (
           <select
@@ -130,7 +149,7 @@ function GmailDraftButton({ sessionId }) {
             ))}
           </select>
         ) : (
-          <span className="career-draft-no-cvs">Sin CVs cargados</span>
+          <span className="career-draft-no-cvs">Sin CVs — subí uno en Envíos</span>
         )}
         <button
           type="button"
@@ -143,7 +162,7 @@ function GmailDraftButton({ sessionId }) {
         </button>
       </div>
       {done && (
-        <p className="career-draft-hint">Borrador creado. Abrió Gmail en una pestaña nueva — buscalo en Borradores.</p>
+        <p className="career-draft-hint">Borrador creado con asunto, cuerpo y CV adjunto. Abrió Gmail en una pestaña nueva.</p>
       )}
       {error && (
         <p className="career-draft-error">{error}</p>
@@ -489,7 +508,7 @@ export function CareerView() {
                       hasImage={msg.has_image}
                     />
                     {isLastAssistant && activeSessionId && (
-                      <GmailDraftButton sessionId={activeSessionId} />
+                      <GmailDraftButton sessionId={activeSessionId} messageContent={msg.content} />
                     )}
                   </div>
                 );

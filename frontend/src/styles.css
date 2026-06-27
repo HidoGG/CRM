@@ -1436,6 +1436,12 @@ tr:last-child td {
   font-size: 0.87rem;
 }
 
+.career-draft-to {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
 .career-draft-no-cvs {
   flex: 1;
   font-size: 0.85rem;

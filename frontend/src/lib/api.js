@@ -109,11 +109,11 @@ export async function sendCareerMessage(sessionId, message, imageFile = null) {
   return res.json();
 }
 
-export async function createCareerDraft(sessionId, cvId = null) {
+export async function createCareerDraft(sessionId, cvId = null, to = null) {
   const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/draft`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cv_id: cvId }),
+    body: JSON.stringify({ cv_id: cvId, to }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
