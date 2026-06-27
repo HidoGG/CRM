@@ -187,7 +187,7 @@ async def _describe_image(image_b64: str, image_mime: str) -> str:
         base_url="https://api.groq.com/openai/v1",
     )
     resp = await vision_client.chat.completions.create(
-        model="llama-3.2-11b-vision-preview",
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
         messages=[{
             "role": "user",
             "content": [
