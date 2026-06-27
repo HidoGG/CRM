@@ -662,20 +662,82 @@ async def career_chat(session_id: int, request: Request):
     return {"reply": reply}
 
 
+@app.post("/career/sessions/{session_id}/cv")
+async def generate_career_cv(session_id: int):
+    """Genera un CV ATS personalizado basado en el análisis de la sesión."""
+    import modules.career_cv as career_cv
+
+    with Session(engine) as db:
+        row = db.execute(
+            text("SELECT company, role, summary FROM career_sessions WHERE id = :id"),
+            {"id": session_id},
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+        empresa, cargo, resumen = row
+
+    if not cargo and not empresa:
+        raise HTTPException(status_code=400, detail="Todavía no se analizó ningún aviso en esta sesión.")
+
+    cv_text = await career_cv.generate_cv_content(
+        empresa=empresa or "",
+        cargo=cargo or "",
+        resumen=resumen or "",
+        keywords=resumen or "",
+    )
+
+    with Session(engine) as db:
+        db.execute(
+            text("UPDATE career_sessions SET cv_content = :cv WHERE id = :id"),
+            {"cv": cv_text, "id": session_id},
+        )
+        db.commit()
+
+    html = career_cv.cv_content_to_html(cv_text, cargo=cargo or "", empresa=empresa or "")
+    return {"html": html}
+
+
+@app.get("/career/sessions/{session_id}/cv.pdf")
+def download_career_cv_pdf(session_id: int):
+    """Descarga el CV generado como PDF."""
+    import modules.career_cv as career_cv
+
+    with Session(engine) as db:
+        row = db.execute(
+            text("SELECT cv_content, company, role FROM career_sessions WHERE id = :id"),
+            {"id": session_id},
+        ).fetchone()
+        if not row or not row[0]:
+            raise HTTPException(status_code=404, detail="CV no generado todavía.")
+
+    cv_text, empresa, cargo = row
+    pdf_bytes = career_cv.cv_content_to_pdf(cv_text, cargo=cargo or "", empresa=empresa or "")
+    filename = f"CV_Gabriel_Hidalgo_{(cargo or 'puesto').replace(' ', '_')}.pdf"
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.post("/career/sessions/{session_id}/draft")
 async def create_career_draft(session_id: int, payload: schemas.CareerDraftRequest):
-    """Crea un borrador en Gmail con el email generado por el asistente."""
+    """Crea un borrador en Gmail con el email generado y el CV adjunto."""
     from modules import gmail_service, supabase_storage
+    import modules.career_cv as career_cv
 
     with Session(engine) as db:
         session_row = db.execute(
-            text("SELECT email_subject, email_body FROM career_sessions WHERE id = :id"),
+            text("SELECT email_subject, email_body, cv_content, company, role FROM career_sessions WHERE id = :id"),
             {"id": session_id},
         ).fetchone()
         if not session_row:
             raise HTTPException(status_code=404, detail="Sesión no encontrada")
         subject = session_row[0] or ""
         body = session_row[1] or ""
+        cv_content = session_row[2]
+        empresa = session_row[3] or ""
+        cargo = session_row[4] or ""
 
     if not subject and not body:
         raise HTTPException(
@@ -685,7 +747,13 @@ async def create_career_draft(session_id: int, payload: schemas.CareerDraftReque
 
     cv_bytes = None
     cv_filename = None
-    if payload.cv_id:
+
+    # Prioridad 1: CV generado por el agente
+    if cv_content:
+        cv_bytes = career_cv.cv_content_to_pdf(cv_content, cargo=cargo, empresa=empresa)
+        cv_filename = f"CV_Gabriel_Hidalgo_{cargo.replace(' ', '_') or 'puesto'}.pdf"
+    # Prioridad 2: CV subido manualmente
+    elif payload.cv_id:
         with Session(engine) as db:
             cv_row = db.execute(
                 text("SELECT original_name, file_path FROM cv_files WHERE id = :id"),

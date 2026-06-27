@@ -41,6 +41,12 @@ apscheduler>=3.10.0
 # Supabase Storage (CVs en la nube)
 supabase>=2.0.0
 
+# Generación de PDF para CV ATS
+fpdf2>=2.7.0
+
+# HTTP para fetch de URLs de avisos
+requests>=2.31.0
+
 # Linting, formato y tests (dev)
 ruff>=0.4.0
 pytest>=8.0.0
