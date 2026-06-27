@@ -1707,19 +1707,28 @@ def update_schedule(schedule_id: int, payload: dict) -> dict:
         updates["id"] = schedule_id
         set_clause = ", ".join(f"{k} = :{k}" for k in updates if k != "id")
         session.execute(text(f"UPDATE delivery_schedules SET {set_clause} WHERE id = :id"), updates)
-        row = session.execute(
+        session.flush()  # garantiza que el SELECT siguiente vea los valores recién escritos
+
+        # Construir new_schedule directamente desde los valores que acabamos de aplicar
+        # (no depender de SELECT porque session cache puede devolver datos stale)
+        full_row = session.execute(
             text("SELECT * FROM delivery_schedules WHERE id = :id"), {"id": schedule_id}
         ).fetchone()
-        new_schedule = row_to_dict(row)
+        new_schedule = row_to_dict(full_row)
+        # Sobrepisar con los valores del payload para asegurarnos de usar los correctos
+        for key, val in updates.items():
+            if key != "id":
+                new_schedule[key] = val
 
-        # Redistribuir los jobs pendientes de este cronograma con la nueva configuración
+        # Redistribuir los jobs pendientes usando un timestamp base fijo para todo el lote
+        base_now = now_art()
         pending_jobs = session.execute(text("""
             SELECT id FROM email_jobs
             WHERE schedule_id = :sid AND status = 'pending'
             ORDER BY scheduled_at ASC, id ASC
         """), {"sid": schedule_id}).fetchall()
         for idx, job_row in enumerate(pending_jobs):
-            new_scheduled_at = calc_job_scheduled_at(new_schedule, job_index=idx)
+            new_scheduled_at = calc_job_scheduled_at(new_schedule, job_index=idx, now=base_now)
             session.execute(text("""
                 UPDATE email_jobs SET scheduled_at = :sat WHERE id = :jid
             """), {"sat": new_scheduled_at, "jid": job_row[0]})
