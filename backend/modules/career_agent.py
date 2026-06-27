@@ -1,6 +1,6 @@
 """Agente de RRHH personalizado para búsqueda laboral de Gabriel Hidalgo.
 
-Usa OpenAI (GPT-4o) reutilizando la OPENAI_API_KEY ya configurada en Render.
+Usa Groq (llama-3.3-70b-versatile) — API gratuita, compatible con OpenAI SDK.
 """
 from __future__ import annotations
 
@@ -15,8 +15,11 @@ from modules.database import engine, now_utc
 
 # ── Cliente ───────────────────────────────────────────────────────────────────
 
-_client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-_MODEL = os.getenv("CAREER_MODEL", "gpt-4o")
+_client = AsyncOpenAI(
+    api_key=os.environ["GROQ_API_KEY"],
+    base_url="https://api.groq.com/openai/v1",
+)
+_MODEL = os.getenv("CAREER_MODEL", "llama-3.3-70b-versatile")
 
 # ── System prompt con perfil completo ────────────────────────────────────────
 
