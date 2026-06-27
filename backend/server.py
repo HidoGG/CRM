@@ -702,6 +702,7 @@ async def create_career_draft(session_id: int, payload: schemas.CareerDraftReque
         result = gmail_service.create_draft(
             subject=subject,
             body=body,
+            to=payload.to or None,
             cv_bytes=cv_bytes,
             cv_filename=cv_filename,
         )

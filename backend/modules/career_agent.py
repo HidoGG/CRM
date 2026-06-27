@@ -125,6 +125,11 @@ Tip: [qué sección/logro del CV enfatizar para este puesto específico]
 Incluí estas palabras exactas en el CV y el email para pasar los filtros automáticos:
 [listado separado por comas, 6-12 keywords extraídas del aviso]
 
+📨 ENVIAR A
+```
+[email de contacto/postulación si está visible en el aviso. Si no, escribir: No visible en el aviso — buscalo en el portal o aviso original]
+```
+
 ───────────────────────────────
 📧 ASUNTO DEL EMAIL
 ```

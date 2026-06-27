@@ -137,6 +137,7 @@ class CvComment(BaseModel):
 
 class CareerDraftRequest(BaseModel):
     cv_id: int | None = None
+    to: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -331,6 +331,7 @@ def create_draft(
     *,
     subject: str,
     body: str,
+    to: str | None = None,
     cv_bytes: bytes | None = None,
     cv_filename: str | None = None,
 ) -> dict:
@@ -350,6 +351,8 @@ def create_draft(
         msg.attach(part)
 
     msg["Subject"] = subject
+    if to:
+        msg["To"] = to
 
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     result = service.users().drafts().create(
