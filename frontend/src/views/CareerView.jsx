@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   createCareerSession,
@@ -50,21 +50,73 @@ const BackIcon = () => (
 
 // ── Subcomponentes ─────────────────────────────────────────────────────────────
 
+function CopyBlock({ text }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [text]);
+
+  return (
+    <div className="career-copy-block">
+      <pre className="career-copy-pre">{text}</pre>
+      <button
+        type="button"
+        className="career-copy-btn"
+        onClick={handleCopy}
+        aria-label="Copiar al portapapeles"
+      >
+        {copied ? '✓ Copiado' : 'Copiar'}
+      </button>
+    </div>
+  );
+}
+
 function MessageBubble({ role, content, hasImage }) {
   const isUser = role === 'user';
+
+  // Parsea bloques de código delimitados por ``` y los renderiza con botón copiar
+  function renderContent(text) {
+    const parts = text.split(/```/);
+    return parts.map((part, i) => {
+      if (i % 2 === 1) {
+        // bloque de código → CopyBlock
+        const trimmed = part.replace(/^\n/, '').replace(/\n$/, '');
+        return <CopyBlock key={i} text={trimmed} />;
+      }
+      // texto normal
+      return (
+        <span key={i}>
+          {part.split('\n').map((line, j, arr) => (
+            <span key={j}>
+              {line}
+              {j < arr.length - 1 && <br />}
+            </span>
+          ))}
+        </span>
+      );
+    });
+  }
+
   return (
     <div className={`career-bubble ${isUser ? 'career-bubble-user' : 'career-bubble-assistant'}`}>
-      {hasImage && !isUser && null}
       {hasImage && isUser && (
         <span className="career-bubble-img-badge">📎 imagen adjunta</span>
       )}
       <div className="career-bubble-text">
-        {content.split('\n').map((line, i) => (
-          <span key={i}>
-            {line}
-            {i < content.split('\n').length - 1 && <br />}
-          </span>
-        ))}
+        {isUser ? (
+          content.split('\n').map((line, i, arr) => (
+            <span key={i}>
+              {line}
+              {i < arr.length - 1 && <br />}
+            </span>
+          ))
+        ) : (
+          renderContent(content)
+        )}
       </div>
     </div>
   );
@@ -332,13 +384,17 @@ export function CareerView() {
 
               {!loadingSession && messages.length === 0 && (
                 <div className="career-chat-welcome">
-                  <p>Hola, soy tu asistente de RRHH. Podés:</p>
+                  <p><strong>Pegá o subí un aviso de trabajo</strong> y automáticamente te genero:</p>
                   <ul>
-                    <li>📋 Pegarme el texto de un aviso de trabajo</li>
-                    <li>📸 Subir una foto o captura del aviso</li>
-                    <li>✉️ Pedirme que genere el email para aplicar</li>
-                    <li>❓ Consultarme cualquier duda sobre la búsqueda</li>
+                    <li>🎯 Análisis de encaje (Alto / Medio / Bajo)</li>
+                    <li>📋 Cuál CV usar y qué destacar</li>
+                    <li>🔑 Keywords ATS del aviso para pasar los filtros</li>
+                    <li>📧 Asunto del email listo para copiar</li>
+                    <li>✉️ Cuerpo del email personalizado listo para copiar</li>
                   </ul>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 8 }}>
+                    📎 Podés subir una imagen/captura del aviso con el botón de adjuntar.
+                  </p>
                 </div>
               )}
 
