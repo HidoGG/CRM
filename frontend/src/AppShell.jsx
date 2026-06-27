@@ -3,7 +3,6 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { HoyView } from './views/HoyView';
-import { EstadisticasView } from './views/EstadisticasView';
 import { OperacionesView } from './views/OperacionesView';
 import { ContactsView } from './views/ContactsView';
 import { ImportsView } from './views/ImportsView';
@@ -45,8 +44,6 @@ const VIEW_ROUTES = {
   envios: '/envios',
   plantillas: '/envios',
   cronogramas: '/envios',
-  estadisticas: '/estadisticas',
-  tendencias: '/estadisticas',
   asistente: '/asistente',
 };
 
@@ -56,7 +53,6 @@ const PATH_TITLES = {
   '/contactos': 'Contactos',
   '/importaciones': 'Importaciones',
   '/envios': 'Envíos',
-  '/estadisticas': 'Estadísticas',
   '/asistente': 'Asistente IA',
 };
 
@@ -65,7 +61,6 @@ function pathToViewId(pathname) {
   if (pathname.startsWith('/contactos')) return 'contactos';
   if (pathname.startsWith('/importaciones')) return 'importaciones';
   if (pathname.startsWith('/envios')) return 'envios';
-  if (pathname.startsWith('/estadisticas')) return 'estadisticas';
   if (pathname.startsWith('/asistente')) return 'asistente';
   return 'dashboard';
 }
@@ -636,17 +631,6 @@ function AuthenticatedApp({ theme, toggleTheme }) {
                 historyItems={selectedHistory}
                 loadingHistory={loadingHistory}
                 statusDistribution={statusDistribution}
-              />
-            }
-          />
-          <Route
-            path="/estadisticas"
-            element={
-              <EstadisticasView
-                reporting={reporting}
-                imports={imports}
-                emailJobs={emailJobs}
-                contacts={contacts}
               />
             }
           />

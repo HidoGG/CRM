@@ -22,7 +22,6 @@ const navItems = [
   { id: 'contactos',     label: 'Contactos',     note: 'Base y filtros'               },
   { id: 'importaciones', label: 'Importaciones', note: 'Cargar empresas'              },
   { id: 'envios',        label: 'Envíos',        note: 'Correos automáticos'          },
-  { id: 'estadisticas',  label: 'Estadísticas',  note: 'Análisis e historial'         },
   { id: 'asistente',     label: 'Asistente IA',  note: 'Búsqueda laboral'             },
 ];
 
@@ -69,7 +68,6 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
           const isActive =
             activeView === item.id ||
             (item.id === 'operaciones' && (activeView === 'bandeja' || activeView === 'pipeline')) ||
-            (item.id === 'estadisticas' && activeView === 'tendencias') ||
             (item.id === 'envios' && (activeView === 'plantillas' || activeView === 'cronogramas'));
 
           const showBadge = item.badge && overdueCount > 0;
