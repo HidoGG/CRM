@@ -5,8 +5,9 @@ import {
   deleteCareerSession,
   fetchCareerSession,
   sendCareerMessage,
+  createCareerDraft,
 } from '../lib/api';
-import { useCareerSessions } from '../lib/queries';
+import { useCareerSessions, useCvFiles } from '../lib/queries';
 import { formatDate } from '../lib/utils';
 
 // ── Íconos ────────────────────────────────────────────────────────────────────
@@ -71,6 +72,82 @@ function CopyBlock({ text }) {
       >
         {copied ? '✓ Copiado' : 'Copiar'}
       </button>
+    </div>
+  );
+}
+
+const GmailIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+    <polyline points="22,6 12,13 2,6"/>
+  </svg>
+);
+
+function GmailDraftButton({ sessionId }) {
+  const cvFiles = useCvFiles();
+  const cvs = cvFiles.data || [];
+  const [selectedCvId, setSelectedCvId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+
+  // Pre-seleccionar el primer CV disponible
+  useEffect(() => {
+    if (cvs.length > 0 && !selectedCvId) {
+      setSelectedCvId(String(cvs[0].id));
+    }
+  }, [cvs, selectedCvId]);
+
+  async function handleCreate() {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await createCareerDraft(sessionId, selectedCvId ? Number(selectedCvId) : null);
+      setDone(true);
+      window.open(result.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="career-draft-box">
+      <p className="career-draft-label">Crear borrador en Gmail con el email generado</p>
+      <div className="career-draft-row">
+        {cvs.length > 0 ? (
+          <select
+            className="career-draft-select"
+            value={selectedCvId}
+            onChange={e => { setSelectedCvId(e.target.value); setDone(false); }}
+            disabled={loading}
+            aria-label="CV a adjuntar"
+          >
+            <option value="">Sin adjunto</option>
+            {cvs.map(cv => (
+              <option key={cv.id} value={String(cv.id)}>{cv.original_name || `CV #${cv.id}`}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="career-draft-no-cvs">Sin CVs cargados</span>
+        )}
+        <button
+          type="button"
+          className={`career-draft-btn ${done ? 'is-done' : ''}`}
+          onClick={handleCreate}
+          disabled={loading || done}
+        >
+          <GmailIcon />
+          {loading ? 'Creando…' : done ? '✓ Borrador creado' : 'Crear borrador'}
+        </button>
+      </div>
+      {done && (
+        <p className="career-draft-hint">Borrador creado. Abrió Gmail en una pestaña nueva — buscalo en Borradores.</p>
+      )}
+      {error && (
+        <p className="career-draft-error">{error}</p>
+      )}
     </div>
   );
 }
@@ -393,19 +470,30 @@ export function CareerView() {
                     <li>✉️ Cuerpo del email personalizado listo para copiar</li>
                   </ul>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                    📎 Podés subir una imagen/captura del aviso con el botón de adjuntar.
+                    📎 Adjuntá una imagen/captura · 🔗 Pegá un enlace de portal de empleo · ✍️ O escribí el texto del aviso
                   </p>
                 </div>
               )}
 
-              {messages.map(msg => (
-                <MessageBubble
-                  key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
-                  hasImage={msg.has_image}
-                />
-              ))}
+              {messages.map((msg, idx) => {
+                // Mostrar botón de borrador después del último mensaje del asistente que tiene email generado
+                const isLastAssistant =
+                  msg.role === 'assistant' &&
+                  msg.content.includes('```') &&
+                  messages.slice(idx + 1).every(m => m.role !== 'assistant' || !m.content.includes('```'));
+                return (
+                  <div key={msg.id}>
+                    <MessageBubble
+                      role={msg.role}
+                      content={msg.content}
+                      hasImage={msg.has_image}
+                    />
+                    {isLastAssistant && activeSessionId && (
+                      <GmailDraftButton sessionId={activeSessionId} />
+                    )}
+                  </div>
+                );
+              })}
 
               {sending && (
                 <div className="career-bubble career-bubble-assistant career-typing">

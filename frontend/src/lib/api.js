@@ -109,6 +109,19 @@ export async function sendCareerMessage(sessionId, message, imageFile = null) {
   return res.json();
 }
 
+export async function createCareerDraft(sessionId, cvId = null) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cv_id: cvId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'No se pudo crear el borrador');
+  }
+  return res.json();
+}
+
 export async function patchSectorDefault(sector, templateId, cvFileId) {
   const res = await apiFetch(`${API_BASE}/sector-defaults/${sector}`, {
     method: 'PATCH',

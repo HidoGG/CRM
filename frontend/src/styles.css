@@ -1400,6 +1400,81 @@ tr:last-child td {
   border-color: var(--accent);
 }
 
+/* ── Botón crear borrador en Gmail ── */
+.career-draft-box {
+  margin: 12px 0 4px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.career-draft-label {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.career-draft-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.career-draft-select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font-size: 0.87rem;
+}
+
+.career-draft-no-cvs {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.career-draft-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.87rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.career-draft-btn:hover:not(:disabled) { opacity: 0.85; }
+.career-draft-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.career-draft-btn.is-done { background: var(--green-bg); color: var(--green-text); border: 1px solid var(--green-text); }
+
+.career-draft-hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--green-text);
+}
+
+.career-draft-error {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: var(--red-text);
+}
+
 /* Indicador de escritura */
 .career-typing {
   display: flex;
