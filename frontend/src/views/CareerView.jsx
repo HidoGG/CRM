@@ -629,10 +629,18 @@ export function CareerView() {
               )}
 
               {messages.map((msg, idx) => {
+                // Detecta el último mensaje del asistente que tiene análisis de aviso
+                // (con ``` bloques o con los emojis de sección del agente)
+                const hasAnalysis = (c) =>
+                  c.includes('```') ||
+                  c.includes('📧') ||
+                  c.includes('✉️') ||
+                  c.includes('ASUNTO') ||
+                  c.includes('CUERPO DEL EMAIL');
                 const isLastAssistant =
                   msg.role === 'assistant' &&
-                  msg.content.includes('```') &&
-                  messages.slice(idx + 1).every(m => m.role !== 'assistant' || !m.content.includes('```'));
+                  hasAnalysis(msg.content) &&
+                  messages.slice(idx + 1).every(m => m.role !== 'assistant' || !hasAnalysis(m.content));
                 return (
                   <div key={msg.id}>
                     <MessageBubble
