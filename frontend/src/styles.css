@@ -1514,18 +1514,18 @@ tr:last-child td {
   padding: 6px 14px;
   font-size: 0.82rem;
   font-weight: 600;
-  border: 1.5px solid var(--border-color);
+  border: 1.5px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-secondary);
+  background: var(--surface-raised);
   color: var(--text-primary);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .cv-generate-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .cv-generate-btn:disabled {
@@ -1540,17 +1540,17 @@ tr:last-child td {
   padding: 6px 14px;
   font-size: 0.82rem;
   font-weight: 600;
-  border: 1.5px solid var(--primary-color);
+  border: 1.5px solid var(--accent);
   border-radius: 8px;
   background: transparent;
-  color: var(--primary-color);
+  color: var(--accent);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .cv-preview-btn:hover {
-  background: var(--primary-color);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ── CV Preview Modal ───────────────────────────────────────────────────────── */
@@ -1558,7 +1558,7 @@ tr:last-child td {
 .cv-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.7);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -1567,9 +1567,10 @@ tr:last-child td {
 }
 
 .cv-modal {
-  background: var(--bg-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
   width: min(900px, 100%);
@@ -1582,7 +1583,7 @@ tr:last-child td {
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -1602,20 +1603,24 @@ tr:last-child td {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
-  font-size: 0.82rem;
+  padding: 8px 16px;
+  font-size: 0.85rem;
   font-weight: 600;
-  border: 1.5px solid var(--primary-color);
+  border: 1.5px solid var(--accent);
   border-radius: 8px;
-  background: transparent;
-  color: var(--primary-color);
+  background: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: opacity 0.15s;
 }
 
-.cv-modal-download-btn:hover {
-  background: var(--primary-color);
-  color: #fff;
+.cv-modal-download-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.cv-modal-download-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .cv-modal-close {
@@ -1635,14 +1640,14 @@ tr:last-child td {
 }
 
 .cv-modal-close:hover {
-  background: var(--bg-hover);
+  background: var(--surface-hover);
   color: var(--text-primary);
 }
 
 .cv-modal-body {
   flex: 1;
   overflow: hidden;
-  background: #f5f5f5;
+  background: #e8e8e8;
 }
 
 .cv-modal-iframe {
