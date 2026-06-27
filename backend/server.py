@@ -723,21 +723,31 @@ def download_career_cv_pdf(session_id: int):
 @app.post("/career/sessions/{session_id}/draft")
 async def create_career_draft(session_id: int, payload: schemas.CareerDraftRequest):
     """Crea un borrador en Gmail con el email generado y el CV adjunto."""
-    from modules import gmail_service, supabase_storage
-    import modules.career_cv as career_cv
+    from modules import gmail_service
 
-    with Session(engine) as db:
-        session_row = db.execute(
-            text("SELECT email_subject, email_body, cv_content, company, role FROM career_sessions WHERE id = :id"),
-            {"id": session_id},
-        ).fetchone()
-        if not session_row:
-            raise HTTPException(status_code=404, detail="Sesión no encontrada")
-        subject = session_row[0] or ""
-        body = session_row[1] or ""
-        cv_content = session_row[2]
-        empresa = session_row[3] or ""
-        cargo = session_row[4] or ""
+    # ── Leer sesión ──────────────────────────────────────────────────────────
+    try:
+        with Session(engine) as db:
+            session_row = db.execute(
+                text("SELECT email_subject, email_body, cv_content, company, role FROM career_sessions WHERE id = :id"),
+                {"id": session_id},
+            ).fetchone()
+    except Exception:
+        # Fallback: migración 0006 pendiente → cv_content no existe todavía
+        with Session(engine) as db:
+            session_row = db.execute(
+                text("SELECT email_subject, email_body, NULL as cv_content, company, role FROM career_sessions WHERE id = :id"),
+                {"id": session_id},
+            ).fetchone()
+
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
+    subject = session_row[0] or ""
+    body = session_row[1] or ""
+    cv_content = session_row[2]
+    empresa = session_row[3] or ""
+    cargo = session_row[4] or ""
 
     if not subject and not body:
         raise HTTPException(
@@ -745,27 +755,35 @@ async def create_career_draft(session_id: int, payload: schemas.CareerDraftReque
             detail="Todavía no se generó el email para esta sesión. Pegá un aviso primero.",
         )
 
+    # ── Preparar CV adjunto ──────────────────────────────────────────────────
     cv_bytes = None
     cv_filename = None
 
-    # Prioridad 1: CV generado por el agente
+    # Prioridad 1: CV generado por el agente (convierte a PDF)
     if cv_content:
-        cv_bytes = career_cv.cv_content_to_pdf(cv_content, cargo=cargo, empresa=empresa)
-        cv_filename = f"CV_Gabriel_Hidalgo_{cargo.replace(' ', '_') or 'puesto'}.pdf"
-    # Prioridad 2: CV subido manualmente
-    elif payload.cv_id:
-        with Session(engine) as db:
-            cv_row = db.execute(
-                text("SELECT original_name, file_path FROM cv_files WHERE id = :id"),
-                {"id": payload.cv_id},
-            ).fetchone()
-        if cv_row:
-            cv_filename = cv_row[0]
-            try:
-                cv_bytes = supabase_storage.download(cv_row[1])
-            except Exception as exc:
-                raise HTTPException(status_code=500, detail=f"No se pudo descargar el CV: {exc}")
+        try:
+            import modules.career_cv as career_cv
+            cv_bytes = career_cv.cv_content_to_pdf(cv_content, cargo=cargo, empresa=empresa)
+            cv_filename = f"CV_Gabriel_Hidalgo_{(cargo or 'puesto').replace(' ', '_')}.pdf"
+        except Exception as exc:
+            print(f"[draft] Error generando PDF del CV: {exc} — se crea borrador sin adjunto")
 
+    # Prioridad 2: CV subido manualmente (si no hay CV generado)
+    elif payload.cv_id:
+        try:
+            from modules import supabase_storage
+            with Session(engine) as db:
+                cv_row = db.execute(
+                    text("SELECT original_name, file_path FROM cv_files WHERE id = :id"),
+                    {"id": payload.cv_id},
+                ).fetchone()
+            if cv_row:
+                cv_filename = cv_row[0]
+                cv_bytes = supabase_storage.download(cv_row[1])
+        except Exception as exc:
+            print(f"[draft] Error descargando CV subido: {exc} — se crea borrador sin adjunto")
+
+    # ── Crear borrador Gmail ─────────────────────────────────────────────────
     try:
         result = gmail_service.create_draft(
             subject=subject,
@@ -777,6 +795,8 @@ async def create_career_draft(session_id: int, payload: schemas.CareerDraftReque
         return result
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error creando borrador: {exc}")
 
 
 if __name__ == "__main__":
