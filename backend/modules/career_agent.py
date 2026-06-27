@@ -180,6 +180,30 @@ def _execute_guardar_resumen(session_id: int, args: dict) -> str:
 
 # ── Función principal de chat ────────────────────────────────────────────────
 
+async def _describe_image(image_b64: str, image_mime: str) -> str:
+    """Usa el modelo de visión de Groq para transcribir/describir la imagen."""
+    vision_client = AsyncOpenAI(
+        api_key=os.environ["GROQ_API_KEY"],
+        base_url="https://api.groq.com/openai/v1",
+    )
+    resp = await vision_client.chat.completions.create(
+        model="llama-3.2-11b-vision-preview",
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
+                {"type": "text", "text": (
+                    "Transcribí y describí todo el texto e información visible en esta imagen. "
+                    "Si es un aviso de trabajo, extraé: empresa, cargo, requisitos, ubicación, contacto. "
+                    "Sé exhaustivo y literal."
+                )},
+            ],
+        }],
+        max_tokens=1024,
+    )
+    return resp.choices[0].message.content or "No se pudo leer la imagen."
+
+
 async def run_chat(
     session_id: int,
     history: list[dict],
@@ -187,13 +211,14 @@ async def run_chat(
     image_b64: Optional[str] = None,
     image_mime: str = "image/jpeg",
 ) -> str:
-    """Envía el mensaje al agente GPT-4o y devuelve su respuesta."""
+    """Envía el mensaje al agente Groq (Llama) y devuelve su respuesta."""
 
+    # Groq: los modelos de visión no soportan tools, así que primero describimos
+    # la imagen con el modelo de visión y luego la pasamos como texto al agente principal.
     if image_b64:
-        user_content = [
-            {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-            {"type": "text", "text": user_text or "Analizá esta imagen."},
-        ]
+        descripcion = await _describe_image(image_b64, image_mime)
+        extra = f"\n\nEl usuario adjuntó una imagen. Contenido extraído:\n{descripcion}"
+        user_content = (user_text or "Analizá este aviso.") + extra
     else:
         user_content = user_text
 
