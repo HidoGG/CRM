@@ -6,6 +6,8 @@ import {
   fetchCareerSession,
   sendCareerMessage,
   createCareerDraft,
+  generateCareerCv,
+  getCareerCvPdfUrl,
 } from '../lib/api';
 import { useCareerSessions, useCvFiles } from '../lib/queries';
 import { formatDate } from '../lib/utils';
@@ -48,6 +50,65 @@ const BackIcon = () => (
     <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
   </svg>
 );
+
+const EyeIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+
+const DownloadIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+);
+
+// ── Modal de previsualización del CV ───────────────────────────────────────────
+
+function CvPreviewModal({ html, sessionId, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function handleDownload() {
+    const url = getCareerCvPdfUrl(sessionId);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    // El backend agrega auth header... pero las descargas directas no pasan headers.
+    // En dev local (sin auth) funciona directo. En prod con API key usamos window.open.
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  return (
+    <div className="cv-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="cv-modal">
+        <div className="cv-modal-header">
+          <span className="cv-modal-title">Vista previa del CV</span>
+          <div className="cv-modal-actions">
+            <button type="button" className="cv-modal-download-btn" onClick={handleDownload}>
+              <DownloadIcon /> Descargar PDF
+            </button>
+            <button type="button" className="cv-modal-close" onClick={onClose} aria-label="Cerrar">×</button>
+          </div>
+        </div>
+        <div className="cv-modal-body">
+          <iframe
+            title="Vista previa del CV"
+            srcDoc={html}
+            className="cv-modal-iframe"
+            sandbox="allow-same-origin"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Subcomponentes ─────────────────────────────────────────────────────────────
 
@@ -94,7 +155,50 @@ function extractContactEmail(text) {
   return null;
 }
 
-function GmailDraftButton({ sessionId, messageContent }) {
+function CvPreviewButton({ sessionId, onCvGenerated, cvHtml, onOpenModal }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleGenerate() {
+    setLoading(true);
+    setError('');
+    try {
+      const { html } = await generateCareerCv(sessionId);
+      onCvGenerated(html);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (cvHtml) {
+    return (
+      <div className="cv-preview-bar">
+        <span className="cv-preview-badge">✓ CV generado para este aviso</span>
+        <button type="button" className="cv-preview-btn" onClick={onOpenModal}>
+          <EyeIcon /> Vista previa
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cv-preview-bar">
+      <button
+        type="button"
+        className="cv-generate-btn"
+        onClick={handleGenerate}
+        disabled={loading}
+      >
+        {loading ? 'Generando CV…' : '📄 Generar CV ATS'}
+      </button>
+      {error && <p className="career-draft-error">{error}</p>}
+    </div>
+  );
+}
+
+function GmailDraftButton({ sessionId, messageContent, hasCv }) {
   const cvFiles = useCvFiles();
   const cvs = cvFiles.data || [];
   const [selectedCvId, setSelectedCvId] = useState('');
@@ -105,18 +209,19 @@ function GmailDraftButton({ sessionId, messageContent }) {
   const detectedEmail = messageContent ? extractContactEmail(messageContent) : null;
 
   useEffect(() => {
-    if (cvs.length > 0 && !selectedCvId) {
+    if (!hasCv && cvs.length > 0 && !selectedCvId) {
       setSelectedCvId(String(cvs[0].id));
     }
-  }, [cvs, selectedCvId]);
+  }, [cvs, selectedCvId, hasCv]);
 
   async function handleCreate() {
     setLoading(true);
     setError('');
     try {
+      // Si hay CV generado el backend lo usa automáticamente; cv_id solo si no hay
       const result = await createCareerDraft(
         sessionId,
-        selectedCvId ? Number(selectedCvId) : null,
+        hasCv ? null : (selectedCvId ? Number(selectedCvId) : null),
         detectedEmail || null,
       );
       setDone(true);
@@ -135,7 +240,9 @@ function GmailDraftButton({ sessionId, messageContent }) {
         <p className="career-draft-to">Para: <strong>{detectedEmail}</strong></p>
       )}
       <div className="career-draft-row">
-        {cvs.length > 0 ? (
+        {hasCv ? (
+          <span className="career-draft-cv-badge">📄 CV ATS adjunto automáticamente</span>
+        ) : cvs.length > 0 ? (
           <select
             className="career-draft-select"
             value={selectedCvId}
@@ -149,7 +256,7 @@ function GmailDraftButton({ sessionId, messageContent }) {
             ))}
           </select>
         ) : (
-          <span className="career-draft-no-cvs">Sin CVs — subí uno en Envíos</span>
+          <span className="career-draft-no-cvs">Generá el CV ATS o subí uno en Envíos</span>
         )}
         <button
           type="button"
@@ -162,7 +269,7 @@ function GmailDraftButton({ sessionId, messageContent }) {
         </button>
       </div>
       {done && (
-        <p className="career-draft-hint">Borrador creado con asunto, cuerpo y CV adjunto. Abrió Gmail en una pestaña nueva.</p>
+        <p className="career-draft-hint">Borrador creado{hasCv ? ' con CV ATS adjunto' : ''}. Abrió Gmail en una pestaña nueva.</p>
       )}
       {error && (
         <p className="career-draft-error">{error}</p>
@@ -284,6 +391,10 @@ export function CareerView() {
   const [creatingNew, setCreatingNew] = useState(false);
   const [showHistory, setShowHistory] = useState(true); // mobile: alternar panel
 
+  // Estado del CV generado para esta sesión
+  const [cvHtml, setCvHtml] = useState(null);
+  const [showCvModal, setShowCvModal] = useState(false);
+
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
@@ -292,6 +403,12 @@ export function CareerView() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Resetea CV al cambiar de sesión
+  useEffect(() => {
+    setCvHtml(null);
+    setShowCvModal(false);
+  }, [activeSessionId]);
 
   // Al seleccionar una sesión, carga sus mensajes
   async function openSession(sessionId) {
@@ -495,7 +612,6 @@ export function CareerView() {
               )}
 
               {messages.map((msg, idx) => {
-                // Mostrar botón de borrador después del último mensaje del asistente que tiene email generado
                 const isLastAssistant =
                   msg.role === 'assistant' &&
                   msg.content.includes('```') &&
@@ -508,7 +624,19 @@ export function CareerView() {
                       hasImage={msg.has_image}
                     />
                     {isLastAssistant && activeSessionId && (
-                      <GmailDraftButton sessionId={activeSessionId} messageContent={msg.content} />
+                      <>
+                        <CvPreviewButton
+                          sessionId={activeSessionId}
+                          cvHtml={cvHtml}
+                          onCvGenerated={(html) => { setCvHtml(html); setShowCvModal(true); }}
+                          onOpenModal={() => setShowCvModal(true)}
+                        />
+                        <GmailDraftButton
+                          sessionId={activeSessionId}
+                          messageContent={msg.content}
+                          hasCv={!!cvHtml}
+                        />
+                      </>
                     )}
                   </div>
                 );
@@ -573,6 +701,14 @@ export function CareerView() {
           </>
         )}
       </div>
+
+      {showCvModal && cvHtml && (
+        <CvPreviewModal
+          html={cvHtml}
+          sessionId={activeSessionId}
+          onClose={() => setShowCvModal(false)}
+        />
+      )}
     </section>
   );
 }

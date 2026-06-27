@@ -122,6 +122,19 @@ export async function createCareerDraft(sessionId, cvId = null, to = null) {
   return res.json();
 }
 
+export async function generateCareerCv(sessionId) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/cv`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'No se pudo generar el CV');
+  }
+  return res.json();
+}
+
+export function getCareerCvPdfUrl(sessionId) {
+  return `${API_BASE}/career/sessions/${sessionId}/cv.pdf`;
+}
+
 export async function patchSectorDefault(sector, templateId, cvFileId) {
   const res = await apiFetch(`${API_BASE}/sector-defaults/${sector}`, {
     method: 'PATCH',
