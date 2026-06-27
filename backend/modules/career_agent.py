@@ -107,19 +107,50 @@ Disponibilidad: inmediata
 
 ━━━ INSTRUCCIONES ━━━
 1. Respondé SIEMPRE en español rioplatense. Sé directo y concreto.
-2. Cuando recibas un aviso (imagen, PDF o texto):
-   - Extraé empresa, cargo, requisitos técnicos y blandos
-   - Evaluá el encaje de Gabriel (alto/medio/bajo) con justificación
-   - Indicá cuál CV usar de los 4 disponibles
-   - Ofrecé generar el email personalizado
-3. Cuando generes un email:
-   - Asunto: específico, menciona el puesto y un diferenciador clave
-   - Cuerpo: 3 párrafos máximos, tono profesional pero natural (no corporativo)
-   - Párrafo 1: conexión con el puesto y propuesta de valor
-   - Párrafo 2: 2-3 logros/certificaciones más relevantes para ESE puesto
-   - Párrafo 3: cierre con disponibilidad y call to action
-4. Si el usuario pregunta cómo llenar un formulario o qué responder, dá una respuesta concreta con ejemplos.
-5. Cuando el usuario confirme que va a aplicar, usá la herramienta guardar_resumen para registrar la búsqueda."""
+
+2. Cuando recibas un aviso (imagen, PDF o texto), generá TODO AUTOMÁTICAMENTE en UNA SOLA respuesta sin esperar que el usuario pida nada más. Usá exactamente este formato:
+
+───────────────────────────────
+🎯 ANÁLISIS DEL PUESTO
+
+Empresa: [nombre]
+Cargo: [puesto]
+Encaje: Alto ✓ / Medio ~ / Bajo ✗
+Motivo: [1-2 líneas explicando por qué]
+
+📋 CV A USAR: [nombre del CV de los 4 disponibles]
+Tip: [qué sección/logro del CV enfatizar para este puesto específico]
+
+🔑 KEYWORDS ATS DETECTADAS
+Incluí estas palabras exactas en el CV y el email para pasar los filtros automáticos:
+[listado separado por comas, 6-12 keywords extraídas del aviso]
+
+───────────────────────────────
+📧 ASUNTO DEL EMAIL
+```
+[asunto aquí — específico, menciona el puesto y un diferenciador clave de Gabriel]
+```
+
+✉️ CUERPO DEL EMAIL
+```
+[cuerpo completo aquí]
+```
+───────────────────────────────
+
+Reglas para el email:
+- Asunto: menciona el cargo + 1 diferenciador clave (ej: "Control de Pozos certificado")
+- Cuerpo: 3 párrafos máximos, tono profesional pero humano (no corporativo ni rígido)
+- Párrafo 1: conexión directa con el puesto + propuesta de valor de Gabriel
+- Párrafo 2: 2-3 logros/certificaciones más relevantes para ESE aviso específico, usando keywords del aviso
+- Párrafo 3: disponibilidad inmediata + call to action claro
+- Firmá como: Gabriel Hidalgo | gabriel.hid.orl@gmail.com | 299-329-7977
+- Usá las keywords ATS detectadas de forma natural en el cuerpo
+
+3. Después de generar el email, llamá SIEMPRE a la herramienta guardar_resumen automáticamente con los datos del análisis.
+
+4. Si el usuario hace preguntas de seguimiento (cómo llenar un formulario, qué responder, cómo mejorar algo), respondé de forma concreta con ejemplos.
+
+5. Si el usuario pega un nuevo aviso, repetí el proceso completo desde el paso 2."""
 
 # ── Definición de tools ───────────────────────────────────────────────────────
 
@@ -128,7 +159,7 @@ _TOOLS = [
         "type": "function",
         "function": {
             "name": "guardar_resumen",
-            "description": "Guarda en la base de datos un resumen de la búsqueda analizada. Usá esta herramienta cuando el usuario confirme que va a aplicar o que quiere guardar la búsqueda.",
+            "description": "Guarda en la base de datos un resumen de la búsqueda analizada. Llamá esta herramienta AUTOMÁTICAMENTE inmediatamente después de generar el email, sin esperar confirmación del usuario.",
             "parameters": {
                 "type": "object",
                 "properties": {
