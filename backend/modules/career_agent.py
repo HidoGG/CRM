@@ -144,12 +144,76 @@ Incluí estas palabras exactas en el CV y el email para pasar los filtros autom�
 
 Reglas para el email:
 - Asunto: menciona el cargo + 1 diferenciador clave (ej: "Control de Pozos certificado")
-- Cuerpo: 3 párrafos máximos, tono profesional pero humano (no corporativo ni rígido)
-- Párrafo 1: conexión directa con el puesto + propuesta de valor de Gabriel
-- Párrafo 2: 2-3 logros/certificaciones más relevantes para ESE aviso específico, usando keywords del aviso
-- Párrafo 3: disponibilidad inmediata + call to action claro
+- Cuerpo: usá UNA de las 3 plantillas base de abajo como estructura, adaptándola al aviso
+- Reemplazá {name} con el nombre del reclutador si está en el aviso; si no, usá "Estimado/a equipo de selección"
+- Reemplazá {company} con el nombre real de la empresa
+- Párrafo de presentación: ajustá al perfil específico que pide el aviso
+- Párrafo de logros: destacá 2-3 certificaciones/experiencias más relevantes para ESE aviso, con keywords del aviso
+- Párrafo de cierre: disponibilidad inmediata + call to action claro
+- Tono: profesional pero humano, directo, sin frases corporativas vacías
 - Firmá como: Gabriel Hidalgo | gabriel.hid.orl@gmail.com | 299-329-7977
 - Usá las keywords ATS detectadas de forma natural en el cuerpo
+
+━━━ PLANTILLAS BASE DE EMAIL ━━━
+Elegí la más afín al puesto y adaptala. NO la copies literal — personalizala para el aviso específico.
+
+PLANTILLA 1 — Petróleo y Gas / Pulling / Torre / Well Control:
+---
+Buenos días, {name}
+
+Quisiera acercarle mi CV para ser considerado en las búsquedas actuales o futuras que se desarrollen en {company}.
+
+Soy Técnico Superior en Petróleo y Gas (I.S.E.T. N° 812), con experiencia en operaciones de campo en intervención de pozos, mantenimiento de equipos de pozo, control de sistemas hidráulicos y aplicación de protocolos HSE en locación. Me desempeñé bajo diagramas rotativos en entornos de alta exigencia operativa, alcanzando la categoría IV con habilitación para Enganchador.
+
+Cuento con certificaciones vigentes de Well Control (ITP y PAE), Coiled Tubing, H2S Alive y Trabajo en Altura, entre otras. Adicionalmente, me encuentro cursando la Tecnicatura Universitaria en Programación (UTN), formación que complementa mi perfil técnico y me permite adaptarme con facilidad a los sistemas y tecnologías utilizados en la industria.
+
+Resido en Neuquén, poseo carnet de conducir vigente y disponibilidad inmediata para trabajar bajo regímenes rotativos.
+
+Adjunto mi CV para su consideración y quedo a disposición para ampliar cualquier información que consideren necesaria.
+
+Muchas gracias por su tiempo.
+
+Saludos cordiales,
+Gabriel Hidalgo
+Técnico Superior en Petróleo y Gas
+299-329-7977
+---
+
+PLANTILLA 2 — Mantenimiento Industrial / Hidráulica / Automatización / Instrumentación:
+---
+Estimado/a {name}
+
+Me comunico para dejar mi CV a consideración para posiciones técnicas en el área de mantenimiento industrial, sistemas hidráulicos o automatización que se desarrollen en {company}.
+
+Soy Técnico Superior con experiencia en mantenimiento preventivo y correctivo de sistemas hidráulicos de alta presión, instrumentación y automatización de procesos (Fundación YPF, 336 hs.). Me desempeñé en el sector de servicios industriales petroleros (DLS Argentina) y en el área hidráulica industrial (Fluodinámica S.A.), con certificaciones HSE vigentes y capacidad de trabajo en campo bajo regímenes rotativos.
+
+Cuento con formación en programación (UTN, en curso) orientada a la digitalización y automatización de procesos industriales.
+
+Adjunto mi CV. Quedo a disposición para ampliar información o coordinar una entrevista.
+
+Saludos cordiales,
+Gabriel Orlando Hidalgo
+299-329-7977
+Plottier, Neuquén | Disponibilidad inmediata | Licencia B1
+---
+
+PLANTILLA 3 — Operativo / Logístico / Seguridad / Multirol:
+---
+Estimado/a {name}
+
+Les escribo para presentar mi CV a consideración para posiciones operativas, logísticas o de seguridad industrial, que se desarrollen en {company}.
+
+Soy Técnico Superior con experiencia en operaciones de campo, gestión de seguridad (HSE), coordinación logística y atención técnica a clientes. Trabajé en entornos de alta exigencia bajo procedimientos estrictos y regímenes rotativos, con múltiples certificaciones de seguridad industrial vigentes (H2S Alive, Trabajo en Altura, RCP, SSMA). Tengo perfil polivalente con facilidad para adaptarme a distintos contextos operativos.
+
+Cuento con disponibilidad inmediata y licencia de conducir B1 vigente.
+
+Adjunto mi CV. Quedo a disposición para cualquier consulta.
+
+Saludos cordiales,
+Gabriel Orlando Hidalgo
+299-329-7977
+Plottier, Neuquén | Disponibilidad inmediata | Licencia B1
+---
 
 3. Después de generar el email, llamá SIEMPRE a la herramienta guardar_resumen automáticamente con los datos del análisis.
 
