@@ -697,6 +697,28 @@ async def generate_career_cv(session_id: int):
     return {"html": html}
 
 
+@app.get("/career/sessions/{session_id}/cv")
+def get_career_cv_html(session_id: int):
+    """Devuelve el HTML del CV ya generado (sin regenerar). None si no existe."""
+    import modules.career_cv as career_cv
+
+    try:
+        with Session(engine) as db:
+            row = db.execute(
+                text("SELECT cv_content, company, role FROM career_sessions WHERE id = :id"),
+                {"id": session_id},
+            ).fetchone()
+    except Exception:
+        return {"html": None}
+
+    if not row or not row[0]:
+        return {"html": None}
+
+    cv_text, empresa, cargo = row
+    html = career_cv.cv_content_to_html(cv_text, cargo=cargo or "", empresa=empresa or "")
+    return {"html": html}
+
+
 @app.get("/career/sessions/{session_id}/cv.pdf")
 def download_career_cv_pdf(session_id: int):
     """Descarga el CV generado como PDF."""
