@@ -5,6 +5,7 @@ import {
   createCareerSession,
   deleteCareerSession,
   fetchCareerSession,
+  fetchCareerCvHtml,
   sendCareerMessage,
   createCareerDraft,
   generateCareerCv,
@@ -429,22 +430,22 @@ export function CareerView() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Resetea CV al cambiar de sesión
-  useEffect(() => {
-    setCvHtml(null);
-    setShowCvModal(false);
-  }, [activeSessionId]);
-
-  // Al seleccionar una sesión, carga sus mensajes
+  // Al seleccionar una sesión, carga mensajes + CV guardado
   async function openSession(sessionId) {
     if (sessionId === activeSessionId) return;
     setActiveSessionId(sessionId);
     setLoadingSession(true);
     setMessages([]);
+    setCvHtml(null);
+    setShowCvModal(false);
     setShowHistory(false);
     try {
-      const data = await fetchCareerSession(sessionId);
-      setMessages(data.messages || []);
+      const [sessionData, cvData] = await Promise.all([
+        fetchCareerSession(sessionId),
+        fetchCareerCvHtml(sessionId),
+      ]);
+      setMessages(sessionData.messages || []);
+      if (cvData.html) setCvHtml(cvData.html);
     } catch {
       setMessages([]);
     } finally {

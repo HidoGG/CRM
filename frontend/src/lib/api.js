@@ -131,6 +131,12 @@ export async function generateCareerCv(sessionId) {
   return res.json();
 }
 
+export async function fetchCareerCvHtml(sessionId) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/cv`);
+  if (!res.ok) return { html: null };
+  return res.json();
+}
+
 export function getCareerCvPdfUrl(sessionId) {
   return `${API_BASE}/career/sessions/${sessionId}/cv.pdf`;
 }
