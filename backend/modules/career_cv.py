@@ -130,6 +130,14 @@ _Materias o detalle relevante (itálica, solo si es relevante para el puesto)_
 5. Respondé SOLO con el contenido del CV, sin comentarios ni explicaciones"""
 
 
+def _sanitize_prompt_field(value: str | None, max_length: int = 800) -> str:
+    """Elimina caracteres de control y null bytes, y trunca al límite."""
+    if not value:
+        return ""
+    cleaned = "".join(ch for ch in value if ch.isprintable() or ch in ("\n", "\t"))
+    return cleaned[:max_length]
+
+
 async def generate_cv_content(
     empresa: str,
     cargo: str,
@@ -138,10 +146,10 @@ async def generate_cv_content(
 ) -> str:
     """Genera el contenido del CV adaptado al puesto usando Groq."""
     prompt = _CV_PROMPT.format(
-        empresa=empresa or "la empresa",
-        cargo=cargo or "el puesto",
-        keywords=keywords or "",
-        resumen=resumen or "",
+        empresa=_sanitize_prompt_field(empresa, 200) or "la empresa",
+        cargo=_sanitize_prompt_field(cargo, 200) or "el puesto",
+        keywords=_sanitize_prompt_field(keywords, 400),
+        resumen=_sanitize_prompt_field(resumen, 800),
         perfil=_GABRIEL_PROFILE,
     )
     response = await _client.chat.completions.create(

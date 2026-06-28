@@ -117,6 +117,19 @@ class ServiceError(Exception):
         super().__init__(message)
 
 
+def _build_set_clause(fields: dict, allowed: frozenset[str]) -> tuple[str, dict]:
+    """Construye SET clause validando que cada campo esté en el allowlist.
+
+    Retorna (clause_string, safe_fields_dict). Lanza ValueError si no queda
+    ningún campo válido después de filtrar — el caller debe manejar este caso.
+    """
+    safe_fields = {k: v for k, v in fields.items() if k in allowed}
+    if not safe_fields:
+        raise ValueError("No hay campos válidos para actualizar.")
+    clause = ", ".join(f"{col} = :{col}" for col in safe_fields)
+    return clause, safe_fields
+
+
 # ---------------------------------------------------------------------------
 # Pure data normalizers
 # ---------------------------------------------------------------------------
@@ -850,8 +863,9 @@ def update_contact(contact_id: int, payload: dict) -> dict:
                 raise ServiceError("Ya existe un contacto con ese email.", HTTPStatus.CONFLICT)
 
         updates["updated_at"] = now_utc()
-        set_clause = ", ".join(f"{field} = :{field}" for field in updates)
-        params = {**updates, "id": contact_id}
+        _CONTACT_UPDATE_ALLOWED = frozenset(_UPDATABLE_CONTACT_FIELDS) | {"updated_at"}
+        set_clause, safe_updates = _build_set_clause(updates, _CONTACT_UPDATE_ALLOWED)
+        params = {**safe_updates, "id": contact_id}
         session.execute(
             text(f"UPDATE contacts SET {set_clause} WHERE id = :id"), params
         )
@@ -1443,9 +1457,12 @@ def update_template(template_id: int, payload: dict) -> dict:
         if not fields:
             raise ServiceError("No hay campos para actualizar.")
         fields["updated_at"] = now_utc()
-        fields["id"] = template_id
-        set_clause = ", ".join(f"{k} = :{k}" for k in fields if k != "id")
-        session.execute(text(f"UPDATE message_templates SET {set_clause} WHERE id = :id"), fields)
+        _TEMPLATE_UPDATE_ALLOWED = frozenset({"name", "subject", "body", "updated_at"})
+        set_clause, safe_fields = _build_set_clause(fields, _TEMPLATE_UPDATE_ALLOWED)
+        session.execute(
+            text(f"UPDATE message_templates SET {set_clause} WHERE id = :id"),
+            {**safe_fields, "id": template_id},
+        )
         row = session.execute(
             text("SELECT * FROM message_templates WHERE id = :id"), {"id": template_id}
         ).fetchone()
@@ -1705,9 +1722,12 @@ def update_schedule(schedule_id: int, payload: dict) -> dict:
             final_end = e_h if e_h is not None else int(current.get("end_hour_art", 18))
             if not (0 <= final_start < final_end <= 23):
                 raise ServiceError("Horas inválidas: start_hour_art debe ser menor a end_hour_art.")
-        updates["id"] = schedule_id
-        set_clause = ", ".join(f"{k} = :{k}" for k in updates if k != "id")
-        session.execute(text(f"UPDATE delivery_schedules SET {set_clause} WHERE id = :id"), updates)
+        _SCHEDULE_UPDATE_ALLOWED = frozenset({"name", "interval_minutes", "start_hour_art", "end_hour_art"})
+        set_clause, safe_updates = _build_set_clause(updates, _SCHEDULE_UPDATE_ALLOWED)
+        session.execute(
+            text(f"UPDATE delivery_schedules SET {set_clause} WHERE id = :id"),
+            {**safe_updates, "id": schedule_id},
+        )
         session.flush()  # garantiza que el SELECT siguiente vea los valores recién escritos
 
         # Construir new_schedule directamente desde los valores que acabamos de aplicar

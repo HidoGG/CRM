@@ -4,14 +4,88 @@ Usa Groq (llama-3.3-70b-versatile) — API gratuita, compatible con OpenAI SDK.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
+import socket
 from typing import Optional
+from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
 from sqlmodel import Session, text
 
 from modules.database import engine, now_utc
+
+# ── Protección SSRF — whitelist de dominios y bloqueo de IPs privadas ─────────
+
+_ALLOWED_DOMAINS: frozenset[str] = frozenset({
+    "linkedin.com", "www.linkedin.com",
+    "computrabajo.com", "ar.computrabajo.com",
+    "bumeran.com", "www.bumeran.com",
+    "zonajobs.com.ar", "www.zonajobs.com.ar",
+    "indeed.com", "ar.indeed.com",
+    "empleos.clarin.com",
+    "trabajando.com", "www.trabajando.com",
+})
+
+_BLOCKED_IP_RANGES = [
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),  # link-local / AWS metadata
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+
+def _is_safe_url(url: str) -> tuple[bool, str]:
+    """Valida que una URL sea segura antes de hacer un request externo.
+
+    Retorna (is_safe, reason_if_not). Chequea:
+    - Scheme debe ser https
+    - Hostname debe estar en _ALLOWED_DOMAINS
+    - IP resuelta no debe ser privada/reservada
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False, "Solo se permiten URLs HTTPS."
+        hostname = parsed.hostname or ""
+        if not hostname:
+            return False, "URL sin hostname."
+        # Whitelist check — comparar hostname completo y base domain (últimos 2 segmentos)
+        base_domain = ".".join(hostname.split(".")[-2:])
+        allowed_bases = {".".join(d.split(".")[-2:]) for d in _ALLOWED_DOMAINS}
+        if hostname not in _ALLOWED_DOMAINS and base_domain not in allowed_bases:
+            return False, f"Dominio no permitido: {hostname}"
+        # IP check — evita SSRF via DNS rebinding
+        try:
+            ip = ipaddress.ip_address(socket.gethostbyname(hostname))
+            for blocked in _BLOCKED_IP_RANGES:
+                if ip in blocked:
+                    return False, "Acceso denegado."
+        except (socket.gaierror, ValueError):
+            return False, "No se pudo resolver el dominio."
+        return True, ""
+    except Exception:
+        return False, "URL inválida."
+
+
+def _fetch_url(url: str) -> str:
+    """Descarga el contenido de una URL validando primero contra SSRF.
+
+    Usar esta función en lugar de requests.get() directamente.
+    Retorna el texto de la response o lanza ValueError si la URL no es segura.
+    """
+    import requests
+
+    safe, reason = _is_safe_url(url)
+    if not safe:
+        raise ValueError(f"URL bloqueada por política de seguridad: {reason}")
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response.text
 
 # ── Cliente ───────────────────────────────────────────────────────────────────
 

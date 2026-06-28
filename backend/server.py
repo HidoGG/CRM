@@ -18,6 +18,11 @@ from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFi
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
 
 import modules.crm_service as crm_service
 import modules.engagement_service as engagement_service
@@ -39,6 +44,11 @@ _CRM_API_KEY = os.getenv("CRM_API_KEY", "").strip()
 # JWT de Supabase Auth (opcional). Si está definido, se aceptan tokens Bearer
 # emitidos por Supabase además de la API key. Ver docs/seguridad.md.
 _SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "").strip()
+
+if not _CRM_API_KEY and not _SUPABASE_JWT_SECRET:
+    print("⚠️  ADVERTENCIA DE SEGURIDAD: No hay autenticación configurada.")
+    print("    Todos los endpoints son accesibles sin credenciales.")
+    print("    Configurá CRM_API_KEY o SUPABASE_JWT_SECRET en producción.")
 
 
 def _verify_supabase_jwt(token: str) -> bool:
@@ -107,6 +117,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # ---------------------------------------------------------------------------
+# Rate limiter (slowapi) — se configura antes de los middlewares
+# ---------------------------------------------------------------------------
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ---------------------------------------------------------------------------
 # CORS: en producción sólo permite el frontend de Vercel.
 # En desarrollo (sin FRONTEND_URL) permite localhost.
 # ---------------------------------------------------------------------------
@@ -121,9 +138,27 @@ _origins = [_frontend_url] if _frontend_url else [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Middleware de headers de seguridad HTTP.
+# Se registra DESPUÉS de CORSMiddleware (en FastAPI los @app.middleware se
+# ejecutan en orden LIFO, como capas de cebolla — el último registrado es
+# el primero en procesar la request y el último en tocar la response).
+# Esto garantiza que los headers se inyectan en todas las responses,
+# incluyendo errores, sin interferir con el preflight OPTIONS de CORS.
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-XSS-Protection"] = "0"
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +312,15 @@ def mock_import(payload: schemas.MockImport):
 
 
 @app.post("/imports/preview", status_code=201)
+@limiter.limit("10/minute")
 async def preview_import(
+    request: Request,
     file: UploadFile = File(...),
     source: str = Form("upload_ui"),
 ):
     raw_bytes = await file.read()
+    if len(raw_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Archivo demasiado grande. Máximo permitido: 15 MB.")
     filename = file.filename or "archivo.txt"
     mime_type = file.content_type or "application/octet-stream"
     try:
@@ -362,6 +401,8 @@ async def upload_cv(file: UploadFile = File(...), comment: str = Form("")):
     ext = Path(file.filename or "cv.pdf").suffix or ".pdf"
     object_key = f"{uuid.uuid4().hex}{ext}"
     file_bytes = await file.read()
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Archivo demasiado grande. Máximo permitido: 15 MB.")
     supabase_storage.upload(file_bytes, object_key)
     return crm_service.save_cv_file(file.filename or object_key, object_key, comment)
 
@@ -409,7 +450,8 @@ def delete_email_job(job_id: int):
 
 
 @app.post("/email-jobs/run-now")
-def run_email_jobs_now():
+@limiter.limit("5/minute")
+def run_email_jobs_now(request: Request):
     return crm_service.process_pending_email_jobs()
 
 
@@ -485,7 +527,8 @@ def gmail_status():
         from modules import gmail_service
         return gmail_service.get_status()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error al obtener estado de Gmail: {exc}")
+        print(f"[gmail] error al obtener estado: {exc}")
+        raise HTTPException(status_code=500, detail="Error al obtener estado de Gmail. Intentá reconectar.")
 
 
 @app.get("/gmail/auth-url")
@@ -494,9 +537,11 @@ def gmail_auth_url():
         from modules import gmail_service
         return {"url": gmail_service.get_auth_url()}
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        print(f"[gmail] error de configuración al generar URL: {exc}")
+        raise HTTPException(status_code=500, detail="Gmail no está configurado. Verificá las credenciales en el servidor.")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error interno al generar URL de autorización: {exc}")
+        print(f"[gmail] error interno al generar URL de autorización: {exc}")
+        raise HTTPException(status_code=500, detail="Error al generar URL de autorización. Intentá nuevamente.")
 
 
 @app.get("/gmail/callback")
@@ -505,8 +550,9 @@ def gmail_callback(code: str):
         from modules import gmail_service
         gmail_service.exchange_code(code)
     except Exception as exc:
+        print(f"[gmail] error en callback OAuth: {exc}")
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-        return RedirectResponse(url=f"{frontend_url}?gmail=error&reason={exc}")
+        return RedirectResponse(url=f"{frontend_url}?gmail=error&reason=auth_failed")
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     return RedirectResponse(url=f"{frontend_url}?gmail=authorized")
 
@@ -574,6 +620,7 @@ def delete_career_session(session_id: int):
 
 
 @app.post("/career/sessions/{session_id}/chat")
+@limiter.limit("20/minute")
 async def career_chat(session_id: int, request: Request):
     """
     Envía un mensaje al agente de RRHH y devuelve su respuesta.
