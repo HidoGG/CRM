@@ -868,6 +868,85 @@ async def create_career_draft(session_id: int, payload: schemas.CareerDraftReque
         raise HTTPException(status_code=500, detail=f"Error creando borrador: {exc}")
 
 
+@app.post("/career/sessions/{session_id}/send")
+async def send_career_email(session_id: int, payload: schemas.CareerDraftRequest):
+    """Envía directamente el email generado por el asistente con el CV adjunto."""
+    from modules import gmail_service
+
+    if not payload.to:
+        raise HTTPException(status_code=400, detail="Se requiere el email del destinatario para enviar.")
+
+    # ── Leer sesión (misma lógica que /draft) ────────────────────────────────
+    try:
+        with Session(engine) as db:
+            session_row = db.execute(
+                text("SELECT email_subject, email_body, cv_content, company, role FROM career_sessions WHERE id = :id"),
+                {"id": session_id},
+            ).fetchone()
+    except Exception:
+        with Session(engine) as db:
+            session_row = db.execute(
+                text("SELECT email_subject, email_body, NULL as cv_content, company, role FROM career_sessions WHERE id = :id"),
+                {"id": session_id},
+            ).fetchone()
+
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+
+    subject = session_row[0] or ""
+    body = session_row[1] or ""
+    cv_content = session_row[2]
+    empresa = session_row[3] or ""
+    cargo = session_row[4] or ""
+
+    if not subject and not body:
+        raise HTTPException(
+            status_code=400,
+            detail="Todavía no se generó el email para esta sesión. Pegá un aviso primero.",
+        )
+
+    # ── Preparar CV adjunto (misma lógica que /draft) ────────────────────────
+    cv_bytes = None
+    cv_filename = None
+
+    if cv_content:
+        try:
+            import modules.career_cv as career_cv
+            cv_bytes = career_cv.cv_content_to_pdf(cv_content, cargo=cargo, empresa=empresa)
+            cv_filename = f"CV_Gabriel_Hidalgo_{(cargo or 'puesto').replace(' ', '_')}.pdf"
+        except Exception as exc:
+            print(f"[career_send] Error generando PDF del CV: {exc} — se envía sin adjunto")
+    elif payload.cv_id:
+        try:
+            from modules import supabase_storage
+            with Session(engine) as db:
+                cv_row = db.execute(
+                    text("SELECT original_name, file_path FROM cv_files WHERE id = :id"),
+                    {"id": payload.cv_id},
+                ).fetchone()
+            if cv_row:
+                cv_filename = cv_row[0]
+                cv_bytes = supabase_storage.download(cv_row[1])
+        except Exception as exc:
+            print(f"[career_send] Error descargando CV subido: {exc} — se envía sin adjunto")
+
+    # ── Enviar directo ────────────────────────────────────────────────────────
+    try:
+        result = gmail_service.send_email(
+            to=payload.to,
+            subject=subject,
+            body=body,
+            cv_bytes=cv_bytes,
+            cv_filename=cv_filename,
+        )
+        return {"sent": True, "message_id": result.get("id", "")}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        print(f"[career_send] Error al enviar: {exc}")
+        raise HTTPException(status_code=500, detail="Error al enviar el email. Verificá que Gmail esté autorizado.")
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
