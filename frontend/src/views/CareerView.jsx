@@ -225,12 +225,19 @@ function GmailSendButton({ sessionId, messageContent, hasCv }) {
   const [error, setError] = useState('');
 
   const detectedEmail = messageContent ? extractContactEmail(messageContent) : null;
+  const [recipientEmail, setRecipientEmail] = useState(detectedEmail || '');
+
+  useEffect(() => {
+    if (detectedEmail && !recipientEmail) setRecipientEmail(detectedEmail);
+  }, [detectedEmail]);
 
   useEffect(() => {
     if (!hasCv && cvs.length > 0 && !selectedCvId) {
       setSelectedCvId(String(cvs[0].id));
     }
   }, [cvs, selectedCvId, hasCv]);
+
+  const emailValid = recipientEmail.trim().includes('@');
 
   async function handleSend() {
     setLoading(true);
@@ -239,7 +246,7 @@ function GmailSendButton({ sessionId, messageContent, hasCv }) {
       await sendCareerEmail(
         sessionId,
         hasCv ? null : (selectedCvId ? Number(selectedCvId) : null),
-        detectedEmail || null,
+        recipientEmail.trim(),
       );
       setDone(true);
     } catch (err) {
@@ -255,13 +262,17 @@ function GmailSendButton({ sessionId, messageContent, hasCv }) {
   return (
     <div className="career-draft-box">
       <p className="career-draft-label">Enviar email</p>
-      {detectedEmail ? (
-        <p className="career-draft-to">Para: <strong>{detectedEmail}</strong></p>
-      ) : (
-        <p className="career-draft-to" style={{ color: 'var(--amber-text)' }}>
-          No se detectó email en el mensaje — el asistente debe mencionarlo.
-        </p>
-      )}
+      <div className="career-draft-to-row">
+        <label className="career-draft-to-label">Para:</label>
+        <input
+          type="email"
+          className="career-draft-to-input"
+          placeholder="email@empresa.com"
+          value={recipientEmail}
+          onChange={e => { setRecipientEmail(e.target.value); setDone(false); setError(''); }}
+          disabled={loading || done}
+        />
+      </div>
       <div className="career-draft-row">
         {hasCv ? (
           <span className="career-draft-cv-badge">📄 CV ATS adjunto automáticamente</span>
@@ -285,7 +296,7 @@ function GmailSendButton({ sessionId, messageContent, hasCv }) {
           type="button"
           className={`career-draft-btn ${done ? 'is-done' : ''}`}
           onClick={handleSend}
-          disabled={loading || done || !detectedEmail}
+          disabled={loading || done || !emailValid}
         >
           <GmailIcon />
           {loading ? 'Enviando…' : done ? '✓ Enviado' : 'Enviar'}

@@ -1442,6 +1442,38 @@ tr:last-child td {
   color: var(--text-secondary);
 }
 
+.career-draft-to-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.career-draft-to-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.career-draft-to-input {
+  flex: 1;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.career-draft-to-input:focus {
+  border-color: var(--accent);
+}
+
+.career-draft-to-input:disabled {
+  opacity: 0.6;
+}
+
 .career-draft-no-cvs {
   flex: 1;
   font-size: 0.85rem;
