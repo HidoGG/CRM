@@ -53,11 +53,13 @@ def _load_token(raw_value: str) -> dict:
             return {}
 
 # gmail.send: envío de correos. gmail.readonly: detección de respuestas y
-# rebotes. Un token emitido sólo con gmail.send sigue sirviendo para enviar;
-# las funciones de lectura informan que falta re-autorizar.
+# rebotes. gmail.compose: crear y enviar borradores (requerido para /draft).
+# Un token viejo sin gmail.compose muestra error 403 al crear borradores —
+# solución: revocar y re-autorizar desde Envíos para obtener los 3 scopes.
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",
 ]
 CREDENTIALS_FILE = Path(__file__).parent.parent / "credentials.json"
 TOKEN_FILE = Path(__file__).parent.parent / "token.json"
