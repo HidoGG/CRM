@@ -14,6 +14,7 @@ import { authEnabled, supabase } from './lib/supabaseClient';
 import {
   useContacts,
   useEmailJobs,
+  useGmailStatus,
   useImports,
   useRefresh,
   useReporting,
@@ -122,6 +123,17 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const location = useLocation();
   const refresh = useRefresh();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // ── Alerta de re-autorización de Gmail ──
+  const gmailStatus = useGmailStatus().data;
+  const [gmailReauthDismissed, setGmailReauthDismissed] = useState(
+    () => sessionStorage.getItem('gmail-reauth-dismissed') === '1'
+  );
+  const showGmailReauth = !gmailReauthDismissed && gmailStatus?.needs_reauth === true;
+  function dismissGmailReauth() {
+    sessionStorage.setItem('gmail-reauth-dismissed', '1');
+    setGmailReauthDismissed(true);
+  }
 
   const activeView = pathToViewId(location.pathname);
   const setActiveView = (viewId) => navigate(VIEW_ROUTES[viewId] || '/');
@@ -536,6 +548,65 @@ function AuthenticatedApp({ theme, toggleTheme }) {
               Procesando con IA. Esto puede tardar unos minutos.<br />
               No cierres la ventana.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Gmail perdió la sesión (ej: rotación de CRM_API_KEY) ── */}
+      {showGmailReauth && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.65)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Gmail necesita re-autorización"
+        >
+          <div
+            className="rounded-2xl px-8 py-7 flex flex-col gap-5 max-w-sm w-full mx-4"
+            style={{
+              background: 'var(--surface-raised)',
+              border: '1px solid var(--amber-text)',
+              boxShadow: 'var(--shadow-md)',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber-text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <div>
+                <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
+                  Gmail necesita re-autorización
+                </p>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                  Tu sesión de Gmail venció — probablemente por un cambio de credenciales del servidor. Los envíos automáticos están pausados hasta que vuelvas a conectar tu cuenta.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={dismissGmailReauth}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, fontSize: '0.85rem', fontWeight: 500,
+                  background: 'transparent', border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)', cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveView('envios'); dismissGmailReauth(); }}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, fontSize: '0.85rem', fontWeight: 700,
+                  background: 'var(--amber-bg)', border: '1px solid var(--amber-text)',
+                  color: 'var(--amber-text)', cursor: 'pointer',
+                }}
+              >
+                Ir a Envíos y re-autorizar
+              </button>
+            </div>
           </div>
         </div>
       )}

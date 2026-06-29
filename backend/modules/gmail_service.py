@@ -385,17 +385,31 @@ def get_status() -> dict:
     try:
         _get_client_config()
     except RuntimeError as e:
-        return {"authorized": False, "has_readonly": False, "reason": str(e)}
+        return {"authorized": False, "has_readonly": False, "reason": str(e), "needs_reauth": False}
+
+    # Detectar token ilegible ANTES de que _get_credentials() lo borre.
+    # Ocurre cuando CRM_API_KEY rotó y el token Fernet ya no se puede descifrar.
+    needs_reauth = False
+    raw = _load_token_str()
+    if raw and not _load_token(raw):
+        needs_reauth = True
+
     creds = _get_credentials()
     if not creds:
+        reason = (
+            "Tu sesión de Gmail venció por un cambio de configuración. Re-autorizá desde Envíos."
+            if needs_reauth
+            else "Token no generado. Completá la autorización."
+        )
         return {
             "authorized": False,
             "has_readonly": False,
-            "reason": "Token no generado. Completá la autorización.",
+            "reason": reason,
+            "needs_reauth": needs_reauth,
         }
     readonly = has_readonly_scope()
     reason = "Listo para enviar" if readonly else (
         "Listo para enviar. Para detectar respuestas y rebotes, "
         "volvé a autorizar Gmail (falta el permiso de lectura)."
     )
-    return {"authorized": True, "has_readonly": readonly, "reason": reason}
+    return {"authorized": True, "has_readonly": readonly, "reason": reason, "needs_reauth": False}
