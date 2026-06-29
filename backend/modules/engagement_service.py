@@ -13,6 +13,9 @@ import base64
 import json
 import re
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+_ART_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 
 from sqlalchemy import bindparam, text
 
@@ -503,6 +506,10 @@ def _backfill_bounce_reasons(service) -> int:
 def send_daily_reminder() -> dict:
     """Envía a la propia casilla un resumen de seguimientos vencidos o del día."""
     from modules import gmail_service
+
+    # Domingo (weekday 6) = no se manda recordatorio, igual que los envíos masivos
+    if datetime.now(_ART_TZ).weekday() == 6:
+        return {"sent": False, "reason": "Domingo — recordatorio suspendido."}
 
     if not gmail_service.is_authorized():
         return {"sent": False, "reason": "Gmail no autorizado."}
