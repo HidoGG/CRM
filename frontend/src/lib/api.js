@@ -109,15 +109,15 @@ export async function sendCareerMessage(sessionId, message, imageFile = null) {
   return res.json();
 }
 
-export async function createCareerDraft(sessionId, cvId = null, to = null) {
-  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/draft`, {
+export async function sendCareerEmail(sessionId, cvId = null, to = null) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cv_id: cvId, to }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'No se pudo crear el borrador');
+    throw new Error(err.detail || 'No se pudo enviar el email');
   }
   return res.json();
 }

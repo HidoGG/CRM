@@ -7,7 +7,7 @@ import {
   fetchCareerSession,
   fetchCareerCvHtml,
   sendCareerMessage,
-  createCareerDraft,
+  sendCareerEmail,
   generateCareerCv,
   getCareerCvPdfUrl,
 } from '../lib/api';
@@ -216,7 +216,7 @@ function CvPreviewButton({ sessionId, onCvGenerated, cvHtml, onOpenModal }) {
   );
 }
 
-function GmailDraftButton({ sessionId, messageContent, hasCv }) {
+function GmailSendButton({ sessionId, messageContent, hasCv }) {
   const cvFiles = useCvFiles();
   const cvs = cvFiles.data || [];
   const [selectedCvId, setSelectedCvId] = useState('');
@@ -232,18 +232,16 @@ function GmailDraftButton({ sessionId, messageContent, hasCv }) {
     }
   }, [cvs, selectedCvId, hasCv]);
 
-  async function handleCreate() {
+  async function handleSend() {
     setLoading(true);
     setError('');
     try {
-      // Si hay CV generado el backend lo usa automáticamente; cv_id solo si no hay
-      const result = await createCareerDraft(
+      await sendCareerEmail(
         sessionId,
         hasCv ? null : (selectedCvId ? Number(selectedCvId) : null),
         detectedEmail || null,
       );
       setDone(true);
-      window.open(result.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       const msg = err.message === 'Failed to fetch'
         ? 'No se pudo conectar al servidor. Esperá unos segundos y reintentá.'
@@ -256,9 +254,13 @@ function GmailDraftButton({ sessionId, messageContent, hasCv }) {
 
   return (
     <div className="career-draft-box">
-      <p className="career-draft-label">Crear borrador en Gmail</p>
-      {detectedEmail && (
+      <p className="career-draft-label">Enviar email</p>
+      {detectedEmail ? (
         <p className="career-draft-to">Para: <strong>{detectedEmail}</strong></p>
+      ) : (
+        <p className="career-draft-to" style={{ color: 'var(--amber-text)' }}>
+          No se detectó email en el mensaje — el asistente debe mencionarlo.
+        </p>
       )}
       <div className="career-draft-row">
         {hasCv ? (
@@ -282,20 +284,20 @@ function GmailDraftButton({ sessionId, messageContent, hasCv }) {
         <button
           type="button"
           className={`career-draft-btn ${done ? 'is-done' : ''}`}
-          onClick={handleCreate}
-          disabled={loading || done}
+          onClick={handleSend}
+          disabled={loading || done || !detectedEmail}
         >
           <GmailIcon />
-          {loading ? 'Creando…' : done ? '✓ Borrador creado' : 'Crear borrador'}
+          {loading ? 'Enviando…' : done ? '✓ Enviado' : 'Enviar'}
         </button>
       </div>
       {done && (
-        <p className="career-draft-hint">Borrador creado{hasCv ? ' con CV ATS adjunto' : ''}. Abrió Gmail en una pestaña nueva.</p>
+        <p className="career-draft-hint">Email enviado{hasCv ? ' con CV ATS adjunto' : ''}. Ya está en tu bandeja de Enviados.</p>
       )}
       {error && (
         <div className="career-draft-error-row">
           <p className="career-draft-error">{error}</p>
-          <button type="button" className="career-draft-retry-btn" onClick={handleCreate} disabled={loading}>
+          <button type="button" className="career-draft-retry-btn" onClick={handleSend} disabled={loading}>
             Reintentar
           </button>
         </div>
@@ -665,7 +667,7 @@ export function CareerView() {
                           onCvGenerated={(html) => { setCvHtml(html); setShowCvModal(true); }}
                           onOpenModal={() => setShowCvModal(true)}
                         />
-                        <GmailDraftButton
+                        <GmailSendButton
                           sessionId={activeSessionId}
                           messageContent={msg.content}
                           hasCv={!!cvHtml}
