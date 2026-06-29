@@ -281,21 +281,19 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
                   }}
                 >
                   {capitalize(filter)}
-                  {statusCountMap[filter] != null && (
-                    <span style={{
-                      marginLeft: 6,
-                      background: activeFilter === filter ? 'rgba(255,255,255,0.25)' : 'var(--surface-subtle)',
-                      color: activeFilter === filter ? 'var(--accent-text)' : 'var(--text-muted)',
-                      borderRadius: 999,
-                      padding: '0px 7px',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      lineHeight: '1.6',
-                      display: 'inline-block',
-                    }}>
-                      {statusCountMap[filter]}
-                    </span>
-                  )}
+                  <span style={{
+                    marginLeft: 6,
+                    background: activeFilter === filter ? 'rgba(255,255,255,0.25)' : 'var(--surface-subtle)',
+                    color: activeFilter === filter ? 'var(--accent-text)' : 'var(--text-muted)',
+                    borderRadius: 999,
+                    padding: '0px 7px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    lineHeight: '1.6',
+                    display: 'inline-block',
+                  }}>
+                    {statusCountMap[filter] ?? 0}
+                  </span>
                 </button>
               ))}
             </div>
