@@ -54,6 +54,7 @@ class ContactUpdate(BaseModel):
     portal_status: str | None = None
     discard_reason: str | None = None
     notes: str | None = None
+    industry: str | None = None
 
     @field_validator("email")
     @classmethod

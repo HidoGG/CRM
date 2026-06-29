@@ -827,6 +827,7 @@ _UPDATABLE_CONTACT_FIELDS = {
     "portal_status": clean_optional,
     "discard_reason": clean_optional,
     "notes": clean_optional,
+    "industry": clean_optional,
 }
 
 
