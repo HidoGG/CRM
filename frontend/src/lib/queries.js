@@ -16,7 +16,12 @@ export const queryClient = new QueryClient({
 });
 
 export function useContacts() {
-  return useQuery({ queryKey: ['contacts'], queryFn: fetchers.contacts, placeholderData: [] });
+  return useQuery({
+    queryKey: ['contacts'],
+    queryFn: fetchers.contacts,
+    placeholderData: [],
+    refetchOnWindowFocus: true,  // refresca al volver a la pestaña si los datos están stale
+  });
 }
 export function useSummary() {
   return useQuery({

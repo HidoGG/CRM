@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { capitalize, prettifyAction } from '../lib/utils';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useSchedules } from '../lib/queries';
@@ -32,6 +32,9 @@ const SECTOR_FILTERS = [
   { key: 'unset',       emoji: '❓', label: 'Sin rubro' },
 ];
 
+// Set a nivel de módulo: no se recrea en cada render
+const KNOWN_INDUSTRIES = new Set(['oilgas', 'industria', 'generalista', 'tecnologia']);
+
 export function ContactsView({ contacts, allContacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
   const schedules = useSchedules().data || [];
   const [activeTab, setActiveTab]     = useState('lista');
@@ -45,7 +48,8 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
   const defaultSchedule = schedules.find(s => s.is_default) ?? schedules[0];
   const confirmContact  = contacts.find(c => c.id === confirmId);
 
-  const statusCountMap = (() => {
+  // Memoizado: solo recalcula cuando cambia la lista de contactos
+  const statusCountMap = useMemo(() => {
     const all = allContacts || contacts;
     const map = { todos: all.length };
     for (const c of all) {
@@ -53,10 +57,21 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
       map[s] = (map[s] || 0) + 1;
     }
     return map;
-  })();
+  }, [allContacts, contacts]);
 
-  const KNOWN_INDUSTRIES = new Set(['oilgas', 'industria', 'generalista', 'tecnologia']);
-  const visibleContacts = contacts.filter(c => {
+  // Memoizado: depende de filtros activos y datos del servidor
+  const sectorCountMap = useMemo(() => {
+    const all = allContacts || contacts;
+    const map = {};
+    for (const sf of SECTOR_FILTERS) {
+      map[sf.key] = sf.key === 'unset'
+        ? all.filter(c => !KNOWN_INDUSTRIES.has(c.industry)).length
+        : all.filter(c => c.industry === sf.key).length;
+    }
+    return map;
+  }, [allContacts, contacts]);
+
+  const visibleContacts = useMemo(() => contacts.filter(c => {
     if (sectorFilter === 'unset') {
       if (KNOWN_INDUSTRIES.has(c.industry)) return false;
     } else if (sectorFilter) {
@@ -70,7 +85,7 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
       ) return false;
     }
     return true;
-  });
+  }), [contacts, sectorFilter, searchQuery]);
 
   function openEdit(contact) {
     setEditContact(contact);
@@ -327,11 +342,7 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
               Todos los rubros
             </button>
             {SECTOR_FILTERS.map(sf => {
-              const all = allContacts || contacts;
-              const KNOWN_INDUSTRIES = new Set(['oilgas', 'industria', 'generalista', 'tecnologia']);
-              const count = all.filter(c =>
-                sf.key === 'unset' ? !KNOWN_INDUSTRIES.has(c.industry) : c.industry === sf.key
-              ).length;
+              const count = sectorCountMap[sf.key] ?? 0;
               const isActive = sectorFilter === sf.key;
               return (
                 <button
