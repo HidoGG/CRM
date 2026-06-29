@@ -29,7 +29,7 @@ const SECTOR_FILTERS = [
   { key: 'industria',   emoji: '⚙️', label: 'Industria' },
   { key: 'generalista', emoji: '🏢', label: 'Generalista' },
   { key: 'tecnologia',  emoji: '💻', label: 'Tecnología' },
-  { key: 'unset',       emoji: '❓', label: 'Sin empresa' },
+  { key: 'unset',       emoji: '❓', label: 'Sin rubro' },
 ];
 
 export function ContactsView({ contacts, allContacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
@@ -55,9 +55,10 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
     return map;
   })();
 
+  const KNOWN_INDUSTRIES = new Set(['oilgas', 'industria', 'generalista', 'tecnologia']);
   const visibleContacts = contacts.filter(c => {
     if (sectorFilter === 'unset') {
-      if (c.company?.trim()) return false;
+      if (KNOWN_INDUSTRIES.has(c.industry)) return false;
     } else if (sectorFilter) {
       if (c.industry !== sectorFilter) return false;
     }
@@ -327,8 +328,9 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
             </button>
             {SECTOR_FILTERS.map(sf => {
               const all = allContacts || contacts;
+              const KNOWN_INDUSTRIES = new Set(['oilgas', 'industria', 'generalista', 'tecnologia']);
               const count = all.filter(c =>
-                sf.key === 'unset' ? !c.company?.trim() : c.industry === sf.key
+                sf.key === 'unset' ? !KNOWN_INDUSTRIES.has(c.industry) : c.industry === sf.key
               ).length;
               const isActive = sectorFilter === sf.key;
               return (
