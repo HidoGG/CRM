@@ -160,3 +160,22 @@ class ScheduleUpdate(BaseModel):
     interval_minutes: int | None = Field(default=None, ge=1)
     start_hour_art: int | None = Field(default=None, ge=0, le=23)
     end_hour_art: int | None = Field(default=None, ge=0, le=23)
+
+
+# ---------------------------------------------------------------------------
+# Career / Agente de RRHH
+# ---------------------------------------------------------------------------
+
+class CareerDraftRequest(BaseModel):
+    cv_id: int | None = None
+    to: str | None = None
+
+    @field_validator("to")
+    @classmethod
+    def to_email_must_be_valid(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        cleaned = str(v).strip().lower()
+        if not VALID_EMAIL_RE.fullmatch(cleaned):
+            raise ValueError("formato de email inválido")
+        return cleaned

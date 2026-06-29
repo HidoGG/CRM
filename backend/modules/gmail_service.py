@@ -10,6 +10,48 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
+from cryptography.fernet import Fernet
+
+
+# ---------------------------------------------------------------------------
+# Cifrado Fernet del token OAuth — deriva clave desde CRM_API_KEY con SHA-256
+# ---------------------------------------------------------------------------
+
+def _get_fernet() -> Fernet:
+    """Deriva una clave Fernet de 32 bytes a partir de CRM_API_KEY."""
+    key_source = os.environ.get("CRM_API_KEY", "dev-insecure-key")
+    derived = hashlib.sha256(key_source.encode()).digest()
+    fernet_key = base64.urlsafe_b64encode(derived)
+    return Fernet(fernet_key)
+
+
+def _encrypt_token(token_dict: dict) -> str:
+    """Serializa y cifra el dict del token OAuth."""
+    f = _get_fernet()
+    return f.encrypt(json.dumps(token_dict).encode()).decode()
+
+
+def _decrypt_token(encrypted: str) -> dict:
+    """Descifra y deserializa el token OAuth."""
+    f = _get_fernet()
+    return json.loads(f.decrypt(encrypted.encode()).decode())
+
+
+def _load_token(raw_value: str) -> dict:
+    """Intenta descifrar el token. Si falla, asume formato legado (JSON plano).
+
+    Esto garantiza migración transparente: el primer ciclo lee el token en
+    texto plano, y la próxima vez que se guarda queda cifrado.
+    """
+    try:
+        return _decrypt_token(raw_value)
+    except Exception:
+        # Token legado en texto plano JSON — retornar tal cual
+        try:
+            return json.loads(raw_value)
+        except Exception:
+            return {}
+
 # gmail.send: envío de correos. gmail.readonly: detección de respuestas y
 # rebotes. Un token emitido sólo con gmail.send sigue sirviendo para enviar;
 # las funciones de lectura informan que falta re-autorizar.
@@ -72,6 +114,14 @@ def _load_token_str() -> str | None:
 
 
 def _save_token_str(token_json: str) -> None:
+    # Cifrar antes de persistir
+    try:
+        token_dict = json.loads(token_json)
+        encrypted = _encrypt_token(token_dict)
+    except Exception as exc:
+        print(f"[gmail_service] No se pudo cifrar token: {exc}")
+        encrypted = token_json  # fallback: guardar sin cifrar antes de perder el token
+
     db_ok = False
     try:
         from modules.database import get_session
@@ -80,12 +130,12 @@ def _save_token_str(token_json: str) -> None:
             session.execute(text("""
                 INSERT INTO system_settings (key, value) VALUES ('gmail_token', :v)
                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-            """), {"v": token_json})
+            """), {"v": encrypted})
         db_ok = True
     except Exception as exc:
         print(f"[gmail_service] No se pudo guardar token en DB: {exc}")
     try:
-        TOKEN_FILE.write_text(token_json)
+        TOKEN_FILE.write_text(encrypted)
     except Exception as exc:
         # Si tampoco se pudo en DB, el token se perdería: dejar registro claro.
         level = "CRÍTICO" if not db_ok else "aviso"
@@ -179,7 +229,11 @@ def _get_credentials():
         return None
 
     try:
-        creds = Credentials.from_authorized_user_info(json.loads(token_str), SCOPES)
+        token_dict = _load_token(token_str)
+        if not token_dict:
+            _clear_token()
+            return None
+        creds = Credentials.from_authorized_user_info(token_dict, SCOPES)
     except Exception:
         _clear_token()
         return None
@@ -276,7 +330,7 @@ def has_readonly_scope() -> bool:
     if not token_str:
         return False
     try:
-        granted = json.loads(token_str).get("scopes") or []
+        granted = _load_token(token_str).get("scopes") or []
     except Exception:
         return False
     return "https://www.googleapis.com/auth/gmail.readonly" in granted

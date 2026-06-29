@@ -35,6 +35,12 @@ google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
 google-api-python-client>=2.0.0
 
+# Rate limiting
+slowapi>=0.1.9
+
+# Cifrado simétrico (token OAuth Gmail en DB)
+cryptography>=42.0.0
+
 # Scheduler
 apscheduler>=3.10.0
 
