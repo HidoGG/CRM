@@ -1400,7 +1400,42 @@ tr:last-child td {
   border-color: var(--accent);
 }
 
-/* ── Botón crear borrador en Gmail ── */
+/* ── Botón copiar email inline ── */
+.career-inline-email-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.career-inline-email {
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.career-inline-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.career-inline-copy-btn:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* ── Botón enviar email en Gmail ── */
 .career-draft-box {
   margin: 12px 0 4px;
   padding: 14px 16px;

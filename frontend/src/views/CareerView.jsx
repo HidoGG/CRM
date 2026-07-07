@@ -130,6 +130,26 @@ function CvPreviewModal({ html, sessionId, onClose }) {
 
 // ── Subcomponentes ─────────────────────────────────────────────────────────────
 
+function InlineCopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [text]);
+  return (
+    <button
+      type="button"
+      className="career-inline-copy-btn"
+      onClick={handleCopy}
+      aria-label="Copiar email"
+    >
+      {copied ? '✓ Copiado' : 'Copiar'}
+    </button>
+  );
+}
+
 function CopyBlock({ text }) {
   const [copied, setCopied] = useState(false);
 
@@ -322,6 +342,7 @@ function MessageBubble({ role, content, hasImage }) {
 
   // Parsea bloques de código delimitados por ``` y los renderiza con botón copiar
   function renderContent(text) {
+    const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
     const parts = text.split(/```/);
     return parts.map((part, i) => {
       if (i % 2 === 1) {
@@ -329,15 +350,24 @@ function MessageBubble({ role, content, hasImage }) {
         const trimmed = part.replace(/^\n/, '').replace(/\n$/, '');
         return <CopyBlock key={i} text={trimmed} />;
       }
-      // texto normal
+      // texto normal — si la línea es solo un email, agrega botón copiar inline
       return (
         <span key={i}>
-          {part.split('\n').map((line, j, arr) => (
-            <span key={j}>
-              {line}
-              {j < arr.length - 1 && <br />}
-            </span>
-          ))}
+          {part.split('\n').map((line, j, arr) => {
+            const trimmedLine = line.trim();
+            const isEmail = EMAIL_RE.test(trimmedLine);
+            return (
+              <span key={j}>
+                {isEmail ? (
+                  <span className="career-inline-email-row">
+                    <span className="career-inline-email">{line}</span>
+                    <InlineCopyButton text={trimmedLine} />
+                  </span>
+                ) : line}
+                {j < arr.length - 1 && <br />}
+              </span>
+            );
+          })}
         </span>
       );
     });
