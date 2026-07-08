@@ -172,7 +172,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const [statusMessage, setStatusMessage] = useState('Conectando con la API...');
   const [activeFilter, setActiveFilter] = useState('todos');
   const [activeActionFilter, setActiveActionFilter] = useState('enviar');
-  const [activeTimingFilter, setActiveTimingFilter] = useState('todos');
+  const [activeTimingFilter, setActiveTimingFilter] = useState('urgente');
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
 
@@ -683,7 +683,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
               <OperacionesView
                 actionableContacts={actionableContacts}
                 activeActionFilter={activeActionFilter}
-                onActionFilterChange={setActiveActionFilter}
+                onActionFilterChange={(action) => { setActiveActionFilter(action); setActiveTimingFilter('urgente'); }}
                 activeTimingFilter={activeTimingFilter}
                 onTimingFilterChange={setActiveTimingFilter}
                 counts={worktrayCounts}

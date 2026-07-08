@@ -417,6 +417,8 @@ def build_reporting_overview(contacts: list[dict], history: list[dict]) -> dict:
 
         if next_action in {"enviar", "seguir", "portal", "descartar"}:
             queue["active_total"] += 1
+
+        if next_action in {"enviar", "seguir", "portal"}:
             if follow_up is None:
                 queue["without_date"] += 1
             elif follow_up < today:

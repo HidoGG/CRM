@@ -1,7 +1,7 @@
 // Utilidades compartidas entre vistas (antes vivían en AppShell.jsx).
 
 export const worktrayActions = ['enviar', 'seguir', 'portal', 'descartar'];
-export const timingFilters = ['todos', 'vencido', 'hoy', 'esta_semana'];
+export const timingFilters = ['todos', 'urgente', 'sin_fecha', 'esta_semana', 'futuro'];
 
 export function capitalize(value) {
   return String(value).charAt(0).toUpperCase() + String(value).slice(1);
@@ -13,8 +13,14 @@ export function prettifyAction(value) {
 }
 
 export function prettifyTimingFilter(value) {
-  if (value === 'esta_semana') return 'Esta semana';
-  return capitalize(value);
+  const LABELS = {
+    todos:       'Todos',
+    urgente:     'Urgente',
+    sin_fecha:   'Sin fecha',
+    esta_semana: 'Esta semana',
+    futuro:      'Futuro',
+  };
+  return LABELS[value] ?? capitalize(value);
 }
 
 export function formatDelta(value) {
@@ -150,14 +156,15 @@ export function prettifyEvent(value) {
 
 export function matchesTimingFilter(value, filter) {
   if (filter === 'todos') return true;
+  if (filter === 'sin_fecha') return !value;
   if (!value) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dueDate = new Date(`${value}T00:00:00`);
   const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
-  if (filter === 'vencido') return diffDays < 0;
-  if (filter === 'hoy') return diffDays === 0;
-  if (filter === 'esta_semana') return diffDays >= 0 && diffDays <= 6;
+  if (filter === 'urgente')     return diffDays <= 0;
+  if (filter === 'esta_semana') return diffDays > 0 && diffDays <= 6;
+  if (filter === 'futuro')      return diffDays > 6;
   return true;
 }
 

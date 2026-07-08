@@ -100,15 +100,15 @@ export function Worktray({
           <span style={{ fontSize: '1.15rem', flexShrink: 0, color: 'var(--red-text)' }} aria-hidden="true">⚠</span>
           <div style={{ flex: 1 }}>
             <strong style={{ color: 'var(--red-text)', fontSize: '0.94rem', display: 'block' }}>
-              {reporting.queue.overdue} contacto{reporting.queue.overdue !== 1 ? 's' : ''} con seguimiento vencido
+              {reporting.queue.overdue} contacto{reporting.queue.overdue !== 1 ? 's' : ''} activos con seguimiento vencido
             </strong>
             <p style={{ margin: '2px 0 0', color: 'var(--red-text)', fontSize: '0.83rem', opacity: 0.75 }}>
-              Sin fecha activa de seguimiento. Agendá fechas para distribuir el trabajo.
+              Agendá fechas para distribuir el trabajo en la semana.
             </p>
           </div>
           <button
             type="button"
-            onClick={() => onTimingFilterChange('vencido')}
+            onClick={() => onTimingFilterChange('urgente')}
             style={{
               flexShrink: 0,
               borderRadius: 8,
@@ -123,7 +123,7 @@ export function Worktray({
               whiteSpace: 'nowrap',
             }}
           >
-            Ver vencidos
+            Ver urgentes
           </button>
         </div>
       )}
@@ -394,10 +394,35 @@ export function Worktray({
                 ) : (
                   <tr>
                     <td colSpan="6">
-                      {(activeTimingFilter === 'hoy' || activeTimingFilter === 'esta_semana') ? (
+                      {activeTimingFilter === 'urgente' ? (
                         <div style={{ textAlign: 'center', padding: '36px 20px' }}>
                           <p style={{ margin: 0, fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                            Sin contactos agendados para {activeTimingFilter === 'hoy' ? 'hoy' : 'esta semana'}
+                            Sin contactos urgentes — todo al día
+                          </p>
+                          <p style={{ margin: '8px 0 18px', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
+                            No hay seguimientos vencidos ni para hoy.
+                          </p>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => onTimingFilterChange('sin_fecha')}
+                          >
+                            Ver sin fecha ({timingCounts['sin_fecha'] || 0})
+                          </button>
+                        </div>
+                      ) : activeTimingFilter === 'sin_fecha' ? (
+                        <div style={{ textAlign: 'center', padding: '36px 20px' }}>
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                            Todos los contactos tienen fecha asignada
+                          </p>
+                          <p style={{ margin: '8px 0 18px', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
+                            Usá el campo de fecha en cada fila para agendar seguimientos.
+                          </p>
+                        </div>
+                      ) : (activeTimingFilter === 'esta_semana' || activeTimingFilter === 'futuro') ? (
+                        <div style={{ textAlign: 'center', padding: '36px 20px' }}>
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                            Sin contactos agendados para {activeTimingFilter === 'esta_semana' ? 'esta semana' : 'más adelante'}
                           </p>
                           <p style={{ margin: '8px 0 18px', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
                             Usá el campo de fecha en cada fila para agendar cuándo hacer seguimiento.
@@ -405,9 +430,9 @@ export function Worktray({
                           <button
                             type="button"
                             className="ghost-button"
-                            onClick={() => onTimingFilterChange('todos')}
+                            onClick={() => onTimingFilterChange('urgente')}
                           >
-                            Ver todos los contactos ({counts[activeActionFilter] || 0})
+                            Ver urgentes ({timingCounts['urgente'] || 0})
                           </button>
                         </div>
                       ) : (
