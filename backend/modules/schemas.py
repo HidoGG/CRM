@@ -55,6 +55,8 @@ class ContactUpdate(BaseModel):
     discard_reason: str | None = None
     notes: str | None = None
     industry: str | None = None
+    alternative_email: str | None = None
+    autoreply_reason: str | None = None
 
     @field_validator("email")
     @classmethod

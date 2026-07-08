@@ -111,8 +111,8 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
 
   /* ─── Textos de resultado ─── */
   function resultTitle() {
-    if (runResult?.assigned != null) return runResult.assigned > 0 ? 'CV asignado' : 'Sin jobs para actualizar';
-    if (runResult?.retried > 0)      return 'Jobs reactivados';
+    if (runResult?.assigned != null) return runResult.assigned > 0 ? 'CV asignado' : 'Sin envíos para actualizar';
+    if (runResult?.retried > 0)      return 'Envíos reactivados';
     if (runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0) return 'Sin fallidos';
     if (runResult?.sent > 0 && runResult?.failed === 0) return 'Correos enviados';
     if (runResult?.sent === 0 && runResult?.failed === 0) return 'Sin envíos pendientes';
@@ -122,9 +122,9 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
 
   function resultMessage() {
     if (runResult?.retried > 0)
-      return `${runResult.retried} job(s) reseteados a pendiente. El scheduler los procesa en el próximo ciclo. También podés presionar "Enviar ahora".`;
+      return `${runResult.retried} envío(s) reactivados. Se procesarán en el próximo ciclo automático. También podés presionar "Enviar ahora".`;
     if (runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0)
-      return 'No hay jobs fallidos para reintentar.';
+      return 'No hay envíos fallidos para reintentar.';
     if (runResult?.sent > 0 && runResult?.failed === 0)
       return `Se enviaron correctamente ${runResult.sent} correo(s). Revisá tu bandeja de entrada.`;
     if (runResult?.sent === 0 && runResult?.failed === 0)

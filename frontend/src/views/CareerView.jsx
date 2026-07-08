@@ -670,7 +670,7 @@ export function CareerView() {
                   <ul>
                     <li>🎯 Análisis de encaje (Alto / Medio / Bajo)</li>
                     <li>📋 Cuál CV usar y qué destacar</li>
-                    <li>🔑 Keywords ATS del aviso para pasar los filtros</li>
+                    <li>🔑 Palabras clave ATS del aviso para pasar los filtros</li>
                     <li>📧 Asunto del email listo para copiar</li>
                     <li>✉️ Cuerpo del email personalizado listo para copiar</li>
                   </ul>

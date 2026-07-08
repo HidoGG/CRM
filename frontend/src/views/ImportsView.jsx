@@ -3,6 +3,12 @@ import { capitalize, formatDate, prettifyAction } from '../lib/utils';
 import { useCapabilities, useCvFiles, useSchedules, useTemplates, useSectorDefaults } from '../lib/queries';
 import { SectorBadge, SECTORS } from '../components/SectorBadge';
 
+const PROVIDER_LABEL = {
+  openai:    'OpenAI Vision',
+  ocr_space: 'OCR.Space',
+  heuristic: 'Heurística local',
+};
+
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
 
@@ -105,9 +111,9 @@ export function ImportsView({
             </div>
 
             <div className="provider-row">
-              <span className="provider-pill is-ready">Motor usado: {importPreview.provider}</span>
+              <span className="provider-pill is-ready">Motor: {PROVIDER_LABEL[importPreview.provider] ?? importPreview.provider}</span>
               <span className="provider-pill is-ready">
-                Clasificacion: {importPreview.classification_provider}
+                Clasificación: {PROVIDER_LABEL[importPreview.classification_provider] ?? importPreview.classification_provider}
               </span>
             </div>
 

@@ -400,7 +400,7 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
               </colgroup>
               <thead>
                 <tr>
-                  {['Contacto', 'Empresa', 'Email', 'Estado', 'Acción', 'Origen', 'Engage', ''].map(col => (
+                  {['Contacto', 'Empresa', 'Email', 'Estado', 'Acción', 'Origen', 'Respuestas', ''].map(col => (
                     <th
                       key={col}
                       scope="col"

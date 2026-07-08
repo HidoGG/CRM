@@ -130,6 +130,9 @@ function getFollowUpTimingBucket(followUpDate) {
 
 const EVENT_LABELS = {
   'email.sent':               'Correo enviado',
+  'email.replied':            'Respuesta recibida',
+  'email.bounced':            'Email rebotado',
+  'email.autoreply':          'Auto-respuesta recibida',
   'contact.created':          'Contacto creado',
   'contact.updated':          'Contacto actualizado',
   'contact.imported':         'Contacto importado',
@@ -138,6 +141,7 @@ const EVENT_LABELS = {
   'import.confirmed':         'Importación confirmada',
   'import.preview_created':   'Vista previa creada',
   'import.mock_created':      'Importación de prueba',
+  'reminder.sent':            'Recordatorio enviado',
 };
 
 export function prettifyEvent(value) {

@@ -23,6 +23,31 @@ const BOUNCE_REASON_LABEL = {
   rebote_email:        'Permanente',
 };
 
+const BOUNCE_REASON_DESC = {
+  usuario_inexistente: 'El email no existe en el servidor destino. La dirección está mal escrita o fue eliminada.',
+  casilla_llena:       'La casilla del destinatario está llena. Puede funcionar si se reintenta más adelante.',
+  dominio_invalido:    'El dominio del email no existe. Puede que la empresa haya cerrado o el email sea falso.',
+  casilla_desactivada: 'La cuenta fue desactivada o suspendida por el proveedor de email.',
+  rechazado_politica:  'El servidor de la empresa rechazó el email por políticas anti-spam. Filtran correos de cuentas personales.',
+  persona_no_trabaja:  'El email existe pero el sistema indica que esa persona ya no trabaja en la empresa.',
+  rebote_temporario:   'El servidor estaba ocupado o caído al momento del envío. Se puede reintentar.',
+  direccion_invalida:  'El formato de la dirección es incorrecto o tiene un error de redirección.',
+  tamano_excedido:     'El email fue rechazado por superar el tamaño máximo permitido por el servidor.',
+  rebote_email:        'Rebote permanente sin motivo específico identificado.',
+};
+
+const AUTOREPLY_REASON_LABEL = {
+  ausencia_temporal:    'Fuera de la oficina',
+  licencia_medica:      'Licencia médica',
+  licencia_maternidad:  'Licencia de maternidad / paternidad',
+};
+
+const AUTOREPLY_REASON_DESC = {
+  ausencia_temporal:    'La persona está temporalmente fuera (vacaciones, viaje u otra ausencia). Probablemente regrese pronto.',
+  licencia_medica:      'La persona se encuentra de licencia por enfermedad o motivos de salud. Contactar más adelante o buscar otro referente.',
+  licencia_maternidad:  'La persona está en licencia de maternidad o paternidad. Su reincorporación puede demorar meses.',
+};
+
 const STATUS_STYLE = {
   prioridad:   { background: 'var(--red-bg)',      color: 'var(--red-text)'    },
   mantener:    { background: 'var(--green-bg)',    color: 'var(--green-text)'  },
@@ -443,7 +468,7 @@ export function Worktray({
                 })()}
               </div>
 
-              {/* Alerta de rebote si aplica */}
+              {/* Alerta de rebote */}
               {selectedContact.bounced_at && (
                 <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-text)', borderRadius: 8, padding: '10px 12px', display: 'grid', gap: 4 }}>
                   <span style={{ color: 'var(--red-text)', fontWeight: 700, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: "'Barlow Condensed', sans-serif" }}>
@@ -452,8 +477,45 @@ export function Worktray({
                   <span style={{ color: 'var(--red-text)', fontSize: '0.85rem', fontWeight: 600 }}>
                     {BOUNCE_REASON_LABEL[selectedContact.bounce_reason] || 'Permanente'}
                   </span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                  {BOUNCE_REASON_DESC[selectedContact.bounce_reason] && (
+                    <span style={{ color: 'var(--red-text)', fontSize: '0.81rem', opacity: 0.85, lineHeight: 1.4 }}>
+                      {BOUNCE_REASON_DESC[selectedContact.bounce_reason]}
+                    </span>
+                  )}
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: 2 }}>
                     Detectado el {formatDate(selectedContact.bounced_at)}
+                  </span>
+                </div>
+              )}
+
+              {/* Auto-respuesta (ausencia, enfermedad, maternidad) */}
+              {selectedContact.autoreply_reason && !selectedContact.bounced_at && (
+                <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--amber-text)', borderRadius: 8, padding: '10px 12px', display: 'grid', gap: 4 }}>
+                  <span style={{ color: 'var(--amber-text)', fontWeight: 700, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: "'Barlow Condensed', sans-serif" }}>
+                    Auto-respuesta recibida
+                  </span>
+                  <span style={{ color: 'var(--amber-text)', fontSize: '0.85rem', fontWeight: 600 }}>
+                    {AUTOREPLY_REASON_LABEL[selectedContact.autoreply_reason] || 'Ausencia temporal'}
+                  </span>
+                  {AUTOREPLY_REASON_DESC[selectedContact.autoreply_reason] && (
+                    <span style={{ color: 'var(--amber-text)', fontSize: '0.81rem', opacity: 0.85, lineHeight: 1.4 }}>
+                      {AUTOREPLY_REASON_DESC[selectedContact.autoreply_reason]}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Email alternativo detectado */}
+              {selectedContact.alternative_email && (
+                <div style={{ background: 'var(--blue-subtle)', border: '1px solid var(--blue)', borderRadius: 8, padding: '10px 12px', display: 'grid', gap: 4 }}>
+                  <span style={{ color: 'var(--blue)', fontWeight: 700, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: "'Barlow Condensed', sans-serif" }}>
+                    Email alternativo detectado
+                  </span>
+                  <span style={{ color: 'var(--blue)', fontSize: '0.85rem', fontWeight: 600 }}>
+                    {selectedContact.alternative_email}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                    La auto-respuesta indica enviar a esta dirección.
                   </span>
                 </div>
               )}

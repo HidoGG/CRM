@@ -32,7 +32,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
           <MetricCard
             label="Tasa de éxito de envíos"
             value={analytics.successRate !== null ? `${analytics.successRate}%` : '—'}
-            sub={analytics.totalResolved > 0 ? `${analytics.sentJobs} enviados · ${analytics.failedJobs} fallidos` : 'Sin jobs resueltos aún'}
+            sub={analytics.totalResolved > 0 ? `${analytics.sentJobs} enviados · ${analytics.failedJobs} fallidos` : 'Sin envíos resueltos aún'}
             color={analytics.successRate === null ? 'neutral' : analytics.successRate >= 80 ? 'positive' : analytics.successRate >= 50 ? 'warning' : 'negative'}
           />
           <MetricCard
@@ -368,11 +368,17 @@ const STATUS_CSS = {
   error:     { background: 'var(--red-bg)',   color: 'var(--red-text)'   },
 };
 
+const STATUS_LABEL_ES = {
+  confirmed: 'Confirmado',
+  draft:     'Borrador',
+  error:     'Error',
+};
+
 function StatusBadge({ status }) {
   const style = STATUS_CSS[status] || { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
   return (
     <span style={{ ...style, display: 'inline-flex', borderRadius: 999, padding: '3px 10px', fontSize: '0.8rem', fontWeight: 700 }}>
-      {status}
+      {STATUS_LABEL_ES[status] ?? status}
     </span>
   );
 }

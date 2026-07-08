@@ -254,7 +254,7 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
         <DetailPanel
           title="Rebotes detectados"
           count={stats.bounced}
-          emptyMsg="Sin rebotes detectados. Presioná Sync Gmail en Envíos para verificar."
+          emptyMsg="Sin rebotes detectados. Presioná Sincronizar Gmail en Envíos para verificar."
           countColor="var(--red-text)"
           countBg="var(--red-bg)"
         >
@@ -569,7 +569,7 @@ function BounceAlert({ bounceRate, bounced }) {
         <p style={{ margin: '4px 0 0', fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
           {bounced} emails rebotaron. Un bounce rate mayor a 15% puede afectar la reputación del remitente en Gmail.
           Revisá los rebotes y usá el botón <strong>Sacar de cola</strong> para removerlos de futuros envíos.
-          Presioná <strong>Sync Gmail</strong> en la sección de Envíos para actualizar la detección.
+          Presioná <strong>Sincronizar Gmail</strong> en la sección de Envíos para actualizar la detección.
         </p>
       </div>
     </div>

@@ -9,7 +9,7 @@ const TABS = [
   { id: 'cola',         label: 'Cola de envíos'   },
   { id: 'plantillas',   label: 'Plantillas'        },
   { id: 'cronogramas',  label: 'Cronogramas'       },
-  { id: 'estadisticas', label: 'Stats de respuesta'},
+  { id: 'estadisticas', label: 'Estadísticas'},
 ];
 
 export function EnviosView({ contacts, emailJobs, onRefresh }) {
@@ -54,7 +54,7 @@ export function EnviosView({ contacts, emailJobs, onRefresh }) {
         </div>
         {gmailStatus.authorized && (
           <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Scheduler cada 10 min · Lun–Sáb
+            Automático cada 10 min · Lun–Sáb
           </span>
         )}
       </div>
@@ -183,7 +183,7 @@ function TemplateStatsPanel({ stats, onSync }) {
             disabled={syncing}
             aria-label="Sincronizar respuestas y rebotes desde Gmail"
           >
-            {syncing ? 'Sincronizando…' : '↺ Sync Gmail'}
+            {syncing ? 'Sincronizando…' : '↺ Sincronizar Gmail'}
           </button>
           {syncMsg && <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{syncMsg}</span>}
         </div>
@@ -191,7 +191,7 @@ function TemplateStatsPanel({ stats, onSync }) {
 
       {rows.length === 0 ? (
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Sin datos aún — asegurate de haber enviado emails con plantillas y de tener Gmail readonly autorizado.
+          Sin datos aún — asegurate de haber enviado emails con plantillas y de tener Gmail autorizado con permiso de lectura.
         </p>
       ) : (
         <div style={{ overflowX: 'auto', borderRadius: 16, border: '1px solid var(--border-faint)' }}>
