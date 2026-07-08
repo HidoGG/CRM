@@ -663,7 +663,8 @@ def build_reporting_overview_csv(overview: dict) -> str:
 _CONTACT_COLS = (
     "id, email, name, company, title, status, next_action, suggested_message, "
     "follow_up_date, portal_url, portal_status, discard_reason, source, notes, "
-    "bounced_at, bounce_reason, industry, created_at, updated_at"
+    "bounced_at, bounce_reason, industry, alternative_email, autoreply_reason, "
+    "created_at, updated_at"
 )
 
 
@@ -813,6 +814,25 @@ def create_contact(payload: dict) -> dict:
     return row_to_dict(row)
 
 
+# Etiquetas en español para mostrar en el historial
+_FIELD_LABEL_ES = {
+    "email":             "email",
+    "name":              "nombre",
+    "company":           "empresa",
+    "title":             "cargo",
+    "status":            "estado",
+    "next_action":       "acción",
+    "suggested_message": "mensaje sugerido",
+    "follow_up_date":    "fecha de seguimiento",
+    "portal_url":        "URL portal",
+    "portal_status":     "estado portal",
+    "discard_reason":    "motivo de descarte",
+    "notes":             "notas",
+    "industry":          "rubro",
+    "alternative_email": "email alternativo",
+    "autoreply_reason":  "motivo auto-respuesta",
+}
+
 # Campos editables vía PATCH y su normalizador correspondiente
 _UPDATABLE_CONTACT_FIELDS = {
     "email": normalize_email,
@@ -828,6 +848,8 @@ _UPDATABLE_CONTACT_FIELDS = {
     "discard_reason": clean_optional,
     "notes": clean_optional,
     "industry": clean_optional,
+    "alternative_email": clean_optional,
+    "autoreply_reason": clean_optional,
 }
 
 
@@ -871,12 +893,13 @@ def update_contact(contact_id: int, payload: dict) -> dict:
         )
 
         changed_fields = [f for f in updates if f != "updated_at"]
+        changed_labels = [_FIELD_LABEL_ES.get(f, f) for f in changed_fields]
         insert_history(
             session,
             event_type="contact.updated",
             entity_type="contact",
             entity_id=str(contact_id),
-            message=f"Contacto {previous.get('email')} actualizado: {', '.join(changed_fields)}",
+            message=f"Contacto {previous.get('email')} actualizado: {', '.join(changed_labels)}",
             metadata_json=json.dumps(
                 {
                     "contact_id": contact_id,

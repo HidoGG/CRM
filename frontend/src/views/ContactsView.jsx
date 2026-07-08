@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { capitalize, prettifyAction } from '../lib/utils';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useSchedules } from '../lib/queries';
+import { SectorBadge, SECTORS, getSectorLabel } from '../components/SectorBadge';
 
 const EDIT_FIELDS = [
   { key: 'name',    label: 'Nombre',  type: 'text'  },
@@ -23,16 +24,68 @@ const STATUS_STYLE = {
   portal:       { background: 'var(--purple-bg)', color: 'var(--purple-text)'},
 };
 
-export function ContactsView({ contacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
+const SECTOR_FILTERS = [
+  { key: 'oilgas',      emoji: '🛢️', label: 'Petróleo & Gas' },
+  { key: 'industria',   emoji: '⚙️', label: 'Industria' },
+  { key: 'generalista', emoji: '🏢', label: 'Generalista' },
+  { key: 'tecnologia',  emoji: '💻', label: 'Tecnología' },
+  { key: 'unset',       emoji: '❓', label: 'Sin rubro' },
+];
+
+// Set a nivel de módulo: no se recrea en cada render
+const KNOWN_INDUSTRIES = new Set(['oilgas', 'industria', 'generalista', 'tecnologia']);
+
+export function ContactsView({ contacts, allContacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
   const schedules = useSchedules().data || [];
-  const [activeTab, setActiveTab]   = useState('lista');
-  const [confirmId, setConfirmId]   = useState(null);
+  const [activeTab, setActiveTab]     = useState('lista');
+  const [confirmId, setConfirmId]     = useState(null);
   const [editContact, setEditContact] = useState(null);
-  const [editForm, setEditForm]     = useState({});
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError]   = useState('');
+  const [editForm, setEditForm]       = useState({});
+  const [editSaving, setEditSaving]   = useState(false);
+  const [editError, setEditError]     = useState('');
+  const [sectorFilter, setSectorFilter] = useState(null);
+  const [searchQuery, setSearchQuery]   = useState('');
   const defaultSchedule = schedules.find(s => s.is_default) ?? schedules[0];
   const confirmContact  = contacts.find(c => c.id === confirmId);
+
+  // Memoizado: solo recalcula cuando cambia la lista de contactos
+  const statusCountMap = useMemo(() => {
+    const all = allContacts || contacts;
+    const map = { todos: all.length };
+    for (const c of all) {
+      const s = (c.status || '').toLowerCase();
+      map[s] = (map[s] || 0) + 1;
+    }
+    return map;
+  }, [allContacts, contacts]);
+
+  // Memoizado: depende de filtros activos y datos del servidor
+  const sectorCountMap = useMemo(() => {
+    const all = allContacts || contacts;
+    const map = {};
+    for (const sf of SECTOR_FILTERS) {
+      map[sf.key] = sf.key === 'unset'
+        ? all.filter(c => !KNOWN_INDUSTRIES.has(c.industry)).length
+        : all.filter(c => c.industry === sf.key).length;
+    }
+    return map;
+  }, [allContacts, contacts]);
+
+  const visibleContacts = useMemo(() => contacts.filter(c => {
+    if (sectorFilter === 'unset') {
+      if (KNOWN_INDUSTRIES.has(c.industry)) return false;
+    } else if (sectorFilter) {
+      if (c.industry !== sectorFilter) return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      if (
+        !(c.name || '').toLowerCase().includes(q) &&
+        !(c.company || '').toLowerCase().includes(q)
+      ) return false;
+    }
+    return true;
+  }), [contacts, sectorFilter, searchQuery]);
 
   function openEdit(contact) {
     setEditContact(contact);
@@ -44,6 +97,7 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
       notes: contact.notes || '',
       status: contact.status || 'mantener',
       next_action: contact.next_action || 'revisar_manual',
+      industry: contact.industry || 'generalista',
     });
     setEditError('');
   }
@@ -131,6 +185,18 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
               </div>
             </div>
             <div className="detail-field">
+              <span>Rubro</span>
+              <select
+                value={editForm.industry || 'generalista'}
+                onChange={e => setEditForm(prev => ({ ...prev, industry: e.target.value }))}
+                aria-label="Rubro de la empresa"
+              >
+                {SECTORS.map(s => (
+                  <option key={s.key} value={s.key}>{s.emoji} {s.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="detail-field">
               <span>Notas</span>
               <textarea
                 rows={3}
@@ -173,7 +239,43 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
       {/* ── Tab: Lista ── */}
       {activeTab === 'lista' && (
         <div className="grid gap-4">
-          {/* Filtros + contador */}
+          {/* Buscador */}
+          <div style={{ position: 'relative' }}>
+            <svg
+              style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }}
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="search"
+              placeholder="Buscar por nombre o empresa…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 36px 9px 38px',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                background: 'var(--surface-input)',
+                color: 'var(--text-primary)',
+                fontSize: '0.9rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+              aria-label="Buscar contactos por nombre o empresa"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1rem', lineHeight: 1, padding: 2 }}
+                aria-label="Limpiar búsqueda"
+              >×</button>
+            )}
+          </div>
+
+          {/* Filtros de estado + contador */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado">
               {filterOptions.map(filter => (
@@ -195,6 +297,19 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                   }}
                 >
                   {capitalize(filter)}
+                  <span style={{
+                    marginLeft: 6,
+                    background: activeFilter === filter ? 'rgba(255,255,255,0.25)' : 'var(--surface-subtle)',
+                    color: activeFilter === filter ? 'var(--accent-text)' : 'var(--text-muted)',
+                    borderRadius: 999,
+                    padding: '0px 7px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    lineHeight: '1.6',
+                    display: 'inline-block',
+                  }}>
+                    {statusCountMap[filter] ?? 0}
+                  </span>
                 </button>
               ))}
             </div>
@@ -202,13 +317,75 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
               style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.83rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}
               aria-live="polite"
             >
-              {contacts.length} visibles
+              {visibleContacts.length} visibles
             </span>
           </div>
 
+          {/* Filtros de rubro */}
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por rubro">
+            <button
+              type="button"
+              onClick={() => setSectorFilter(null)}
+              aria-pressed={sectorFilter === null}
+              style={{
+                borderRadius: 999,
+                padding: '5px 14px',
+                fontSize: '0.83rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: sectorFilter === null ? '1px solid var(--accent)' : '1px solid var(--border)',
+                background: sectorFilter === null ? 'var(--accent)' : 'transparent',
+                color: sectorFilter === null ? 'var(--accent-text)' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              Todos los rubros
+            </button>
+            {SECTOR_FILTERS.map(sf => {
+              const count = sectorCountMap[sf.key] ?? 0;
+              const isActive = sectorFilter === sf.key;
+              return (
+                <button
+                  key={sf.key}
+                  type="button"
+                  onClick={() => setSectorFilter(isActive ? null : sf.key)}
+                  aria-pressed={isActive}
+                  style={{
+                    borderRadius: 999,
+                    padding: '5px 14px',
+                    fontSize: '0.83rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: isActive ? 'var(--accent)' : 'transparent',
+                    color: isActive ? 'var(--accent-text)' : 'var(--text-secondary)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>{sf.emoji}</span>
+                  <span>{sf.label}</span>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    background: isActive ? 'rgba(255,255,255,0.25)' : 'var(--surface-subtle)',
+                    color: isActive ? 'var(--accent-text)' : 'var(--text-muted)',
+                    borderRadius: 999,
+                    padding: '1px 6px',
+                    marginLeft: 2,
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Tabla */}
-          <div
-            style={{ width: '100%', borderRadius: 20, border: '1px solid var(--border-faint)', background: 'var(--surface-raised)', overflow: 'hidden' }}
+          <div className="contacts-table-wrap"
+            style={{ width: '100%', borderRadius: 20, border: '1px solid var(--border-faint)', background: 'var(--surface-raised)', overflow: 'auto' }}
           >
             <table className="w-full table-fixed border-collapse text-sm">
               <colgroup>
@@ -223,7 +400,7 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
               </colgroup>
               <thead>
                 <tr>
-                  {['Contacto', 'Empresa', 'Email', 'Estado', 'Acción', 'Origen', 'Engage', ''].map(col => (
+                  {['Contacto', 'Empresa', 'Email', 'Estado', 'Acción', 'Origen', 'Respuestas', ''].map(col => (
                     <th
                       key={col}
                       scope="col"
@@ -235,8 +412,8 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                 </tr>
               </thead>
               <tbody>
-                {contacts.length ? (
-                  contacts.map(contact => {
+                {visibleContacts.length ? (
+                  visibleContacts.map(contact => {
                     const statusKey = String(contact.status || '').toLowerCase();
                     const statusStyle = STATUS_STYLE[statusKey] || { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
                     return (
@@ -247,7 +424,19 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                         <td style={{ padding: '10px 12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           <strong style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{contact.name || '—'}</strong>
                         </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.company || '—'}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <SectorBadge
+                              sector={contact.industry || 'generalista'}
+                              size="sm"
+                              onChange={async (newSector) => {
+                                try { await onUpdate(contact.id, { industry: newSector }); }
+                                catch { /* error silencioso en tabla */ }
+                              }}
+                            />
+                            {contact.company || '—'}
+                          </span>
+                        </td>
                         <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.email}</td>
                         <td style={{ padding: '10px 12px' }}>
                           <span
@@ -256,8 +445,15 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                             {contact.status}
                           </span>
                         </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {prettifyAction(contact.next_action || 'revisar_manual')}
+                        <td style={{ padding: '10px 12px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{prettifyAction(contact.next_action || 'revisar_manual')}</span>
+                            {contact.discard_reason && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 7px', borderRadius: 6, background: 'var(--gray-bg)', color: 'var(--gray-text)', whiteSpace: 'nowrap', display: 'inline-block', fontFamily: "'Barlow Condensed', sans-serif" }}>
+                                {contact.discard_reason === 'rebote_email' ? 'Rebote' : contact.discard_reason}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.source || '—'}</td>
                         <td style={{ padding: '10px 12px' }}>
@@ -304,7 +500,9 @@ export function ContactsView({ contacts, activeFilter, onFilterChange, form, onF
                 ) : (
                   <tr>
                     <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 20px', fontSize: '0.9rem' }}>
-                      No hay contactos para este filtro.
+                      {searchQuery || sectorFilter
+                        ? 'No hay contactos que coincidan con los filtros aplicados.'
+                        : 'No hay contactos para este filtro.'}
                     </td>
                   </tr>
                 )}

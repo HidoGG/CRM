@@ -1,17 +1,19 @@
 """Agente de RRHH personalizado para búsqueda laboral de Gabriel Hidalgo.
 
-Usa Groq (llama-3.3-70b-versatile) — API gratuita, compatible con OpenAI SDK.
+Usa Google Gemini (google-generativeai) con function calling nativo.
+Modelo por defecto: gemini-2.0-flash (gratuito).
 """
 from __future__ import annotations
 
+import base64 as b64_module
+import io
 import ipaddress
-import json
 import os
 import socket
 from typing import Optional
 from urllib.parse import urlparse
 
-from openai import AsyncOpenAI
+import google.generativeai as genai
 from sqlmodel import Session, text
 
 from modules.database import engine, now_utc
@@ -89,11 +91,8 @@ def _fetch_url(url: str) -> str:
 
 # ── Cliente ───────────────────────────────────────────────────────────────────
 
-_client = AsyncOpenAI(
-    api_key=os.environ["GROQ_API_KEY"],
-    base_url="https://api.groq.com/openai/v1",
-)
-_MODEL = os.getenv("CAREER_MODEL", "llama-3.3-70b-versatile")
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+_MODEL_NAME = os.getenv("CAREER_GEMINI_MODEL", "gemini-2.0-flash")
 
 # ── System prompt con perfil completo ────────────────────────────────────────
 
@@ -181,248 +180,78 @@ Disponibilidad: inmediata
 
 ━━━ INSTRUCCIONES ━━━
 1. Respondé SIEMPRE en español rioplatense. Sé directo y concreto.
+2. Cuando recibas un aviso (imagen, PDF o texto):
+   - Extraé empresa, cargo, requisitos técnicos y blandos
+   - Evaluá el encaje de Gabriel (alto/medio/bajo) con justificación
+   - Indicá cuál CV usar de los 4 disponibles
+   - Ofrecé generar el email personalizado
+3. Cuando generes un email:
+   - Asunto: específico, menciona el puesto y un diferenciador clave
+   - Cuerpo: 3 párrafos máximos, tono profesional pero natural (no corporativo)
+   - Párrafo 1: conexión con el puesto y propuesta de valor
+   - Párrafo 2: 2-3 logros/certificaciones más relevantes para ESE puesto
+   - Párrafo 3: cierre con disponibilidad y call to action
+4. Si el usuario pregunta cómo llenar un formulario o qué responder, dá una respuesta concreta con ejemplos.
+5. Cuando el usuario confirme que va a aplicar, usá la herramienta guardar_resumen para registrar la búsqueda."""
 
-2. Cuando recibas un aviso (imagen, PDF o texto), generá TODO AUTOMÁTICAMENTE en UNA SOLA respuesta sin esperar que el usuario pida nada más. Usá exactamente este formato:
 
-───────────────────────────────
-🎯 ANÁLISIS DEL PUESTO
+# ── Tool (función Python — Gemini extrae el schema automáticamente) ───────────
 
-Empresa: [nombre]
-Cargo: [puesto]
-Encaje: Alto ✓ / Medio ~ / Bajo ✗
-Motivo: [1-2 líneas explicando por qué]
+def _make_guardar_resumen(session_id: int):
+    """Crea la función tool con session_id capturado en el closure."""
 
-📋 CV A USAR: [nombre del CV de los 4 disponibles]
-Tip: [qué sección/logro del CV enfatizar para este puesto específico]
+    def guardar_resumen(
+        empresa: str,
+        cargo: str,
+        resumen_requisitos: str,
+        cv_recomendado: str,
+        asunto_email: str,
+        cuerpo_email: str,
+    ) -> str:
+        """Guarda en la base de datos un resumen de la búsqueda analizada.
+        Usá esta herramienta cuando el usuario confirme que va a aplicar,
+        que quiere guardar la búsqueda, o cuando el email generado esté listo.
 
-🔑 KEYWORDS ATS DETECTADAS
-Incluí estas palabras exactas en el CV y el email para pasar los filtros automáticos:
-[listado separado por comas, 6-12 keywords extraídas del aviso]
-
-📨 ENVIAR A
-```
-[email de contacto/postulación si está visible en el aviso. Si no, escribir: No visible en el aviso — buscalo en el portal o aviso original]
-```
-
-───────────────────────────────
-📧 ASUNTO DEL EMAIL
-```
-[asunto aquí — específico, menciona el puesto y un diferenciador clave de Gabriel]
-```
-
-✉️ CUERPO DEL EMAIL
-```
-[cuerpo completo aquí]
-```
-───────────────────────────────
-
-Reglas para el email:
-- Asunto: menciona el cargo + 1 diferenciador clave (ej: "Control de Pozos certificado")
-- Cuerpo: usá UNA de las 3 plantillas base de abajo como estructura, adaptándola al aviso
-- Reemplazá {name} con el nombre del reclutador si está en el aviso; si no, usá "Estimado/a equipo de selección"
-- Reemplazá {company} con el nombre real de la empresa
-- Párrafo de presentación: ajustá al perfil específico que pide el aviso
-- Párrafo de logros: destacá 2-3 certificaciones/experiencias más relevantes para ESE aviso, con keywords del aviso
-- Párrafo de cierre: disponibilidad inmediata + call to action claro
-- Tono: profesional pero humano, directo, sin frases corporativas vacías
-- Firmá como: Gabriel Hidalgo | gabriel.hid.orl@gmail.com | 299-329-7977
-- Usá las keywords ATS detectadas de forma natural en el cuerpo
-
-━━━ PLANTILLAS BASE DE EMAIL ━━━
-Elegí la más afín al puesto y adaptala. NO la copies literal — personalizala para el aviso específico.
-
-PLANTILLA 1 — Petróleo y Gas / Pulling / Torre / Well Control:
----
-Buenos días, {name}
-
-Quisiera acercarle mi CV para ser considerado en las búsquedas actuales o futuras que se desarrollen en {company}.
-
-Soy Técnico Superior en Petróleo y Gas (I.S.E.T. N° 812), con experiencia en operaciones de campo en intervención de pozos, mantenimiento de equipos de pozo, control de sistemas hidráulicos y aplicación de protocolos HSE en locación. Me desempeñé bajo diagramas rotativos en entornos de alta exigencia operativa, alcanzando la categoría IV con habilitación para Enganchador.
-
-Cuento con certificaciones vigentes de Well Control (ITP y PAE), Coiled Tubing, H2S Alive y Trabajo en Altura, entre otras. Adicionalmente, me encuentro cursando la Tecnicatura Universitaria en Programación (UTN), formación que complementa mi perfil técnico y me permite adaptarme con facilidad a los sistemas y tecnologías utilizados en la industria.
-
-Resido en Neuquén, poseo carnet de conducir vigente y disponibilidad inmediata para trabajar bajo regímenes rotativos.
-
-Adjunto mi CV para su consideración y quedo a disposición para ampliar cualquier información que consideren necesaria.
-
-Muchas gracias por su tiempo.
-
-Saludos cordiales,
-Gabriel Hidalgo
-Técnico Superior en Petróleo y Gas
-299-329-7977
----
-
-PLANTILLA 2 — Mantenimiento Industrial / Hidráulica / Automatización / Instrumentación:
----
-Estimado/a {name}
-
-Me comunico para dejar mi CV a consideración para posiciones técnicas en el área de mantenimiento industrial, sistemas hidráulicos o automatización que se desarrollen en {company}.
-
-Soy Técnico Superior con experiencia en mantenimiento preventivo y correctivo de sistemas hidráulicos de alta presión, instrumentación y automatización de procesos (Fundación YPF, 336 hs.). Me desempeñé en el sector de servicios industriales petroleros (DLS Argentina) y en el área hidráulica industrial (Fluodinámica S.A.), con certificaciones HSE vigentes y capacidad de trabajo en campo bajo regímenes rotativos.
-
-Cuento con formación en programación (UTN, en curso) orientada a la digitalización y automatización de procesos industriales.
-
-Adjunto mi CV. Quedo a disposición para ampliar información o coordinar una entrevista.
-
-Saludos cordiales,
-Gabriel Orlando Hidalgo
-299-329-7977
-Plottier, Neuquén | Disponibilidad inmediata | Licencia B1
----
-
-PLANTILLA 3 — Operativo / Logístico / Seguridad / Multirol:
----
-Estimado/a {name}
-
-Les escribo para presentar mi CV a consideración para posiciones operativas, logísticas o de seguridad industrial, que se desarrollen en {company}.
-
-Soy Técnico Superior con experiencia en operaciones de campo, gestión de seguridad (HSE), coordinación logística y atención técnica a clientes. Trabajé en entornos de alta exigencia bajo procedimientos estrictos y regímenes rotativos, con múltiples certificaciones de seguridad industrial vigentes (H2S Alive, Trabajo en Altura, RCP, SSMA). Tengo perfil polivalente con facilidad para adaptarme a distintos contextos operativos.
-
-Cuento con disponibilidad inmediata y licencia de conducir B1 vigente.
-
-Adjunto mi CV. Quedo a disposición para cualquier consulta.
-
-Saludos cordiales,
-Gabriel Orlando Hidalgo
-299-329-7977
-Plottier, Neuquén | Disponibilidad inmediata | Licencia B1
----
-
-3. Después de generar el email, llamá SIEMPRE a la herramienta guardar_resumen automáticamente con los datos del análisis.
-
-4. Si el usuario hace preguntas de seguimiento (cómo llenar un formulario, qué responder, cómo mejorar algo), respondé de forma concreta con ejemplos.
-
-5. Si el usuario pega un nuevo aviso, repetí el proceso completo desde el paso 2."""
-
-# ── Definición de tools ───────────────────────────────────────────────────────
-
-_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "guardar_resumen",
-            "description": "Guarda en la base de datos un resumen de la búsqueda analizada. Llamá esta herramienta AUTOMÁTICAMENTE inmediatamente después de generar el email, sin esperar confirmación del usuario.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "empresa":            {"type": "string", "description": "Nombre de la empresa"},
-                    "cargo":              {"type": "string", "description": "Nombre del puesto"},
-                    "resumen_requisitos": {"type": "string", "description": "2-4 líneas con requisitos clave"},
-                    "cv_recomendado":     {"type": "string", "description": "Cuál de los 4 CVs usar"},
-                    "asunto_email":       {"type": "string", "description": "Asunto del email generado (vacío si no se generó)"},
-                    "cuerpo_email":       {"type": "string", "description": "Cuerpo del email generado (vacío si no se generó)"},
+        Args:
+            empresa: Nombre de la empresa que publica la búsqueda.
+            cargo: Nombre del puesto o cargo.
+            resumen_requisitos: 2-4 líneas con los requisitos clave del aviso.
+            cv_recomendado: Cuál de los 4 CVs usar para esta búsqueda.
+            asunto_email: Asunto del email generado (cadena vacía si no se generó).
+            cuerpo_email: Cuerpo del email generado (cadena vacía si no se generó).
+        """
+        title = f"{empresa} — {cargo}" if empresa and cargo else (cargo or empresa or "Búsqueda sin título")
+        with Session(engine) as db:
+            db.execute(
+                text("""
+                    UPDATE career_sessions
+                    SET title         = :title,
+                        company       = :empresa,
+                        role          = :cargo,
+                        summary       = :resumen,
+                        email_subject = :asunto,
+                        email_body    = :cuerpo,
+                        updated_at    = :now
+                    WHERE id = :session_id
+                """),
+                {
+                    "title":      title[:200],
+                    "empresa":    empresa,
+                    "cargo":      cargo,
+                    "resumen":    resumen_requisitos,
+                    "asunto":     asunto_email,
+                    "cuerpo":     cuerpo_email,
+                    "now":        now_utc(),
+                    "session_id": session_id,
                 },
-                "required": ["empresa", "cargo", "resumen_requisitos", "cv_recomendado", "asunto_email", "cuerpo_email"],
-            },
-        },
-    }
-]
+            )
+            db.commit()
+        return f"Búsqueda guardada: {title}"
 
-
-def _execute_guardar_resumen(session_id: int, args: dict) -> str:
-    empresa = args.get("empresa", "")
-    cargo   = args.get("cargo", "")
-    title   = f"{empresa} — {cargo}" if empresa and cargo else (cargo or empresa or "Búsqueda sin título")
-    with Session(engine) as db:
-        db.execute(
-            text("""
-                UPDATE career_sessions
-                SET title         = :title,
-                    company       = :empresa,
-                    role          = :cargo,
-                    summary       = :resumen,
-                    email_subject = :asunto,
-                    email_body    = :cuerpo,
-                    updated_at    = :now
-                WHERE id = :session_id
-            """),
-            {
-                "title":      title[:200],
-                "empresa":    empresa,
-                "cargo":      cargo,
-                "resumen":    args.get("resumen_requisitos", ""),
-                "asunto":     args.get("asunto_email", ""),
-                "cuerpo":     args.get("cuerpo_email", ""),
-                "now":        now_utc(),
-                "session_id": session_id,
-            },
-        )
-        db.commit()
-    return f"Búsqueda guardada: {title}"
+    return guardar_resumen
 
 
 # ── Función principal de chat ────────────────────────────────────────────────
-
-async def _describe_image(image_b64: str, image_mime: str) -> str:
-    """Usa el modelo de visión de Groq para transcribir/describir la imagen."""
-    vision_client = AsyncOpenAI(
-        api_key=os.environ["GROQ_API_KEY"],
-        base_url="https://api.groq.com/openai/v1",
-    )
-    resp = await vision_client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-                {"type": "text", "text": (
-                    "Transcribí y describí todo el texto e información visible en esta imagen. "
-                    "Si es un aviso de trabajo, extraé: empresa, cargo, requisitos, ubicación, contacto. "
-                    "Sé exhaustivo y literal."
-                )},
-            ],
-        }],
-        max_tokens=1024,
-    )
-    return resp.choices[0].message.content or "No se pudo leer la imagen."
-
-
-def _fetch_url(url: str) -> str:
-    """Descarga una URL y extrae el texto visible. Devuelve el texto o mensaje de error."""
-    import requests
-    from html.parser import HTMLParser
-
-    class _TextExtractor(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self._skip = False
-            self.parts: list[str] = []
-
-        def handle_starttag(self, tag, attrs):
-            if tag in ("script", "style", "nav", "footer", "head", "noscript"):
-                self._skip = True
-
-        def handle_endtag(self, tag):
-            if tag in ("script", "style", "nav", "footer", "head", "noscript"):
-                self._skip = False
-
-        def handle_data(self, data):
-            if not self._skip:
-                stripped = data.strip()
-                if stripped:
-                    self.parts.append(stripped)
-
-    try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            )
-        }
-        resp = requests.get(url, headers=headers, timeout=12)
-        resp.raise_for_status()
-        extractor = _TextExtractor()
-        extractor.feed(resp.text)
-        text = "\n".join(extractor.parts)
-        return text[:10000]
-    except Exception as exc:
-        return (
-            f"No se pudo acceder al enlace ({exc}). "
-            "Por favor pegá el texto del aviso directamente o subí una captura de pantalla."
-        )
-
 
 async def run_chat(
     session_id: int,
@@ -431,50 +260,65 @@ async def run_chat(
     image_b64: Optional[str] = None,
     image_mime: str = "image/jpeg",
 ) -> str:
-    """Envía el mensaje al agente Groq (Llama) y devuelve su respuesta."""
+    """
+    Envía el mensaje del usuario al agente Gemini y devuelve su respuesta.
+    Maneja el bucle de function calling internamente.
+    """
+    import PIL.Image
 
-    # Si el usuario pegó una URL, la descargamos y la incluimos como texto
-    if user_text and not image_b64 and user_text.strip().startswith(("http://", "https://")):
-        url = user_text.strip()
-        fetched = _fetch_url(url)
-        user_text = f"Analizá este aviso de trabajo (fuente: {url}):\n\n{fetched}"
+    guardar_resumen_fn = _make_guardar_resumen(session_id)
 
-    # Groq: los modelos de visión no soportan tools, así que primero describimos
-    # la imagen con el modelo de visión y luego la pasamos como texto al agente principal.
-    if image_b64:
-        descripcion = await _describe_image(image_b64, image_mime)
-        extra = f"\n\nEl usuario adjuntó una imagen. Contenido extraído:\n{descripcion}"
-        user_content = (user_text or "Analizá este aviso.") + extra
-    else:
-        user_content = user_text
+    model = genai.GenerativeModel(
+        model_name=_MODEL_NAME,
+        system_instruction=_SYSTEM_PROMPT,
+        tools=[guardar_resumen_fn],
+    )
 
-    messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    # Convertir historial previo al formato de Gemini (user/model)
+    gemini_history = []
     for m in history:
-        messages.append({"role": m["role"], "content": m["content"]})
-    messages.append({"role": "user", "content": user_content})
+        role = "model" if m["role"] == "assistant" else "user"
+        gemini_history.append({"role": role, "parts": [m["content"]]})
+
+    chat = model.start_chat(history=gemini_history)
+
+    # Construir el contenido del mensaje actual
+    if image_b64:
+        image_bytes = b64_module.b64decode(image_b64)
+        pil_image = PIL.Image.open(io.BytesIO(image_bytes))
+        parts = [pil_image, user_text or "Analizá esta imagen."]
+    else:
+        parts = [user_text]
+
+    # Bucle de agentic loop: continuar mientras Gemini quiera llamar funciones
+    response = chat.send_message(parts)
 
     while True:
-        response = await _client.chat.completions.create(
-            model=_MODEL,
-            messages=messages,
-            tools=_TOOLS,
-            tool_choice="auto",
-        )
+        # Revisar si hay function calls
+        fn_calls = [p.function_call for p in response.parts if p.function_call.name]
 
-        msg = response.choices[0].message
+        if not fn_calls:
+            # Sin function calls → extraer texto y devolver
+            text_parts = [p.text for p in response.parts if hasattr(p, "text") and p.text]
+            return "\n".join(text_parts).strip() or "Sin respuesta del agente."
 
-        if not msg.tool_calls:
-            return msg.content or "Sin respuesta del agente."
-
-        messages.append(msg)
-        for tc in msg.tool_calls:
-            args = json.loads(tc.function.arguments)
-            if tc.function.name == "guardar_resumen":
-                result = _execute_guardar_resumen(session_id, args)
+        # Ejecutar todas las function calls
+        fn_responses = []
+        for fn_call in fn_calls:
+            args = dict(fn_call.args)
+            if fn_call.name == "guardar_resumen":
+                result = guardar_resumen_fn(**args)
             else:
-                result = f"Tool '{tc.function.name}' no reconocida."
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": result,
-            })
+                result = f"Función '{fn_call.name}' no reconocida."
+
+            fn_responses.append(
+                genai.protos.Part(
+                    function_response=genai.protos.FunctionResponse(
+                        name=fn_call.name,
+                        response={"result": result},
+                    )
+                )
+            )
+
+        # Enviar resultados y continuar el loop
+        response = chat.send_message(fn_responses)

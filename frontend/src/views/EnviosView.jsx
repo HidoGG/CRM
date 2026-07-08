@@ -9,7 +9,7 @@ const TABS = [
   { id: 'cola',         label: 'Cola de envíos'   },
   { id: 'plantillas',   label: 'Plantillas'        },
   { id: 'cronogramas',  label: 'Cronogramas'       },
-  { id: 'estadisticas', label: 'Stats de respuesta'},
+  { id: 'estadisticas', label: 'Estadísticas'},
 ];
 
 export function EnviosView({ contacts, emailJobs, onRefresh }) {
@@ -54,7 +54,7 @@ export function EnviosView({ contacts, emailJobs, onRefresh }) {
         </div>
         {gmailStatus.authorized && (
           <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Scheduler cada 10 min · Lun–Sáb
+            Automático cada 10 min · Lun–Sáb
           </span>
         )}
       </div>
@@ -116,7 +116,15 @@ export function EnviosView({ contacts, emailJobs, onRefresh }) {
         <SchedulesView schedules={schedules} onRefresh={onRefresh} />
       )}
       {activeTab === 'estadisticas' && (
-        <TemplateStatsPanel stats={templateStats} onSync={() => apiFetch(`${API_BASE}/engagement/sync`, { method: 'POST' }).then(() => onRefresh('jobs'))} />
+        <TemplateStatsPanel
+          stats={templateStats}
+          onSync={async () => {
+            const res = await apiFetch(`${API_BASE}/engagement/sync`, { method: 'POST' });
+            const data = await res.json();
+            await Promise.all([onRefresh('jobs'), onRefresh('contacts')]);
+            return data;
+          }}
+        />
       )}
     </div>
   );
@@ -130,10 +138,23 @@ function TemplateStatsPanel({ stats, onSync }) {
     setSyncing(true);
     setSyncMsg('');
     try {
-      await onSync();
-      setSyncMsg('Sincronización completada.');
+      const result = await onSync();
+      if (!result?.ok) {
+        setSyncMsg(`Sin acceso: ${result?.reason || 'Gmail no autorizado.'}`);
+        return;
+      }
+      const replies = result.replies_found ?? 0;
+      const bounces = result.bounces_found ?? 0;
+      if (replies === 0 && bounces === 0) {
+        setSyncMsg('Todo al día — no hay novedades desde la última sincronización.');
+      } else {
+        const parts = [];
+        if (replies > 0) parts.push(`${replies} respuesta${replies !== 1 ? 's' : ''} nueva${replies !== 1 ? 's' : ''}`);
+        if (bounces > 0) parts.push(`${bounces} rebote${bounces !== 1 ? 's' : ''} detectado${bounces !== 1 ? 's' : ''}`);
+        setSyncMsg(`✓ ${parts.join(' · ')}`);
+      }
     } catch {
-      setSyncMsg('Error al sincronizar.');
+      setSyncMsg('Error al sincronizar — revisá la conexión.');
     } finally {
       setSyncing(false);
     }
@@ -162,7 +183,7 @@ function TemplateStatsPanel({ stats, onSync }) {
             disabled={syncing}
             aria-label="Sincronizar respuestas y rebotes desde Gmail"
           >
-            {syncing ? 'Sincronizando…' : '↺ Sync Gmail'}
+            {syncing ? 'Sincronizando…' : '↺ Sincronizar Gmail'}
           </button>
           {syncMsg && <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{syncMsg}</span>}
         </div>
@@ -170,7 +191,7 @@ function TemplateStatsPanel({ stats, onSync }) {
 
       {rows.length === 0 ? (
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Sin datos aún — asegurate de haber enviado emails con plantillas y de tener Gmail readonly autorizado.
+          Sin datos aún — asegurate de haber enviado emails con plantillas y de tener Gmail autorizado con permiso de lectura.
         </p>
       ) : (
         <div style={{ overflowX: 'auto', borderRadius: 16, border: '1px solid var(--border-faint)' }}>

@@ -16,7 +16,12 @@ export const queryClient = new QueryClient({
 });
 
 export function useContacts() {
-  return useQuery({ queryKey: ['contacts'], queryFn: fetchers.contacts, placeholderData: [] });
+  return useQuery({
+    queryKey: ['contacts'],
+    queryFn: fetchers.contacts,
+    placeholderData: [],
+    refetchOnWindowFocus: true,  // refresca al volver a la pestaña si los datos están stale
+  });
 }
 export function useSummary() {
   return useQuery({
@@ -26,6 +31,7 @@ export function useSummary() {
       total_contacts: 0, total_companies: 0, priority_contacts: 0,
       review_contacts: 0, imports_count: 0, draft_imports: 0, confirmed_imports: 0,
     },
+    staleTime: 3 * 60_000,
   });
 }
 export function useReporting() {
@@ -33,10 +39,11 @@ export function useReporting() {
     queryKey: ['reporting'],
     queryFn: fetchers.reporting,
     placeholderData: createEmptyReporting(),
+    staleTime: 5 * 60_000,
   });
 }
 export function useImports() {
-  return useQuery({ queryKey: ['imports'], queryFn: fetchers.imports, placeholderData: [] });
+  return useQuery({ queryKey: ['imports'], queryFn: fetchers.imports, placeholderData: [], staleTime: 10 * 60_000 });
 }
 export function useCapabilities() {
   return useQuery({
@@ -90,6 +97,24 @@ export function useTemplateStats() {
   });
 }
 
+export function useSectorDefaults() {
+  return useQuery({
+    queryKey: ['sectorDefaults'],
+    queryFn: fetchers.sectorDefaults,
+    placeholderData: [],
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useCareerSessions() {
+  return useQuery({
+    queryKey: ['careerSessions'],
+    queryFn: () => import('./api').then(m => m.fetchCareerSessions()),
+    placeholderData: [],
+    staleTime: 30_000,
+  });
+}
+
 // Mapa scope → query keys (compatible con el viejo refreshData(scope))
 const SCOPE_KEYS = {
   jobs: [['emailJobs'], ['gmailStatus']],
@@ -97,6 +122,7 @@ const SCOPE_KEYS = {
   templates: [['templates']],
   schedules: [['schedules']],
   contacts: [['contacts'], ['summary'], ['reporting'], ['templateStats']],
+  sectorDefaults: [['sectorDefaults']],
 };
 
 export function useRefresh() {

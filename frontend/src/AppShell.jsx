@@ -3,17 +3,18 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { HoyView } from './views/HoyView';
-import { EstadisticasView } from './views/EstadisticasView';
 import { OperacionesView } from './views/OperacionesView';
 import { ContactsView } from './views/ContactsView';
 import { ImportsView } from './views/ImportsView';
 import { EnviosView } from './views/EnviosView';
+import { CareerView } from './views/CareerView';
 import { LoginView } from './views/LoginView';
 import { API_BASE, apiFetch, setAccessToken } from './lib/api';
 import { authEnabled, supabase } from './lib/supabaseClient';
 import {
   useContacts,
   useEmailJobs,
+  useGmailStatus,
   useImports,
   useRefresh,
   useReporting,
@@ -44,8 +45,7 @@ const VIEW_ROUTES = {
   envios: '/envios',
   plantillas: '/envios',
   cronogramas: '/envios',
-  estadisticas: '/estadisticas',
-  tendencias: '/estadisticas',
+  asistente: '/asistente',
 };
 
 const PATH_TITLES = {
@@ -54,7 +54,7 @@ const PATH_TITLES = {
   '/contactos': 'Contactos',
   '/importaciones': 'Importaciones',
   '/envios': 'Envíos',
-  '/estadisticas': 'Estadísticas',
+  '/asistente': 'Asistente IA',
 };
 
 function pathToViewId(pathname) {
@@ -62,8 +62,20 @@ function pathToViewId(pathname) {
   if (pathname.startsWith('/contactos')) return 'contactos';
   if (pathname.startsWith('/importaciones')) return 'importaciones';
   if (pathname.startsWith('/envios')) return 'envios';
-  if (pathname.startsWith('/estadisticas')) return 'estadisticas';
+  if (pathname.startsWith('/asistente')) return 'asistente';
   return 'dashboard';
+}
+
+function useTheme() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('crm-theme') || 'dark');
+  useEffect(() => {
+    const html = document.documentElement;
+    html.classList.toggle('dark', theme === 'dark');
+    html.classList.toggle('light', theme === 'light');
+    localStorage.setItem('crm-theme', theme);
+  }, [theme]);
+  const toggle = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+  return { theme, toggle };
 }
 
 function AppShell() {
@@ -96,17 +108,39 @@ function AppShell() {
   if (authEnabled && !session) {
     return <LoginView />;
   }
-  return <AuthenticatedApp />;
+  const { theme, toggle: toggleTheme } = useTheme();
+  return <AuthenticatedApp theme={theme} toggleTheme={toggleTheme} />;
 }
 
-function AuthenticatedApp() {
+const HamburgerIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+    <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+  </svg>
+);
+
+function AuthenticatedApp({ theme, toggleTheme }) {
   const navigate = useNavigate();
   const location = useLocation();
   const refresh = useRefresh();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // ── Alerta de re-autorización de Gmail ──
+  const gmailStatus = useGmailStatus().data;
+  const [gmailReauthDismissed, setGmailReauthDismissed] = useState(
+    () => sessionStorage.getItem('gmail-reauth-dismissed') === '1'
+  );
+  const showGmailReauth = !gmailReauthDismissed && gmailStatus?.needs_reauth === true;
+  function dismissGmailReauth() {
+    sessionStorage.setItem('gmail-reauth-dismissed', '1');
+    setGmailReauthDismissed(true);
+  }
 
   const activeView = pathToViewId(location.pathname);
   const setActiveView = (viewId) => navigate(VIEW_ROUTES[viewId] || '/');
   const pageTitle = PATH_TITLES[location.pathname] || 'Hoy';
+
+  // Cerrar sidebar al cambiar de ruta en mobile
+  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
 
   // ── Datos críticos (cargados al inicio) ──
   const contactsQuery = useContacts();
@@ -139,7 +173,6 @@ function AuthenticatedApp() {
   const [activeFilter, setActiveFilter] = useState('todos');
   const [activeActionFilter, setActiveActionFilter] = useState('enviar');
   const [activeTimingFilter, setActiveTimingFilter] = useState('todos');
-  const [activePipelineActionFilter, setActivePipelineActionFilter] = useState('todos');
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
 
@@ -189,6 +222,14 @@ function AuthenticatedApp() {
       }, {}),
     [actionScopedContacts],
   );
+
+  const statusDistribution = useMemo(() => {
+    const ORDER = ['prioridad', 'mantener', 'revisar', 'seguimiento', 'portal', 'sacar'];
+    return ORDER.map(status => ({
+      status,
+      count: contacts.filter(c => String(c.status || '').toLowerCase() === status).length,
+    }));
+  }, [contacts]);
 
   const actionableContacts = useMemo(
     () =>
@@ -467,7 +508,17 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="grid grid-cols-[280px_minmax(0,1fr)] min-h-screen">
+    <div className="min-h-screen md:grid md:grid-cols-[167px_minmax(0,1fr)]">
+
+      {/* ── Overlay mobile: cierra el drawer al tocar fuera ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       {importing && (
         <div
@@ -501,14 +552,107 @@ function AuthenticatedApp() {
         </div>
       )}
 
+      {/* ── Modal: Gmail perdió la sesión (ej: rotación de CRM_API_KEY) ── */}
+      {showGmailReauth && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.65)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Gmail necesita re-autorización"
+        >
+          <div
+            className="rounded-2xl px-8 py-7 flex flex-col gap-5 max-w-sm w-full mx-4"
+            style={{
+              background: 'var(--surface-raised)',
+              border: '1px solid var(--amber-text)',
+              boxShadow: 'var(--shadow-md)',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber-text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <div>
+                <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
+                  Gmail necesita re-autorización
+                </p>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                  Tu sesión de Gmail venció — probablemente por un cambio de credenciales del servidor. Los envíos automáticos están pausados hasta que vuelvas a conectar tu cuenta.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={dismissGmailReauth}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, fontSize: '0.85rem', fontWeight: 500,
+                  background: 'transparent', border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)', cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveView('envios'); dismissGmailReauth(); }}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, fontSize: '0.85rem', fontWeight: 700,
+                  background: 'var(--amber-bg)', border: '1px solid var(--amber-text)',
+                  color: 'var(--amber-text)', cursor: 'pointer',
+                }}
+              >
+                Ir a Envíos y re-autorizar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Sidebar
         activeView={activeView}
         setActiveView={setActiveView}
         statusMessage={statusMessage}
         overdueCount={reporting.queue.overdue}
+        theme={theme}
+        toggleTheme={toggleTheme}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="p-6 flex flex-col gap-6">
+      <main className="flex flex-col gap-4 p-4 pt-[60px] md:p-6 md:gap-6">
+
+        {/* ── Header mobile: hamburguesa + título de página ── */}
+        <header
+          className="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-4"
+          style={{
+            height: 56,
+            background: 'var(--surface)',
+            borderBottom: '1px solid var(--border-faint)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Abrir menú"
+            aria-expanded={sidebarOpen}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 40, height: 40, borderRadius: 8, flexShrink: 0,
+              background: 'transparent', border: 'none',
+              color: 'var(--text-primary)', cursor: 'pointer',
+            }}
+          >
+            <HamburgerIcon />
+          </button>
+          <div className="brand-mark" aria-hidden="true" style={{ flexShrink: 0 }}>C</div>
+          <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {pageTitle}
+          </span>
+        </header>
+
         <Topbar
           pageTitle={pageTitle}
           refreshData={() => refresh()}
@@ -529,6 +673,7 @@ function AuthenticatedApp() {
                 imports={imports}
                 emailJobs={emailJobs}
                 onOpenInWorktray={openInWorktray}
+                onRefresh={refresh}
               />
             }
           />
@@ -556,22 +701,7 @@ function AuthenticatedApp() {
                 selectedContact={actionableContacts.find((contact) => contact.id === selectedWorktrayId) || null}
                 historyItems={selectedHistory}
                 loadingHistory={loadingHistory}
-                contacts={contacts}
-                activePipelineActionFilter={activePipelineActionFilter}
-                onPipelineActionFilterChange={setActivePipelineActionFilter}
-                onOpenInWorktray={openInWorktray}
-                onUpdateContact={updateContact}
-              />
-            }
-          />
-          <Route
-            path="/estadisticas"
-            element={
-              <EstadisticasView
-                reporting={reporting}
-                imports={imports}
-                emailJobs={emailJobs}
-                contacts={contacts}
+                statusDistribution={statusDistribution}
               />
             }
           />
@@ -580,6 +710,7 @@ function AuthenticatedApp() {
             element={
               <ContactsView
                 contacts={filteredContacts}
+                allContacts={contacts}
                 activeFilter={activeFilter}
                 onFilterChange={setActiveFilter}
                 form={form}
@@ -621,6 +752,7 @@ function AuthenticatedApp() {
               />
             }
           />
+          <Route path="/asistente" element={<CareerView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

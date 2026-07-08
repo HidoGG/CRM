@@ -10,7 +10,7 @@ export function Topbar({
 }) {
   return (
     <header className="topbar" role="banner">
-      <div>
+      <div className="hidden md:block">
         <p className="eyebrow">CRM laboral</p>
         <h1 className="m-0 font-bold tracking-tight text-[var(--text-primary)]">
           {pageTitle}
@@ -30,7 +30,7 @@ export function Topbar({
         <button
           type="button"
           onClick={createMockImport}
-          className="ghost-button"
+          className="ghost-button topbar-btn-secondary"
           aria-label="Registrar importación manual"
         >
           Registrar importación

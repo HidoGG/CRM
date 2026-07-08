@@ -1,18 +1,16 @@
-import { useMemo, useState } from 'react';
-import { API_BASE } from '../lib/api';
+import { useMemo } from 'react';
 import {
-  buildMultiSparklineSeries,
-  buildSparklinePoints,
   formatDelta,
   getDeltaClassName,
   getRelativeBarWidth,
   prettifyAction,
 } from '../lib/utils';
+import { getSectorLabel } from '../components/SectorBadge';
 
 export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
-  const [activeRange, setActiveRange] = useState(7);
-  const filteredSnapshots = reporting.recent_snapshots.slice(0, activeRange);
   const analytics = useMemo(() => buildAnalytics(emailJobs, contacts), [emailJobs, contacts]);
+  const sectorPerformance = useMemo(() => buildSectorPerformance(contacts), [contacts]);
+  const pipelineAge = useMemo(() => buildPipelineAge(contacts, emailJobs), [contacts, emailJobs]);
 
   return (
     <section className="grid gap-5">
@@ -25,7 +23,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
             Analítica a mediano plazo: ritmo, calidad y trazabilidad del pipeline.
           </h2>
           <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.65, fontSize: '0.9rem' }}>
-            Snapshots comparativos, evolución de stock y métricas de efectividad de envíos.
+            Distribución por rubro, antigüedad de la cola y métricas de efectividad de envíos.
             El trabajo diario vive en "Hoy" — acá se lee el resultado acumulado.
           </p>
         </article>
@@ -34,7 +32,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
           <MetricCard
             label="Tasa de éxito de envíos"
             value={analytics.successRate !== null ? `${analytics.successRate}%` : '—'}
-            sub={analytics.totalResolved > 0 ? `${analytics.sentJobs} enviados · ${analytics.failedJobs} fallidos` : 'Sin jobs resueltos aún'}
+            sub={analytics.totalResolved > 0 ? `${analytics.sentJobs} enviados · ${analytics.failedJobs} fallidos` : 'Sin envíos resueltos aún'}
             color={analytics.successRate === null ? 'neutral' : analytics.successRate >= 80 ? 'positive' : analytics.successRate >= 50 ? 'warning' : 'negative'}
           />
           <MetricCard
@@ -101,123 +99,154 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
         </div>
       </section>
 
-      {/* ── Evolución de snapshots ── */}
+      {/* ── Gráfico 1: Rendimiento por rubro ── */}
       <section className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
-          <div>
-            <span className="eyebrow">Evolución de stock</span>
-            <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Stock en el tiempo</h3>
-            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-              Contactos, cola activa, vencidos y sin fecha en la ventana elegida.
-            </p>
-          </div>
-          <span
-            style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}
-          >
-            {filteredSnapshots.length} cortes
-          </span>
+        <div style={{ marginBottom: 20 }}>
+          <span className="eyebrow">Análisis por rubro</span>
+          <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            ¿En qué sectores avanzás más?
+          </h3>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+            Estado de todos los contactos agrupados por rubro. Los sectores con más "Seguimiento" o "Portal" son los que mejor responden.
+          </p>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-          {[7, 14, 30].map(range => (
-            <button
-              key={range}
-              type="button"
-              onClick={() => setActiveRange(range)}
-              aria-pressed={activeRange === range}
-              style={{
-                borderRadius: 999,
-                padding: '6px 18px',
-                fontWeight: 600,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                border: activeRange === range ? '1px solid var(--accent)' : '1px solid var(--border)',
-                background: activeRange === range ? 'var(--accent)' : 'transparent',
-                color: activeRange === range ? 'var(--accent-text)' : 'var(--text-secondary)',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {range} días
-            </button>
+        {/* Leyenda */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 18 }}>
+          {SECTOR_STATES.map(({ key, label, color }) => (
+            <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
+              {label}
+            </span>
           ))}
-          <button
-            type="button"
-            className="ghost-button"
-            style={{ marginLeft: 'auto', fontSize: '0.88rem' }}
-            onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=overview`, '_blank', 'noopener,noreferrer')}
-            aria-label="Exportar resumen como CSV"
-          >
-            ↓ Exportar resumen CSV
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
-            style={{ fontSize: '0.88rem' }}
-            onClick={() => window.open(`${API_BASE}/reporting/export.csv?type=snapshots&limit=${activeRange}`, '_blank', 'noopener,noreferrer')}
-            aria-label="Exportar snapshots como CSV"
-          >
-            ↓ Exportar snapshots CSV
-          </button>
         </div>
 
-        <article style={{ background: 'var(--surface-subtle)', borderRadius: 22, padding: 18, display: 'grid', gap: 14, marginBottom: 16, border: '1px solid var(--border-faint)' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', height: 76 }} aria-hidden="true">
-            {buildMultiSparklineSeries(filteredSnapshots) ? (
-              <svg viewBox="0 0 100 64" preserveAspectRatio="none" style={{ width: '100%', height: 76 }}>
-                {Object.entries(buildMultiSparklineSeries(filteredSnapshots)).map(([key, points]) => {
-                  const strokeColor =
-                    key === 'active'      ? 'var(--green-text)'
-                    : key === 'overdue'   ? 'var(--red-text)'
-                    : key === 'withoutDate' ? 'var(--amber-text)'
-                    : 'var(--accent)';
-                  return (
-                    <polyline
-                      key={key}
-                      points={points}
-                      fill="none"
-                      style={{ stroke: strokeColor }}
-                      strokeWidth="2.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  );
-                })}
-              </svg>
-            ) : (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Sin serie suficiente para graficar.</div>
-            )}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-            {[
-              { key: 'contacts',    color: 'var(--accent)',      label: 'Contactos'   },
-              { key: 'active',      color: 'var(--green-text)',  label: 'Cola activa' },
-              { key: 'overdue',     color: 'var(--red-text)',    label: 'Vencidos'    },
-              { key: 'withoutDate', color: 'var(--amber-text)',  label: 'Sin fecha'   },
-            ].map(({ key, color, label }) => (
-              <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                {label}
-              </span>
+        {sectorPerformance.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Sin contactos cargados aún.</p>
+        ) : (
+          <div style={{ display: 'grid', gap: 18 }}>
+            {sectorPerformance.map(sector => (
+              <div key={sector.key}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, gap: 12 }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                    {sector.label}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', flexShrink: 0 }}>
+                    {sector.total} contacto{sector.total !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Barra apilada */}
+                <div style={{ display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-subtle)' }}>
+                  {SECTOR_STATES.map(({ key: stateKey, color }) => {
+                    const count = sector[stateKey] ?? 0;
+                    const pct = sector.total > 0 ? (count / sector.total) * 100 : 0;
+                    return pct > 0 ? (
+                      <div
+                        key={stateKey}
+                        style={{ width: `${pct}%`, background: color, minWidth: 3 }}
+                        title={`${stateKey}: ${count} (${Math.round(pct)}%)`}
+                      />
+                    ) : null;
+                  })}
+                </div>
+
+                {/* Valores debajo de la barra */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', marginTop: 6 }}>
+                  {SECTOR_STATES.filter(s => (sector[s.key] ?? 0) > 0).map(({ key: stateKey, label: stateLabel, color }) => (
+                    <span key={stateKey} style={{ fontSize: '0.74rem', color, fontWeight: 600 }}>
+                      {sector[stateKey]} {stateLabel.toLowerCase()}
+                    </span>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
-        </article>
+        )}
+      </section>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-          {[
-            { label: 'Contactos',   valueKey: 'total_contacts',     deltaKey: 'total_contacts',     snapshotKey: 'total_contacts'     },
-            { label: 'Cola activa', valueKey: 'active_total',       deltaKey: 'active_total',       snapshotKey: 'active_total'       },
-            { label: 'Vencidos',    valueKey: 'overdue_count',      deltaKey: 'overdue_count',      snapshotKey: 'overdue_count'      },
-            { label: 'Sin fecha',   valueKey: 'without_date_count', deltaKey: 'without_date_count', snapshotKey: 'without_date_count' },
-          ].map(({ label, valueKey, deltaKey, snapshotKey }) => (
-            <SparklineCard
-              key={label}
-              label={label}
-              value={reporting.stock_comparison.current[valueKey]}
-              delta={reporting.stock_comparison.deltas[deltaKey]}
-              data={filteredSnapshots.map(s => s[snapshotKey]).reverse()}
-            />
-          ))}
+      {/* ── Gráfico 2: Antigüedad de la cola ── */}
+      <section className="card">
+        <div style={{ marginBottom: 20 }}>
+          <span className="eyebrow">Estado de la cola</span>
+          <h3 style={{ margin: '4px 0 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            ¿Cuánto tiempo llevan esperando tus contactos?
+          </h3>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+            Contactos en estado "Enviar" agrupados por tiempo desde su última actualización.
+            Los que llevan más de 2 semanas son oportunidades que se están enfriando.
+          </p>
         </div>
+
+        {pipelineAge.total === 0 ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay contactos pendientes de envío.</p>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 24 }}>
+              <strong style={{ fontSize: '2rem', color: 'var(--text-primary)', lineHeight: 1 }}>
+                {pipelineAge.total}
+              </strong>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+                contactos pendientes de envío en total
+              </span>
+            </div>
+
+            {/* Barras verticales */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 8 }}>
+              {pipelineAge.buckets.map(bucket => {
+                const maxCount = Math.max(...pipelineAge.buckets.map(b => b.total), 1);
+                const heightPct = (bucket.total / maxCount) * 100;
+                return (
+                  <div key={bucket.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <strong style={{ fontSize: '1.6rem', color: bucket.total > 0 ? bucket.color : 'var(--text-muted)', lineHeight: 1 }}>
+                      {bucket.total}
+                    </strong>
+                    <div style={{ width: '100%', height: 90, display: 'flex', alignItems: 'flex-end' }}>
+                      <div style={{
+                        width: '100%',
+                        height: bucket.total > 0 ? `${Math.max(heightPct, 5)}%` : '3px',
+                        background: bucket.total > 0 ? bucket.color : 'var(--border-faint)',
+                        borderRadius: '6px 6px 0 0',
+                        opacity: 0.82,
+                      }} />
+                    </div>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textAlign: 'center' }}>
+                      {bucket.label}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.3 }}>
+                      {bucket.sublabel}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ borderTop: '2px solid var(--border-faint)', marginBottom: 16 }} />
+
+            {/* Alerta si hay muchos vencidos */}
+            {pipelineAge.buckets[3].total > 0 && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 14px', borderRadius: 10, background: 'var(--red-bg)', border: '1px solid var(--red-text)', color: 'var(--red-text)', fontSize: '0.85rem', marginBottom: 14 }}>
+                <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠</span>
+                <span>
+                  <strong>{pipelineAge.buckets[3].total} contacto{pipelineAge.buckets[3].total !== 1 ? 's' : ''}</strong> llevan más de 2 semanas sin avanzar.
+                  Entrá a Operaciones → filtrá por "Vencido" para revisarlos y definir si descartar o reactivar.
+                </span>
+              </div>
+            )}
+
+            {/* Resumen enviados vs pendientes */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--text-secondary)', background: 'var(--surface-subtle)', borderRadius: 999, padding: '5px 12px', border: '1px solid var(--border-faint)' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+                {pipelineAge.totalSent} ya recibieron un email — esperando que avancen
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--text-secondary)', background: 'var(--surface-subtle)', borderRadius: 999, padding: '5px 12px', border: '1px solid var(--border-faint)' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-muted)', flexShrink: 0 }} />
+                {pipelineAge.totalUnsent} todavía no recibieron email
+              </span>
+            </div>
+          </>
+        )}
       </section>
 
       {/* ── Historial de importaciones ── */}
@@ -230,9 +259,7 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
               Trazabilidad completa de archivos procesados.
             </p>
           </div>
-          <span
-            style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}
-          >
+          <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 14px', background: 'var(--surface-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 700, border: '1px solid var(--border-faint)', flexShrink: 0 }}>
             {imports.length} registros
           </span>
         </div>
@@ -288,6 +315,16 @@ export function EstadisticasView({ reporting, imports, emailJobs, contacts }) {
   );
 }
 
+// ── Constantes ─────────────────────────────────────────────────────────────────
+
+const SECTOR_STATES = [
+  { key: 'seguir',    label: 'Seguimiento', color: 'var(--amber-text)'  },
+  { key: 'portal',    label: 'Portal',      color: 'var(--purple-text)' },
+  { key: 'enviar',    label: 'Por enviar',  color: 'var(--accent)'      },
+  { key: 'descartar', label: 'Descartados', color: 'var(--text-muted)'  },
+  { key: 'rebotado',  label: 'Rebotaron',   color: 'var(--red-text)'    },
+];
+
 // ── Sub-componentes ────────────────────────────────────────────────────────────
 
 function MetricCard({ label, value, sub, color = 'neutral' }) {
@@ -318,42 +355,10 @@ function DeltaBadge({ value }) {
     cls === 'is-positive' ? { background: 'var(--green-bg)', color: 'var(--green-text)' }
     : cls === 'is-negative' ? { background: 'var(--red-bg)', color: 'var(--red-text)' }
     : { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
-
   return (
     <span style={{ ...style, borderRadius: 999, padding: '4px 10px', fontSize: '0.83rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
       {formatDelta(value)}
     </span>
-  );
-}
-
-function SparklineCard({ label, value, delta, data }) {
-  const points = buildSparklinePoints(data);
-  return (
-    <article style={{ background: 'var(--surface-subtle)', borderRadius: 22, padding: 18, display: 'grid', gap: 14, border: '1px solid var(--border-faint)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-        <div>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', display: 'block' }}>{label}</span>
-          <strong style={{ display: 'block', color: 'var(--text-primary)', fontSize: '1.45rem', marginTop: 4, lineHeight: 1 }}>{value}</strong>
-        </div>
-        <DeltaBadge value={delta} />
-      </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', height: 44 }} aria-hidden="true">
-        {points ? (
-          <svg viewBox="0 0 100 32" preserveAspectRatio="none" style={{ width: '100%', height: 44 }}>
-            <polyline
-              points={points}
-              fill="none"
-              style={{ stroke: 'var(--accent)' }}
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        ) : (
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sin serie suficiente</div>
-        )}
-      </div>
-    </article>
   );
 }
 
@@ -363,11 +368,17 @@ const STATUS_CSS = {
   error:     { background: 'var(--red-bg)',   color: 'var(--red-text)'   },
 };
 
+const STATUS_LABEL_ES = {
+  confirmed: 'Confirmado',
+  draft:     'Borrador',
+  error:     'Error',
+};
+
 function StatusBadge({ status }) {
   const style = STATUS_CSS[status] || { background: 'var(--gray-bg)', color: 'var(--gray-text)' };
   return (
     <span style={{ ...style, display: 'inline-flex', borderRadius: 999, padding: '3px 10px', fontSize: '0.8rem', fontWeight: 700 }}>
-      {status}
+      {STATUS_LABEL_ES[status] ?? status}
     </span>
   );
 }
@@ -394,4 +405,58 @@ function buildAnalytics(emailJobs, contacts) {
   }
 
   return { sentJobs, failedJobs, totalResolved, successRate, avgDaysToFirstSend, sampledContacts: actioned.length };
+}
+
+function buildSectorPerformance(contacts) {
+  const byIndustry = {};
+  contacts.forEach(c => {
+    const key = c.industry || 'generalista';
+    if (!byIndustry[key]) {
+      byIndustry[key] = { enviar: 0, seguir: 0, portal: 0, descartar: 0, rebotado: 0, total: 0 };
+    }
+    byIndustry[key].total++;
+    if (c.bounced_at) {
+      byIndustry[key].rebotado++;
+    } else {
+      const action = c.next_action || 'enviar';
+      const slot = ['enviar', 'seguir', 'portal', 'descartar'].includes(action) ? action : 'enviar';
+      byIndustry[key][slot]++;
+    }
+  });
+
+  return Object.entries(byIndustry)
+    .map(([key, counts]) => ({ key, label: getSectorLabel(key), ...counts }))
+    .sort((a, b) => b.total - a.total);
+}
+
+function buildPipelineAge(contacts, emailJobs) {
+  const sentContactIds = new Set(
+    emailJobs.filter(j => j.status === 'sent' || j.status === 'completed').map(j => j.contact_id),
+  );
+
+  const today = Date.now();
+  const buckets = [
+    { label: '1-3 días',  sublabel: 'Recientes',             min: 0,  max: 3,        color: 'var(--green-text)',  total: 0, sent: 0, unsent: 0 },
+    { label: '4-7 días',  sublabel: 'Normal',                min: 3,  max: 7,        color: 'var(--amber-text)', total: 0, sent: 0, unsent: 0 },
+    { label: '8-14 días', sublabel: 'Empezando a envejecer', min: 7,  max: 14,       color: 'var(--accent)',     total: 0, sent: 0, unsent: 0 },
+    { label: '+15 días',  sublabel: '¡Revisalos!',           min: 14, max: Infinity,  color: 'var(--red-text)',   total: 0, sent: 0, unsent: 0 },
+  ];
+
+  const enviarContacts = contacts.filter(c => (c.next_action || '') === 'enviar');
+
+  enviarContacts.forEach(c => {
+    const ref = new Date(c.updated_at || c.created_at);
+    const days = Math.floor((today - ref.getTime()) / 86_400_000);
+    const bucket = buckets.find(b => days >= b.min && days < b.max);
+    if (bucket) {
+      bucket.total++;
+      if (sentContactIds.has(c.id)) bucket.sent++;
+      else bucket.unsent++;
+    }
+  });
+
+  const totalSent   = buckets.reduce((s, b) => s + b.sent,   0);
+  const totalUnsent = buckets.reduce((s, b) => s + b.unsent, 0);
+
+  return { buckets, total: enviarContacts.length, totalSent, totalUnsent };
 }

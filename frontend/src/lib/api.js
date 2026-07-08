@@ -61,4 +61,95 @@ export const fetchers = {
   emailJobs: () => getJson('/email-jobs'),
   gmailStatus: () => getJson('/gmail/status'),
   templateStats: () => getJson('/engagement/template-stats'),
+  sectorDefaults: () => getJson('/sector-defaults'),
 };
+
+// ── Career / Agente de RRHH ──────────────────────────────────────────────────
+
+export async function fetchCareerSessions() {
+  return getJson('/career/sessions');
+}
+
+export async function createCareerSession() {
+  const res = await apiFetch(`${API_BASE}/career/sessions`, { method: 'POST' });
+  if (!res.ok) throw new Error('No se pudo crear la sesión');
+  return res.json();
+}
+
+export async function deleteCareerSession(sessionId) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('No se pudo eliminar la sesión');
+  return res.json();
+}
+
+export async function fetchCareerSession(sessionId) {
+  return getJson(`/career/sessions/${sessionId}`);
+}
+
+export async function sendCareerMessage(sessionId, message, imageFile = null) {
+  let body, headers;
+  if (imageFile) {
+    const fd = new FormData();
+    fd.append('message', message);
+    fd.append('image', imageFile);
+    body = fd;
+  } else {
+    headers = { 'Content-Type': 'application/json' };
+    body = JSON.stringify({ message });
+  }
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/chat`, {
+    method: 'POST',
+    headers,
+    body,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Error del agente');
+  }
+  return res.json();
+}
+
+export async function sendCareerEmail(sessionId, cvId = null, to = null) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cv_id: cvId, to }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'No se pudo enviar el email');
+  }
+  return res.json();
+}
+
+export async function generateCareerCv(sessionId) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/cv`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'No se pudo generar el CV');
+  }
+  return res.json();
+}
+
+export async function fetchCareerCvHtml(sessionId) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/cv`);
+  if (!res.ok) return { html: null };
+  return res.json();
+}
+
+export function getCareerCvPdfUrl(sessionId) {
+  return `${API_BASE}/career/sessions/${sessionId}/cv.pdf`;
+}
+
+export async function patchSectorDefault(sector, templateId, cvFileId) {
+  const res = await apiFetch(`${API_BASE}/sector-defaults/${sector}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template_id: templateId ?? null, cv_file_id: cvFileId ?? null }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Error ${res.status}`);
+  }
+  return res.json();
+}

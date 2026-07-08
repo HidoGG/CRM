@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { capitalize, formatDate, prettifyAction } from '../lib/utils';
-import { useCapabilities, useCvFiles, useSchedules, useTemplates } from '../lib/queries';
+import { useCapabilities, useCvFiles, useSchedules, useTemplates, useSectorDefaults } from '../lib/queries';
+import { SectorBadge, SECTORS } from '../components/SectorBadge';
+
+const PROVIDER_LABEL = {
+  openai:    'OpenAI Vision',
+  ocr_space: 'OCR.Space',
+  heuristic: 'Heurística local',
+};
 
 const filterOptions = ['todos', 'mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const actionOptions = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
@@ -20,12 +27,14 @@ export function ImportsView({
   const templates = useTemplates().data || [];
   const cvFiles = useCvFiles().data || [];
   const schedules = useSchedules().data || [];
+  const sectorDefaults = useSectorDefaults().data || [];
   const defaultTemplate = templates.find((t) => t.is_default) ?? templates[0];
   const defaultCv = cvFiles.find((c) => c.is_default) ?? cvFiles[0];
   const defaultSchedule = schedules.find((s) => s.is_default) ?? schedules[0];
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [selectedCvId, setSelectedCvId] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
+  const [previewFilter, setPreviewFilter] = useState('todos');
 
   function handleConfirm() {
     const scheduleId = selectedScheduleId === ''
@@ -49,8 +58,13 @@ export function ImportsView({
         </div>
 
         <div className="provider-row">
-          <span className={`provider-pill ${capabilities.openai_enabled ? 'is-ready' : ''}`}>
-            OCR: {capabilities.openai_enabled ? 'OpenAI activo' : 'OPENAI_API_KEY ausente'}
+          <span className={`provider-pill ${capabilities.openai_enabled || capabilities.ocr_space_enabled ? 'is-ready' : ''}`}>
+            OCR:{' '}
+            {capabilities.openai_enabled
+              ? 'OpenAI activo'
+              : capabilities.ocr_space_enabled
+              ? 'OCR.Space activo'
+              : 'Sin API de imágenes'}
           </span>
           <span className={`provider-pill ${capabilities.openai_enabled ? 'is-ready' : ''}`}>
             Clasificacion: {capabilities.openai_enabled ? 'OpenAI + heuristica' : 'Heuristica local'}
@@ -72,31 +86,59 @@ export function ImportsView({
 
         {importPreview && (
           <div className="preview-stack">
+            {/* KPIs — el de duplicados se resalta si hay alguno */}
             <div className="mini-kpis">
               <div>
                 <strong>{importPreview.stats.total_contacts}</strong>
                 <span>detectados</span>
               </div>
               <div>
-                <strong>{importPreview.stats.total_ready}</strong>
+                <strong style={{ color: 'var(--green)' }}>{importPreview.stats.total_ready}</strong>
                 <span>listos</span>
               </div>
               <div>
-                <strong>{importPreview.stats.total_duplicates}</strong>
+                <strong style={{ color: importPreview.stats.total_duplicates > 0 ? 'var(--amber-text)' : undefined }}>
+                  {importPreview.stats.total_duplicates}
+                </strong>
                 <span>duplicados</span>
               </div>
               <div>
-                <strong>{importPreview.stats.total_invalid}</strong>
+                <strong style={{ color: importPreview.stats.total_invalid > 0 ? 'var(--red-text)' : undefined }}>
+                  {importPreview.stats.total_invalid}
+                </strong>
                 <span>invalidos</span>
               </div>
             </div>
 
             <div className="provider-row">
-              <span className="provider-pill is-ready">Motor usado: {importPreview.provider}</span>
+              <span className="provider-pill is-ready">Motor: {PROVIDER_LABEL[importPreview.provider] ?? importPreview.provider}</span>
               <span className="provider-pill is-ready">
-                Clasificacion: {importPreview.classification_provider}
+                Clasificación: {PROVIDER_LABEL[importPreview.classification_provider] ?? importPreview.classification_provider}
               </span>
             </div>
+
+            {/* Banner de aviso cuando hay duplicados */}
+            {importPreview.stats.total_duplicates > 0 && (
+              <div style={{
+                background: 'var(--amber-bg)',
+                border: '1px solid var(--amber-text)',
+                borderRadius: 10,
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                fontSize: '0.88rem',
+                color: 'var(--amber-text)',
+                fontWeight: 500,
+              }}>
+                <span style={{ fontSize: '1.1rem' }}>⚠</span>
+                <span>
+                  Se detectaron <strong>{importPreview.stats.total_duplicates}</strong> contacto
+                  {importPreview.stats.total_duplicates !== 1 ? 's' : ''} duplicado
+                  {importPreview.stats.total_duplicates !== 1 ? 's' : ''} — ya están en tu base de datos y no se importarán.
+                </span>
+              </div>
+            )}
 
             {importPreview.warnings?.length ? (
               <div className="warning-box">
@@ -106,6 +148,36 @@ export function ImportsView({
               </div>
             ) : null}
 
+            {/* Filtro de candidatos */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[
+                { key: 'todos',     label: `Todos (${importPreview.candidates.length})` },
+                { key: 'approve',   label: `Listos (${importPreview.stats.total_ready})` },
+                { key: 'duplicate', label: `Duplicados (${importPreview.stats.total_duplicates})` },
+                { key: 'invalid',   label: `Inválidos (${importPreview.stats.total_invalid})` },
+                { key: 'skip',      label: 'Omitidos' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setPreviewFilter(key)}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 7,
+                    border: '1px solid var(--border-faint)',
+                    background: previewFilter === key ? 'var(--accent)' : 'var(--surface-subtle)',
+                    color: previewFilter === key ? 'var(--accent-text)' : 'var(--text-secondary)',
+                    fontSize: '0.82rem',
+                    fontWeight: previewFilter === key ? 700 : 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <div className="table-shell">
               <table>
                 <thead>
@@ -113,6 +185,7 @@ export function ImportsView({
                     <th>Decision</th>
                     <th>Contacto</th>
                     <th>Empresa</th>
+                    <th>Rubro</th>
                     <th>Email</th>
                     <th>Estado</th>
                     <th>Accion</th>
@@ -121,8 +194,21 @@ export function ImportsView({
                   </tr>
                 </thead>
                 <tbody>
-                  {importPreview.candidates.map((candidate) => (
-                    <tr key={candidate.id}>
+                  {importPreview.candidates
+                    .filter(c => previewFilter === 'todos' || c.decision === previewFilter)
+                    .map((candidate) => (
+                    <tr
+                      key={candidate.id}
+                      style={
+                        candidate.decision === 'duplicate'
+                          ? { background: 'var(--amber-bg)' }
+                          : candidate.decision === 'invalid'
+                          ? { background: 'var(--red-bg)' }
+                          : candidate.decision === 'skip'
+                          ? { background: 'var(--surface-subtle)', opacity: 0.7 }
+                          : undefined
+                      }
+                    >
                       <td>
                         <select
                           value={candidate.decision}
@@ -146,6 +232,20 @@ export function ImportsView({
                           type="text"
                           value={candidate.company || ''}
                           onChange={(event) => onCandidateChange(candidate.id, 'company', event.target.value)}
+                        />
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <SectorBadge
+                          sector={candidate.industry || 'generalista'}
+                          onChange={(newSector) => {
+                            onCandidateChange(candidate.id, 'industry', newSector);
+                            // Auto-seleccionar template/cv del rubro si no hay selección global
+                            const sd = sectorDefaults.find(d => d.sector === newSector);
+                            if (sd) {
+                              if (sd.template_id && !selectedTemplateId) setSelectedTemplateId(sd.template_id);
+                              if (sd.cv_file_id && !selectedCvId) setSelectedCvId(sd.cv_file_id);
+                            }
+                          }}
                         />
                       </td>
                       <td>
@@ -221,7 +321,7 @@ export function ImportsView({
                   <option value="">Sin CV</option>
                   {cvFiles.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.original_name}{c.is_default ? ' (por defecto)' : ''}
+                      {c.original_name}
                     </option>
                   ))}
                 </select>
@@ -260,15 +360,13 @@ export function ImportsView({
             <p>Historial de previews y confirmaciones generadas desde la app.</p>
           </div>
         </div>
-        <div className="table-shell">
-          <table>
+        <div className="table-shell imports-history-shell">
+          <table className="imports-history-table">
             <thead>
               <tr>
                 <th>Archivo</th>
-                <th>Origen</th>
-                <th>Total</th>
-                <th>Listos</th>
                 <th>Estado</th>
+                <th>Contactos</th>
                 <th>Fecha</th>
               </tr>
             </thead>
@@ -276,17 +374,17 @@ export function ImportsView({
               {imports.length ? (
                 imports.map((item) => (
                   <tr key={item.id}>
-                    <td>{item.filename}</td>
-                    <td>{item.source}</td>
-                    <td>{item.total_contacts}</td>
-                    <td>{item.total_ready}</td>
+                    <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.filename}>
+                      {item.filename}
+                    </td>
                     <td>{item.status}</td>
-                    <td>{formatDate(item.created_at)}</td>
+                    <td>{item.total_contacts}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(item.created_at)}</td>
                   </tr>
                 ))
               ) : (
                 <tr className="empty-row">
-                  <td colSpan="6">Todavia no hay importaciones registradas.</td>
+                  <td colSpan="4">Todavia no hay importaciones registradas.</td>
                 </tr>
               )}
             </tbody>

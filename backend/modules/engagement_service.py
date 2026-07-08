@@ -170,6 +170,140 @@ def _parse_bounce_reason(payload: dict) -> str:
 
     return "rebote_email"  # fallback genérico
 
+
+# ── Auto-reply (respuestas automáticas) ───────────────────────────────────────
+# Ordenadas de más específico a más genérico para que la primera coincidencia gane.
+
+_AUTOREPLY_REASON_RULES = [
+    (["maternity leave", "paternity leave", "parental leave", "on maternity", "on paternity",
+      "baby leave", "pregnancy leave",
+      "licencia de maternidad", "licencia maternal", "licencia de paternidad",
+      "licencia parental", "maternidad", "paternidad", "baja por maternidad",
+      "baja maternal", "embarazada", "licencia por maternidad"],
+     "licencia_maternidad"),
+    (["medical leave", "sick leave", "medical absence", "health reasons",
+      "on medical", "health issue", "ill health",
+      "licencia médica", "licencia por enfermedad", "baja médica",
+      "motivos de salud", "por enfermedad", "baja por enfermedad",
+      "enfermedad", "internado", "licencia por salud"],
+     "licencia_medica"),
+    (["out of office", "on vacation", "away from the office", "on leave",
+      "will be back", "currently away", "currently out", "will return",
+      "back on", "out of the office until", "off until", "annual leave",
+      "ausente", "fuera de la oficina", "de vacaciones", "en vacaciones",
+      "regreso el", "estaré de vuelta", "no me encuentro",
+      "no estoy disponible", "licencia", "periodo vacacional",
+      "en este momento me encuentro fuera"],
+     "ausencia_temporal"),
+]
+
+_AUTOREPLY_SUBJECT_KEYWORDS = [
+    "automatic reply", "out of office", "autoreply", "auto-reply", "auto reply",
+    "respuesta automática", "respuesta automatica", "fuera de la oficina",
+    "ausencia temporal", "autorespuesta",
+]
+
+# Patrones contextuales para extraer email alternativo del cuerpo del mensaje
+_ALT_EMAIL_CONTEXT_PATTERNS = [
+    r"(?:please\s+)?(?:contact|email|reach)\s+[\w\s]{0,25}?(?:at|en)\s+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})",
+    r"(?:please\s+)?(?:contact|email|write\s+to)\s+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})",
+    r"forward(?:ing)?\s+(?:to|at)\s+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})",
+    r"(?:puede[sn]?\s+)?(?:escribir|contactar|comunicar(?:se)?)\s+(?:a[l]?\s+)?([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})",
+    r"(?:escriba|escribirme|escribame)\s+(?:a\s+)?([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})",
+    r"(?:contactar\s+con|comunicarse\s+con)\s+\S+\s+(?:en|a[l]?)\s+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})",
+]
+
+_KNOWN_NOREPLY_DOMAINS = {"google.com", "googlemail.com", "microsoft.com", "outlook.com"}
+
+
+def _is_autoreply_message(header_map: dict, subject: str, body_snippet: str) -> bool:
+    """Detecta si un mensaje es una auto-respuesta por headers, asunto y cuerpo."""
+    auto_submitted = header_map.get("auto-submitted", "").lower()
+    if auto_submitted and auto_submitted != "no":
+        return True
+    if header_map.get("x-autoreply") or header_map.get("x-autoresponder") or header_map.get("x-auto-response-suppress"):
+        return True
+    if any(kw in subject.lower() for kw in _AUTOREPLY_SUBJECT_KEYWORDS):
+        return True
+    autoreply_body_triggers = [
+        "out of office", "fuera de la oficina", "this is an automatic",
+        "esta es una respuesta automática", "auto-reply", "autorespuesta",
+        "respuesta automática",
+    ]
+    return any(kw in body_snippet.lower() for kw in autoreply_body_triggers)
+
+
+def _classify_autoreply_reason(text: str) -> str:
+    """Clasifica el tipo de ausencia a partir del texto de la auto-respuesta."""
+    text_lower = text.lower()
+    for keywords, reason in _AUTOREPLY_REASON_RULES:
+        if any(kw in text_lower for kw in keywords):
+            return reason
+    return "ausencia_temporal"
+
+
+def _extract_alternative_email(body_text: str, original_email: str) -> str | None:
+    """Extrae un email alternativo/de reenvío del cuerpo de la auto-respuesta."""
+    original_lower = original_email.lower()
+    text_lower = body_text.lower()
+
+    # Primero prueba patrones contextuales (más precisos)
+    for pattern in _ALT_EMAIL_CONTEXT_PATTERNS:
+        m = re.search(pattern, text_lower, re.IGNORECASE)
+        if m:
+            candidate = m.group(1).lower()
+            domain = candidate.split("@")[-1] if "@" in candidate else ""
+            if candidate != original_lower and domain not in _KNOWN_NOREPLY_DOMAINS:
+                return candidate
+
+    # Fallback: si hay exactamente un email diferente en el cuerpo, es el alternativo
+    all_emails = list({e.lower() for e in EMAIL_RE.findall(body_text)})
+    others = [
+        e for e in all_emails
+        if e != original_lower
+        and not any(e.endswith(f"@{d}") for d in _KNOWN_NOREPLY_DOMAINS)
+        and "noreply" not in e
+        and "no-reply" not in e
+    ]
+    return others[0] if len(others) == 1 else None
+
+
+def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None) -> None:
+    """Persiste la detección de auto-respuesta: actualiza contacto e inserta historial."""
+    now = now_utc()
+    set_parts = ["autoreply_reason = :reason", "updated_at = :now"]
+    params: dict = {"reason": reason, "now": now, "id": job["contact_id"]}
+    if alt_email:
+        set_parts.append("alternative_email = :alt_email")
+        params["alt_email"] = alt_email
+
+    msg = f"Auto-respuesta de {job['email']} — motivo: {reason}"
+    if alt_email:
+        msg += f" — email alternativo: {alt_email}"
+
+    with get_session() as session:
+        session.execute(
+            text(f"UPDATE contacts SET {', '.join(set_parts)} WHERE id = :id"),
+            params,
+        )
+        session.execute(
+            text("UPDATE email_jobs SET replied_at = :now WHERE id = :job_id AND replied_at IS NULL"),
+            {"now": now, "job_id": job["id"]},
+        )
+        insert_history(
+            session,
+            event_type="email.autoreply",
+            entity_type="contact",
+            entity_id=str(job["contact_id"]),
+            message=msg,
+            metadata_json=json.dumps(
+                {"job_id": job["id"], "autoreply_reason": reason, "alternative_email": alt_email},
+                ensure_ascii=True,
+            ),
+        )
+    print(f"[engagement] Auto-respuesta: {job['email']} — {reason}" + (f" → {alt_email}" if alt_email else ""))
+
+
 # Ventanas y límites conservadores de cuota:
 # threads.get cuesta 10 unidades; 40 threads/ciclo = 400 unidades,
 # muy por debajo del límite por usuario de la Gmail API.
@@ -217,7 +351,9 @@ def sync_replies_and_bounces() -> dict:
 def _check_replies(service, my_email: str) -> tuple[int, int]:
     """Revisa los threads de jobs enviados sin respuesta registrada.
 
-    Un thread con un mensaje cuyo From no es la cuenta propia = respuesta.
+    Distingue entre respuesta real y auto-respuesta (vacaciones, enfermedad,
+    maternidad, etc.). Las auto-respuestas actualizan autoreply_reason y
+    alternative_email en el contacto sin marcarlo como seguimiento respondido.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=REPLY_WINDOW_DAYS)
     with get_session() as session:
@@ -243,7 +379,9 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
         try:
             thread = service.users().threads().get(
                 userId="me", id=job["thread_id"],
-                format="metadata", metadataHeaders=["From"],
+                format="metadata",
+                metadataHeaders=["From", "Subject", "Auto-Submitted",
+                                 "X-Autoreply", "X-Autoresponder", "X-Auto-Response-Suppress"],
             ).execute()
         except Exception as exc:
             print(f"[engagement] No se pudo leer thread {job['thread_id']}: {exc}")
@@ -254,30 +392,62 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
         if len(messages) < 2:
             continue
 
-        replied = False
-        for msg in messages:
-            headers = msg.get("payload", {}).get("headers", [])
-            from_value = next(
-                (h.get("value", "") for h in headers if h.get("name", "").lower() == "from"),
-                "",
-            ).lower()
-            if not from_value:
-                continue
-            # Respuesta = mensaje del thread que no envió la cuenta propia
-            if my_email and my_email in from_value:
-                continue
-            if job["email"] and job["email"].lower() in from_value:
-                replied = True
-                break
-            # From de otro remitente del mismo dominio (ej. RRHH respondió
-            # desde otra casilla) también cuenta como respuesta del thread.
-            if my_email and my_email not in from_value:
-                replied = True
-                break
+        # Buscar primer mensaje que no sea del propio remitente
+        reply_msg_id = None
+        reply_header_map: dict[str, str] = {}
+        reply_subject = ""
 
-        if not replied:
+        for msg in messages:
+            raw_headers = msg.get("payload", {}).get("headers", [])
+            hmap = {h.get("name", "").lower(): h.get("value", "") for h in raw_headers}
+            from_val = hmap.get("from", "").lower()
+            if not from_val:
+                continue
+            if my_email and my_email in from_val:
+                continue
+            reply_msg_id = msg["id"]
+            reply_header_map = hmap
+            reply_subject = hmap.get("subject", "")
+            break
+
+        if not reply_msg_id:
             continue
 
+        # Detectar auto-respuesta por headers y asunto (sin consumir cuota extra)
+        auto_submitted = reply_header_map.get("auto-submitted", "").lower()
+        has_autoreply_header = (
+            (auto_submitted and auto_submitted != "no")
+            or bool(reply_header_map.get("x-autoreply"))
+            or bool(reply_header_map.get("x-autoresponder"))
+            or bool(reply_header_map.get("x-auto-response-suppress"))
+        )
+        subject_signals_autoreply = any(
+            kw in reply_subject.lower() for kw in _AUTOREPLY_SUBJECT_KEYWORDS
+        )
+
+        if has_autoreply_header or subject_signals_autoreply:
+            # Fetch completo del cuerpo para clasificar motivo y extraer email alternativo
+            try:
+                full_msg = service.users().messages().get(
+                    userId="me", id=reply_msg_id, format="full"
+                ).execute()
+                body_parts = _find_mime_parts(full_msg.get("payload", {}), "text/plain")
+                body_text = " ".join(
+                    _decode_part_data(p.get("body", {}).get("data", "")) for p in body_parts
+                )
+                snippet = full_msg.get("snippet", "")
+                if _is_autoreply_message(reply_header_map, reply_subject, snippet):
+                    combined = f"{reply_subject} {body_text} {snippet}"
+                    reason = _classify_autoreply_reason(combined)
+                    alt_email = _extract_alternative_email(body_text, job["email"])
+                    _store_autoreply_detection(job, reason, alt_email)
+                    found += 1
+                    continue
+            except Exception as exc:
+                print(f"[engagement] Error procesando auto-respuesta {reply_msg_id}: {exc}")
+                # Si falla el fetch, cae al registro como respuesta normal
+
+        # Respuesta real
         now = now_utc()
         with get_session() as session:
             session.execute(
