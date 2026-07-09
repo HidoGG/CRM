@@ -54,7 +54,7 @@ const PATH_TITLES = {
   '/operaciones': 'Operaciones',
   '/contactos': 'Contactos',
   '/importaciones': 'Importaciones',
-  '/envios': 'Envíos',
+  '/envios': 'Configuración',
   '/asistente': 'Asistente IA',
 };
 
@@ -606,7 +606,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
                   color: 'var(--amber-text)', cursor: 'pointer',
                 }}
               >
-                Ir a Envíos y re-autorizar
+                Ir a Configuración y re-autorizar
               </button>
             </div>
           </div>

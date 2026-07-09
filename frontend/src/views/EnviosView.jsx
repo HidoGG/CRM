@@ -6,7 +6,7 @@ import { useCvFiles, useGmailStatus, useSchedules, useTemplateStats, useTemplate
 import { API_BASE, apiFetch } from '../lib/api';
 
 const TABS = [
-  { id: 'cola',         label: 'Cola de envíos'   },
+  { id: 'cola',         label: 'Conexión y CVs'   },
   { id: 'plantillas',   label: 'Plantillas'        },
   { id: 'cronogramas',  label: 'Cronogramas'       },
   { id: 'estadisticas', label: 'Estadísticas'},

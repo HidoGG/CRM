@@ -310,7 +310,7 @@ function GmailSendButton({ sessionId, messageContent, hasCv }) {
             ))}
           </select>
         ) : (
-          <span className="career-draft-no-cvs">Generá el CV ATS o subí uno en Envíos</span>
+          <span className="career-draft-no-cvs">Generá el CV ATS o subí uno en Configuración</span>
         )}
         <button
           type="button"
