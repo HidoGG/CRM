@@ -115,6 +115,14 @@ async def lifespan(app: FastAPI):
         id="reschedule_overdue",
         replace_existing=True,
     )
+    # Crear jobs para contactos sin job pendiente (cada hora, cubre cold starts).
+    _scheduler.add_job(
+        crm_service.backfill_missing_email_jobs,
+        trigger="interval",
+        hours=1,
+        id="backfill_jobs",
+        replace_existing=True,
+    )
     _scheduler.start()
     # Snapshot y re-encolar al arrancar (cubre cold starts de Render)
     try:
@@ -125,6 +133,10 @@ async def lifespan(app: FastAPI):
         crm_service.reschedule_overdue_jobs()
     except Exception as exc:
         print(f"[startup] No se pudo re-encolar jobs vencidos: {exc}")
+    try:
+        crm_service.backfill_missing_email_jobs()
+    except Exception as exc:
+        print(f"[startup] No se pudo hacer backfill de jobs: {exc}")
     yield
     _scheduler.shutdown(wait=False)
 
