@@ -104,12 +104,24 @@ async def lifespan(app: FastAPI):
         id="daily_reminder",
         replace_existing=True,
     )
+    # Re-encolar jobs vencidos cada hora (también se llama en cada ciclo de envío).
+    _scheduler.add_job(
+        crm_service.reschedule_overdue_jobs,
+        trigger="interval",
+        hours=1,
+        id="reschedule_overdue",
+        replace_existing=True,
+    )
     _scheduler.start()
-    # Snapshot inicial al arrancar (cubre cold starts de Render)
+    # Snapshot y re-encolar al arrancar (cubre cold starts de Render)
     try:
         crm_service.persist_daily_snapshot_job()
     except Exception as exc:
         print(f"[startup] No se pudo persistir snapshot inicial: {exc}")
+    try:
+        crm_service.reschedule_overdue_jobs()
+    except Exception as exc:
+        print(f"[startup] No se pudo re-encolar jobs vencidos: {exc}")
     yield
     _scheduler.shutdown(wait=False)
 
@@ -265,6 +277,12 @@ def execute_action(contact_id: int, payload: schemas.ContactAction):
         return crm_service.execute_contact_action(contact_id, payload.model_dump())
     except ServiceError as exc:
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.post("/jobs/reschedule-overdue")
+def reschedule_overdue():
+    rescheduled = crm_service.reschedule_overdue_jobs()
+    return {"rescheduled": rescheduled}
 
 
 @app.get("/contacts/{contact_id}/email-preview")

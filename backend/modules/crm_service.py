@@ -32,13 +32,48 @@ def now_art() -> datetime:
     return datetime.now(ART_TZ)
 
 
+# ── Feriados argentinos ───────────────────────────────────────────────────────
+# Cache en memoria: año → set de strings "YYYY-MM-DD".
+# TTL de 24 horas para refrescar automáticamente al día siguiente.
+import time as _time
+_holiday_cache: dict[int, set[str]] = {}
+_holiday_cache_ts: dict[int, float] = {}
+_HOLIDAY_CACHE_TTL = 86400  # 24 horas
+
+
+def _fetch_holidays(year: int) -> set[str]:
+    """Descarga los feriados argentinos del año desde argentinadatos.com."""
+    import requests as _requests
+    url = f"https://api.argentinadatos.com/v1/feriados/{year}"
+    try:
+        resp = _requests.get(url, timeout=5)
+        resp.raise_for_status()
+        return {entry["fecha"] for entry in resp.json()}
+    except Exception as exc:
+        print(f"[feriados] No se pudo obtener feriados {year}: {exc} — se ignoran")
+        return set()
+
+
+def _get_holidays(year: int) -> set[str]:
+    """Retorna el set de feriados del año, usando cache de 24 horas."""
+    now_ts = _time.monotonic()
+    ts = _holiday_cache_ts.get(year, 0)
+    if year not in _holiday_cache or (now_ts - ts) > _HOLIDAY_CACHE_TTL:
+        _holiday_cache[year] = _fetch_holidays(year)
+        _holiday_cache_ts[year] = now_ts
+    return _holiday_cache[year]
+
+
 def _is_sending_day(dt: datetime) -> bool:
-    """Lunes (0) a Sábado (5) son días hábiles. Domingo (6) no."""
-    return dt.weekday() != 6
+    """Lunes (0) a Sábado (5), sin feriados argentinos."""
+    if dt.weekday() == 6:  # Domingo
+        return False
+    date_str = dt.date().isoformat() if isinstance(dt, datetime) else dt.isoformat()
+    return date_str not in _get_holidays(dt.year)
 
 
 def _next_working_day(dt: datetime) -> datetime:
-    """Avanza al siguiente día hábil (salta domingos)."""
+    """Avanza al siguiente día hábil (salta domingos y feriados argentinos)."""
     nxt = dt + timedelta(days=1)
     while not _is_sending_day(nxt):
         nxt += timedelta(days=1)
@@ -1963,8 +1998,11 @@ def process_pending_email_jobs() -> dict:
     DELAY_BETWEEN_SENDS = 2
     MAX_RETRIES_PER_JOB = 3
 
+    # Antes de enviar, reubicar jobs vencidos al final de la cola
+    reschedule_overdue_jobs()
+
     if not _is_sending_day(now_art()):
-        print("[email_jobs] Domingo — envíos suspendidos hasta el lunes.")
+        print("[email_jobs] Feriado o domingo — envíos suspendidos.")
         return {"sent": 0, "failed": 0, "skipped": 0}
 
     sent = 0
@@ -2227,6 +2265,82 @@ def get_email_preview(contact_id: int) -> dict:
         "cv": cv_info,
         "scheduled_at": sched_str,
     }
+
+
+def reschedule_overdue_jobs() -> int:
+    """Reprograma jobs pending con scheduled_at vencido al final de la cola.
+
+    Corre al inicio de cada ciclo de envío para que los contactos vencidos
+    desaparezcan del filtro 'Hoy' y vuelvan a aparecer en su posición correcta
+    de la cola circular.
+    """
+    now = now_utc()
+
+    with get_session() as session:
+        rows = session.execute(text("""
+            SELECT ej.id, ej.contact_id, ej.schedule_id,
+                   ds.start_hour_art, ds.end_hour_art, ds.interval_minutes
+            FROM email_jobs ej
+            LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
+            WHERE ej.status = 'pending' AND ej.scheduled_at < :now
+            ORDER BY ej.schedule_id NULLS LAST, ej.id ASC
+        """), {"now": now}).fetchall()
+
+        if not rows:
+            return 0
+
+        # Para cada schedule_id, el "final de cola" es MAX(scheduled_at) de jobs
+        # pending NO vencidos. Lo calculamos una sola vez por schedule y lo
+        # actualizamos a medida que agregamos jobs.
+        tail: dict = {}
+
+        rescheduled = 0
+        for row in rows:
+            j = row_to_dict(row)
+            sid = j.get("schedule_id")
+            interval = max(1, int(j.get("interval_minutes") or 15))
+
+            if sid not in tail:
+                max_row = session.execute(text("""
+                    SELECT MAX(scheduled_at) FROM email_jobs
+                    WHERE schedule_id = :sid AND status = 'pending' AND scheduled_at >= :now
+                """), {"sid": sid, "now": now}).fetchone()
+                max_sched = max_row[0] if max_row and max_row[0] else None
+                if max_sched is not None:
+                    if hasattr(max_sched, "tzinfo") and max_sched.tzinfo is None:
+                        max_sched = max_sched.replace(tzinfo=timezone.utc)
+                    tail[sid] = max_sched
+                else:
+                    # Cola vacía: calcular próximo slot hábil desde ahora
+                    if j.get("start_hour_art"):
+                        sched_dict = {
+                            "start_hour_art": j["start_hour_art"],
+                            "end_hour_art": j["end_hour_art"],
+                            "interval_minutes": interval,
+                        }
+                        tail[sid] = calc_job_scheduled_at(sched_dict, 0)
+                    else:
+                        tail[sid] = datetime.now(timezone.utc) + timedelta(days=1)
+            else:
+                tail[sid] = tail[sid] + timedelta(minutes=interval)
+
+            next_slot = tail[sid]
+
+            session.execute(text("""
+                UPDATE email_jobs SET scheduled_at = :t WHERE id = :id
+            """), {"t": next_slot, "id": j["id"]})
+
+            follow_up_art = next_slot.astimezone(ART_TZ).date().isoformat()
+            session.execute(text("""
+                UPDATE contacts SET follow_up_date = :fdate, updated_at = :now
+                WHERE id = :id
+            """), {"fdate": follow_up_art, "now": now_utc(), "id": j["contact_id"]})
+
+            rescheduled += 1
+
+    if rescheduled:
+        print(f"[scheduler] {rescheduled} jobs vencidos reubicados al final de la cola.")
+    return rescheduled
 
 
 def retry_failed_email_jobs() -> dict:
