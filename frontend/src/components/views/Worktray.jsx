@@ -80,6 +80,7 @@ export function Worktray({
   selectedContact,
   historyItems,
   loadingHistory,
+  cycleStartedAt = null,
   compact = false,
 }) {
   const [previewContactId, setPreviewContactId] = useState(null);
@@ -155,6 +156,39 @@ export function Worktray({
             }}
           >
             Ver urgentes
+          </button>
+        </div>
+      )}
+
+      {/* ── 1b. Banner de progreso del ciclo (solo en tab ENVIAR) ── */}
+      {activeActionFilter === 'enviar' && cycleStartedAt && (timingCounts['enviados'] ?? 0) > 0 && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            background: 'var(--green-bg, #f0fdf4)', border: '1px solid color-mix(in oklch, #16a34a 30%, transparent)',
+            borderRadius: 10, padding: '12px 18px',
+          }}
+        >
+          <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>✉</span>
+          <div style={{ flex: 1 }}>
+            <strong style={{ color: 'var(--text-primary)', fontSize: '0.92rem', display: 'block' }}>
+              Ciclo en curso: {timingCounts['enviados']} enviado{timingCounts['enviados'] !== 1 ? 's' : ''} / {(timingCounts['en_cola'] ?? 0) + (timingCounts['enviados'] ?? 0)} total
+            </strong>
+            <p style={{ margin: '2px 0 0', color: 'var(--text-muted)', fontSize: '0.81rem' }}>
+              Quedan {timingCounts['en_cola'] ?? 0} por enviar en este ciclo.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onTimingFilterChange('enviados')}
+            style={{
+              flexShrink: 0, borderRadius: 8, padding: '7px 14px',
+              fontSize: '0.83rem', fontWeight: 600, cursor: 'pointer',
+              border: '1px solid #16a34a', background: 'transparent',
+              color: '#16a34a', whiteSpace: 'nowrap',
+            }}
+          >
+            Ver enviados
           </button>
         </div>
       )}

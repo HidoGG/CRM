@@ -3,7 +3,7 @@
 export const worktrayActions = ['enviar', 'revisar', 'portal', 'descartar'];
 
 // Filtros por tab
-const ENVIAR_FILTERS = ['hoy', 'en_cola'];
+const ENVIAR_FILTERS = ['hoy', 'en_cola', 'enviados'];
 const REVISAR_FILTERS = ['todos', 'rebote_permanente', 'rebote_temporario', 'auto_respuesta'];
 const NO_FILTERS = ['todos'];
 
@@ -16,13 +16,14 @@ export function getTabFilters(action) {
 }
 
 export function defaultTabFilter(action) {
-  if (action === 'enviar') return 'hoy';
+  if (action === 'enviar') return 'en_cola';
   return 'todos';
 }
 
 const TAB_FILTER_LABELS = {
   hoy:               'Hoy',
   en_cola:           'En cola',
+  enviados:          'Enviados',
   todos:             'Todos',
   rebote_permanente: 'Rebote permanente',
   rebote_temporario: 'Rebote temporario',
@@ -33,10 +34,16 @@ export function prettifyTabFilter(filter) {
   return TAB_FILTER_LABELS[filter] ?? filter;
 }
 
-export function matchesTabFilter(contact, action, filter) {
+// cycleStartedAt: ISO string del inicio del ciclo actual (de /cycle endpoint)
+export function matchesTabFilter(contact, action, filter, { cycleStartedAt } = {}) {
   if (action === 'enviar') {
-    if (filter === 'en_cola') return true;
+    const isSentThisCycle = cycleStartedAt && contact.last_sent_at
+      && new Date(contact.last_sent_at) >= new Date(cycleStartedAt);
+
+    if (filter === 'enviados') return Boolean(isSentThisCycle);
+    if (filter === 'en_cola') return !isSentThisCycle;
     if (filter === 'hoy') {
+      if (isSentThisCycle) return false;
       if (!contact.follow_up_date) return false;
       const today = new Date();
       today.setHours(0, 0, 0, 0);

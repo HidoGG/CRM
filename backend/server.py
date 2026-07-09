@@ -286,6 +286,11 @@ def delete_contact(contact_id: int):
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
+@app.get("/cycle")
+def get_cycle():
+    return crm_service.get_cycle_info()
+
+
 @app.post("/contacts/{contact_id}/execute")
 def execute_action(contact_id: int, payload: schemas.ContactAction):
     try:

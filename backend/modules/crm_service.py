@@ -701,7 +701,7 @@ _CONTACT_COLS = (
     "id, email, name, company, title, status, next_action, suggested_message, "
     "follow_up_date, portal_url, portal_status, discard_reason, source, notes, "
     "bounced_at, bounce_reason, industry, alternative_email, autoreply_reason, "
-    "created_at, updated_at"
+    "last_sent_at, created_at, updated_at"
 )
 
 
@@ -2156,10 +2156,13 @@ def process_pending_email_jobs() -> dict:
                     "scheduled_at": next_scheduled, "now": now_utc(),
                 })
                 follow_up_art = next_scheduled.astimezone(ART_TZ).date().isoformat()
+                sent_now = now_utc()
                 s.execute(text("""
-                    UPDATE contacts SET follow_up_date = :fdate, updated_at = :now
+                    UPDATE contacts
+                    SET follow_up_date = :fdate, last_sent_at = :sent_now, updated_at = :now
                     WHERE id = :id
-                """), {"fdate": follow_up_art, "now": now_utc(), "id": j["contact_id"]})
+                """), {"fdate": follow_up_art, "sent_now": sent_now, "now": sent_now, "id": j["contact_id"]})
+                _check_and_advance_cycle(s)
                 insert_history(s, event_type="email.sent", entity_type="contact",
                                entity_id=str(j["contact_id"]),
                                message=f"Email enviado a {j['email']}")
@@ -2299,6 +2302,69 @@ def get_email_preview(contact_id: int) -> dict:
         "body": rendered["body"],
         "cv": cv_info,
         "scheduled_at": sched_str,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Ciclo de envío
+# ---------------------------------------------------------------------------
+
+def _get_cycle_started_at(session) -> datetime:
+    row = session.execute(
+        text("SELECT value FROM app_settings WHERE key = 'cycle_started_at'")
+    ).fetchone()
+    if row:
+        try:
+            dt = datetime.fromisoformat(row[0])
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            pass
+    return datetime.now(timezone.utc)
+
+
+def _start_new_cycle(session) -> datetime:
+    now = now_utc()
+    session.execute(text("""
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ('cycle_started_at', :val, :now)
+        ON CONFLICT (key) DO UPDATE SET value = :val, updated_at = :now
+    """), {"val": now.isoformat(), "now": now})
+    print(f"[ciclo] Nuevo ciclo iniciado: {now.isoformat()}")
+    return now
+
+
+def _check_and_advance_cycle(session) -> bool:
+    """Verifica si el ciclo terminó (todos los contactos enviados) y arranca uno nuevo."""
+    cycle_start = _get_cycle_started_at(session)
+    pending_count = session.execute(text("""
+        SELECT COUNT(*) FROM contacts
+        WHERE next_action = 'enviar'
+        AND (last_sent_at IS NULL OR last_sent_at < :cycle_start)
+    """), {"cycle_start": cycle_start}).scalar()
+    if pending_count == 0:
+        _start_new_cycle(session)
+        return True
+    return False
+
+
+def get_cycle_info() -> dict:
+    """Retorna la fecha de inicio del ciclo actual."""
+    with get_session() as session:
+        cycle_started_at = _get_cycle_started_at(session)
+        total = session.execute(text(
+            "SELECT COUNT(*) FROM contacts WHERE next_action = 'enviar'"
+        )).scalar()
+        sent_this_cycle = session.execute(text("""
+            SELECT COUNT(*) FROM contacts
+            WHERE next_action = 'enviar' AND last_sent_at >= :cycle_start
+        """), {"cycle_start": cycle_started_at}).scalar()
+    return {
+        "cycle_started_at": cycle_started_at.isoformat(),
+        "total_enviar": total,
+        "sent_this_cycle": sent_this_cycle,
+        "pending_this_cycle": total - sent_this_cycle,
     }
 
 
