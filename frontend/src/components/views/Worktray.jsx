@@ -85,7 +85,6 @@ export function Worktray({
   const [previewContactId, setPreviewContactId] = useState(null);
   const [previewData, setPreviewData] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [showCv, setShowCv] = useState(false);
 
   async function openPreview(contactId) {
     setPreviewContactId(contactId);
@@ -731,7 +730,7 @@ export function Worktray({
                         type="button"
                         className="ghost-button"
                         style={{ fontSize: '0.82rem', padding: '6px 14px', flexShrink: 0 }}
-                        onClick={() => setShowCv(true)}
+                        onClick={() => window.open(`${API_BASE}/cv-files/${previewData.cv.id}/download`, '_blank')}
                       >
                         Ver CV
                       </button>
@@ -749,37 +748,6 @@ export function Worktray({
         </div>
       )}
 
-      {/* ── Modal: Visor de CV (encima del modal de preview) ── */}
-      {showCv && previewData?.cv && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1100,
-            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-            paddingTop: 40, paddingBottom: 20, paddingLeft: 16, paddingRight: 16,
-            background: 'rgba(0,0,0,0.75)',
-            overflowY: 'auto',
-          }}
-          onClick={() => setShowCv(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Visor de CV"
-        >
-          <div
-            style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: 14, width: '100%', maxWidth: 800, overflow: 'hidden', display: 'grid', gap: 0 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--border-faint)' }}>
-              <h3 style={{ margin: 0, fontSize: '0.97rem', fontWeight: 700, color: 'var(--text-primary)' }}>{previewData.cv.name || 'CV'}</h3>
-              <button type="button" onClick={() => setShowCv(false)} aria-label="Cerrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.1rem', padding: 4 }}>✕</button>
-            </div>
-            <iframe
-              src={`${API_BASE}/cv-files/${previewData.cv.id}/download`}
-              title="Vista previa del CV"
-              style={{ width: '100%', height: 600, border: 'none' }}
-            />
-          </div>
-        </div>
-      )}
     </section>
   );
 }
