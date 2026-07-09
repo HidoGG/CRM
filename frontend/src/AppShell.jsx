@@ -20,7 +20,7 @@ import {
   useReporting,
   useSummary,
 } from './lib/queries';
-import { matchesTimingFilter, prettifyAction, timingFilters, worktrayActions } from './lib/utils';
+import { defaultTabFilter, getTabFilters, matchesTabFilter, matchesTimingFilter, prettifyAction, timingFilters, worktrayActions } from './lib/utils';
 
 const defaultForm = {
   email: '',
@@ -172,7 +172,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const [statusMessage, setStatusMessage] = useState('Conectando con la API...');
   const [activeFilter, setActiveFilter] = useState('todos');
   const [activeActionFilter, setActiveActionFilter] = useState('enviar');
-  const [activeTimingFilter, setActiveTimingFilter] = useState('urgente');
+  const [activeTimingFilter, setActiveTimingFilter] = useState('hoy');
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
 
@@ -212,16 +212,15 @@ function AuthenticatedApp({ theme, toggleTheme }) {
     [activeActionFilter, contacts],
   );
 
-  const timingCounts = useMemo(
-    () =>
-      timingFilters.reduce((accumulator, filter) => {
-        accumulator[filter] = actionScopedContacts.filter((contact) =>
-          matchesTimingFilter(contact.follow_up_date, filter),
-        ).length;
-        return accumulator;
-      }, {}),
-    [actionScopedContacts],
-  );
+  const timingCounts = useMemo(() => {
+    const filters = getTabFilters(activeActionFilter);
+    return filters.reduce((acc, filter) => {
+      acc[filter] = actionScopedContacts.filter((c) =>
+        matchesTabFilter(c, activeActionFilter, filter),
+      ).length;
+      return acc;
+    }, {});
+  }, [actionScopedContacts, activeActionFilter]);
 
   const statusDistribution = useMemo(() => {
     const ORDER = ['prioridad', 'mantener', 'revisar', 'seguimiento', 'portal', 'sacar'];
@@ -234,7 +233,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const actionableContacts = useMemo(
     () =>
       actionScopedContacts
-        .filter((contact) => matchesTimingFilter(contact.follow_up_date, activeTimingFilter))
+        .filter((contact) => matchesTabFilter(contact, activeActionFilter, activeTimingFilter))
         .sort((left, right) => {
           const leftFollowUp = left.follow_up_date
             ? new Date(`${left.follow_up_date}T00:00:00`).getTime()
@@ -246,7 +245,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
           const rightPriority = String(right.status || '').toLowerCase() === 'prioridad' ? 1 : 0;
           return leftFollowUp - rightFollowUp || rightPriority - leftPriority || right.id - left.id;
         }),
-    [actionScopedContacts, activeTimingFilter],
+    [actionScopedContacts, activeActionFilter, activeTimingFilter],
   );
 
   useEffect(() => {
@@ -502,7 +501,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
     const nextAction = String(contact.next_action || '').toLowerCase();
     if (!worktrayActions.includes(nextAction)) return;
     setActiveActionFilter(nextAction);
-    setActiveTimingFilter('todos');
+    setActiveTimingFilter(defaultTabFilter(nextAction));
     setSelectedWorktrayId(contact.id);
     navigate('/operaciones');
   }
@@ -683,7 +682,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
               <OperacionesView
                 actionableContacts={actionableContacts}
                 activeActionFilter={activeActionFilter}
-                onActionFilterChange={(action) => { setActiveActionFilter(action); setActiveTimingFilter('urgente'); }}
+                onActionFilterChange={(action) => { setActiveActionFilter(action); setActiveTimingFilter(defaultTabFilter(action)); }}
                 activeTimingFilter={activeTimingFilter}
                 onTimingFilterChange={setActiveTimingFilter}
                 counts={worktrayCounts}
