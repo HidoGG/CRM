@@ -70,7 +70,10 @@ def _verify_supabase_jwt(token: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    run_migrations()
+    try:
+        run_migrations()
+    except Exception as exc:
+        print(f"[startup] Error en migraciones Alembic: {exc} — continuando igualmente")
     init_db()
     _scheduler.add_job(
         crm_service.process_pending_email_jobs,
