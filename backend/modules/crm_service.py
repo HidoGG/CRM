@@ -159,7 +159,7 @@ def normalize_status(value: object) -> str:
 
 def normalize_next_action(value: object) -> str:
     text_val = str(value or "revisar_manual").strip().lower()
-    if text_val in {"enviar", "seguir", "portal", "descartar", "revisar_manual"}:
+    if text_val in {"enviar", "seguir", "portal", "descartar", "revisar_manual", "revisar", "volver_a_cola"}:
         return text_val
     return "revisar_manual"
 
@@ -952,6 +952,51 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
         contact = row_to_dict(row)
         current_action = normalize_next_action(contact.get("next_action"))
         action = requested_action or current_action
+
+        # Acción especial: volver a la cola circular
+        if action == "volver_a_cola":
+            max_row = session.execute(text("""
+                SELECT ej.scheduled_at, ds.interval_minutes, c.schedule_id
+                FROM contacts c
+                LEFT JOIN delivery_schedules ds ON ds.id = c.schedule_id
+                LEFT JOIN (
+                    SELECT schedule_id, MAX(scheduled_at) AS scheduled_at
+                    FROM email_jobs WHERE status = 'pending'
+                    GROUP BY schedule_id
+                ) ej ON ej.schedule_id = c.schedule_id
+                WHERE c.id = :id
+            """), {"id": contact_id}).fetchone()
+            if max_row and max_row[0] and max_row[1]:
+                max_sched = max_row[0]
+                if hasattr(max_sched, "tzinfo") and max_sched.tzinfo is None:
+                    max_sched = max_sched.replace(tzinfo=timezone.utc)
+                next_scheduled = max_sched + timedelta(minutes=int(max_row[1]))
+                sched_id = max_row[2]
+            else:
+                next_scheduled = datetime.now(timezone.utc) + timedelta(days=3)
+                sched_id = None
+            follow_up_art = next_scheduled.astimezone(ART_TZ).date().isoformat()
+            session.execute(text("""
+                UPDATE contacts
+                SET next_action = 'enviar', status = 'mantener',
+                    follow_up_date = :fdate, updated_at = :now
+                WHERE id = :id
+            """), {"fdate": follow_up_art, "now": now, "id": contact_id})
+            # Cancelar jobs pending existentes antes de crear el nuevo
+            session.execute(text("""
+                UPDATE email_jobs SET status = 'cancelled'
+                WHERE contact_id = :id AND status = 'pending'
+            """), {"id": contact_id})
+            _auto_create_email_job(session, contact_id, "enviar", schedule_id=sched_id)
+            insert_history(session, event_type="contact.action_executed",
+                           entity_type="contact", entity_id=str(contact_id),
+                           message=f"Contacto devuelto a la cola de envío — próximo: {follow_up_art}")
+            updated_row = session.execute(
+                text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"), {"id": contact_id}
+            ).fetchone()
+            return {"contact": row_to_dict(updated_row), "executed_action": "volver_a_cola",
+                    "message": f"Contacto devuelto a la cola. Próximo envío: {follow_up_art}"}
+
         if action == "revisar_manual" and manual_follow_up_date is None:
             raise ServiceError("Se requiere una acción.", HTTPStatus.UNPROCESSABLE_ENTITY)
 
@@ -2038,21 +2083,45 @@ def process_pending_email_jobs() -> dict:
                     "thread_id": send_result.get("thread_id"), "id": j["id"],
                 })
 
-                if j["frequency_days"] and int(j["frequency_days"]) > 0:
-                    next_send = (
-                        datetime.now(timezone.utc) + timedelta(days=int(j["frequency_days"]))
-                    )
-                    s.execute(text("""
-                        INSERT INTO email_jobs (contact_id, template_id, cv_file_id,
-                            frequency_days, schedule_id, scheduled_at, status, created_at)
-                        VALUES (:contact_id, :template_id, :cv_file_id,
-                            :frequency_days, :schedule_id, :scheduled_at, 'pending', :now)
-                    """), {
-                        "contact_id": j["contact_id"], "template_id": j["template_id"],
-                        "cv_file_id": j["cv_file_id"], "frequency_days": j["frequency_days"],
-                        "schedule_id": j.get("schedule_id"), "scheduled_at": next_send,
-                        "now": now_utc(),
-                    })
+                # Cola circular: siempre crear nuevo job al final de la cola
+                if j.get("schedule_id") and j.get("interval_minutes"):
+                    max_row = s.execute(text("""
+                        SELECT MAX(scheduled_at) FROM email_jobs
+                        WHERE schedule_id = :sid AND status = 'pending'
+                    """), {"sid": j["schedule_id"]}).fetchone()
+                    max_sched = max_row[0] if max_row and max_row[0] else None
+                    if max_sched is not None:
+                        if hasattr(max_sched, "tzinfo") and max_sched.tzinfo is None:
+                            max_sched = max_sched.replace(tzinfo=timezone.utc)
+                        next_scheduled = max_sched + timedelta(minutes=int(j["interval_minutes"]))
+                    else:
+                        sched_row = s.execute(
+                            text("SELECT * FROM delivery_schedules WHERE id = :id"),
+                            {"id": j["schedule_id"]},
+                        ).fetchone()
+                        next_scheduled = (
+                            calc_job_scheduled_at(row_to_dict(sched_row), 0)
+                            if sched_row
+                            else datetime.now(timezone.utc) + timedelta(days=3)
+                        )
+                else:
+                    next_scheduled = datetime.now(timezone.utc) + timedelta(days=3)
+
+                s.execute(text("""
+                    INSERT INTO email_jobs (contact_id, template_id, cv_file_id,
+                        frequency_days, schedule_id, scheduled_at, status, created_at)
+                    VALUES (:contact_id, :template_id, :cv_file_id,
+                        0, :schedule_id, :scheduled_at, 'pending', :now)
+                """), {
+                    "contact_id": j["contact_id"], "template_id": j["template_id"],
+                    "cv_file_id": j["cv_file_id"], "schedule_id": j.get("schedule_id"),
+                    "scheduled_at": next_scheduled, "now": now_utc(),
+                })
+                follow_up_art = next_scheduled.astimezone(ART_TZ).date().isoformat()
+                s.execute(text("""
+                    UPDATE contacts SET follow_up_date = :fdate, updated_at = :now
+                    WHERE id = :id
+                """), {"fdate": follow_up_art, "now": now_utc(), "id": j["contact_id"]})
                 insert_history(s, event_type="email.sent", entity_type="contact",
                                entity_id=str(j["contact_id"]),
                                message=f"Email enviado a {j['email']}")
@@ -2101,6 +2170,63 @@ def process_pending_email_jobs() -> dict:
     )
     return {"sent": sent, "failed": failed, "skipped": skipped}
 
+
+
+def get_email_preview(contact_id: int) -> dict:
+    """Devuelve asunto, cuerpo renderizado e info del CV para el próximo job pendiente."""
+    with get_session() as session:
+        row = session.execute(
+            text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
+            {"id": contact_id},
+        ).fetchone()
+        if row is None:
+            raise ServiceError("Contacto no encontrado.", HTTPStatus.NOT_FOUND)
+        contact = row_to_dict(row)
+
+        job_row = session.execute(text("""
+            SELECT ej.id, ej.template_id, ej.cv_file_id, ej.scheduled_at,
+                   cv.original_name, cv.file_path
+            FROM email_jobs ej
+            LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
+            WHERE ej.contact_id = :id AND ej.status = 'pending'
+            ORDER BY ej.scheduled_at ASC LIMIT 1
+        """), {"id": contact_id}).fetchone()
+
+        tmpl_row = None
+        cv_info = None
+        job_scheduled_at = None
+        if job_row:
+            j = row_to_dict(job_row)
+            job_scheduled_at = j.get("scheduled_at")
+            if j.get("template_id"):
+                tmpl_row = session.execute(
+                    text("SELECT * FROM message_templates WHERE id = :id"),
+                    {"id": j["template_id"]},
+                ).fetchone()
+            if j.get("cv_file_id"):
+                cv_info = {"id": j["cv_file_id"], "name": j.get("original_name")}
+
+    if tmpl_row:
+        rendered = render_template(row_to_dict(tmpl_row), contact)
+    else:
+        rendered = {
+            "subject": f"Postulacion y CV - {contact.get('company') or contact.get('email')}",
+            "body": f"{contact.get('name') or 'Hola'},\n\nTe comparto mi CV.\n\nGracias,\nGabriel",
+        }
+
+    sched_str = None
+    if job_scheduled_at is not None:
+        if hasattr(job_scheduled_at, "isoformat"):
+            sched_str = job_scheduled_at.isoformat()
+        else:
+            sched_str = str(job_scheduled_at)
+
+    return {
+        "subject": rendered["subject"],
+        "body": rendered["body"],
+        "cv": cv_info,
+        "scheduled_at": sched_str,
+    }
 
 
 def retry_failed_email_jobs() -> dict:

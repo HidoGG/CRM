@@ -1,7 +1,61 @@
 // Utilidades compartidas entre vistas (antes vivían en AppShell.jsx).
 
-export const worktrayActions = ['enviar', 'seguir', 'portal', 'descartar'];
-export const timingFilters = ['todos', 'urgente', 'sin_fecha', 'esta_semana', 'futuro'];
+export const worktrayActions = ['enviar', 'revisar', 'portal', 'descartar'];
+
+// Filtros por tab
+const ENVIAR_FILTERS = ['hoy', 'en_cola'];
+const REVISAR_FILTERS = ['todos', 'rebote_permanente', 'rebote_temporario', 'auto_respuesta'];
+const NO_FILTERS = ['todos'];
+
+export const timingFilters = ['todos', 'urgente', 'sin_fecha', 'esta_semana', 'futuro']; // legacy
+
+export function getTabFilters(action) {
+  if (action === 'enviar') return ENVIAR_FILTERS;
+  if (action === 'revisar') return REVISAR_FILTERS;
+  return NO_FILTERS;
+}
+
+export function defaultTabFilter(action) {
+  if (action === 'enviar') return 'hoy';
+  return 'todos';
+}
+
+const TAB_FILTER_LABELS = {
+  hoy:               'Hoy',
+  en_cola:           'En cola',
+  todos:             'Todos',
+  rebote_permanente: 'Rebote permanente',
+  rebote_temporario: 'Rebote temporario',
+  auto_respuesta:    'Auto-respuesta',
+};
+
+export function prettifyTabFilter(filter) {
+  return TAB_FILTER_LABELS[filter] ?? filter;
+}
+
+export function matchesTabFilter(contact, action, filter) {
+  if (action === 'enviar') {
+    if (filter === 'en_cola') return true;
+    if (filter === 'hoy') {
+      if (!contact.follow_up_date) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const due = new Date(`${contact.follow_up_date}T00:00:00`);
+      return due.getTime() <= today.getTime();
+    }
+    return true;
+  }
+  if (action === 'revisar') {
+    if (filter === 'todos') return true;
+    const hasBounce = Boolean(contact.bounced_at);
+    const isTemp = contact.bounce_reason === 'rebote_temporario' || contact.bounce_reason === 'casilla_llena';
+    if (filter === 'rebote_permanente') return hasBounce && !isTemp;
+    if (filter === 'rebote_temporario') return hasBounce && isTemp;
+    if (filter === 'auto_respuesta') return Boolean(contact.autoreply_reason) && !hasBounce;
+    return true;
+  }
+  return true;
+}
 
 export function capitalize(value) {
   return String(value).charAt(0).toUpperCase() + String(value).slice(1);

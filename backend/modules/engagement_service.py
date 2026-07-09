@@ -271,7 +271,12 @@ def _extract_alternative_email(body_text: str, original_email: str) -> str | Non
 def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None) -> None:
     """Persiste la detección de auto-respuesta: actualiza contacto e inserta historial."""
     now = now_utc()
-    set_parts = ["autoreply_reason = :reason", "updated_at = :now"]
+    set_parts = [
+        "autoreply_reason = :reason",
+        "next_action = 'revisar'",
+        "status = 'revisar'",
+        "updated_at = :now",
+    ]
     params: dict = {"reason": reason, "now": now, "id": job["contact_id"]}
     if alt_email:
         set_parts.append("alternative_email = :alt_email")
@@ -560,7 +565,7 @@ def _check_bounces(service) -> int:
             session.execute(
                 text("""
                     UPDATE contacts
-                    SET bounced_at = :now, status = 'sacar', next_action = 'descartar',
+                    SET bounced_at = :now, status = 'revisar', next_action = 'revisar',
                         discard_reason = COALESCE(discard_reason, 'rebote_email'),
                         bounce_reason = :reason, updated_at = :now
                     WHERE id = :id

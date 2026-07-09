@@ -267,6 +267,14 @@ def execute_action(contact_id: int, payload: schemas.ContactAction):
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
+@app.get("/contacts/{contact_id}/email-preview")
+def get_email_preview(contact_id: int):
+    try:
+        return crm_service.get_email_preview(contact_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
 @app.get("/summary")
 def summary():
     return crm_service.get_summary()
@@ -414,6 +422,25 @@ def update_cv_comment(cv_id: int, payload: schemas.CvComment):
     except ServiceError as exc:
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
+
+
+@app.get("/cv-files/{cv_id}/download")
+def download_cv_file(cv_id: int):
+    from modules import supabase_storage
+    with Session(engine) as db:
+        row = db.execute(
+            text("SELECT original_name, file_path FROM cv_files WHERE id = :id"),
+            {"id": cv_id},
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="CV no encontrado.")
+    cv_bytes = supabase_storage.download(row[1])
+    filename = row[0] or f"cv_{cv_id}.pdf"
+    return StreamingResponse(
+        iter([cv_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @app.delete("/cv-files/{cv_id}")
