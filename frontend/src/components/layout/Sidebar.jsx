@@ -21,7 +21,7 @@ const navItems = [
   { id: 'operaciones',   label: 'Operaciones',   note: 'Bandeja · Pipeline · Agenda', badge: true },
   { id: 'contactos',     label: 'Contactos',     note: 'Base y filtros'               },
   { id: 'importaciones', label: 'Importaciones', note: 'Cargar empresas'              },
-  { id: 'envios',        label: 'Envíos',        note: 'Correos automáticos'          },
+  { id: 'envios',        label: 'Configuración', note: 'Gmail, CVs y plantillas'      },
   { id: 'asistente',     label: 'Asistente IA',  note: 'Búsqueda laboral'             },
 ];
 

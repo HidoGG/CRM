@@ -19,6 +19,7 @@ import {
   useRefresh,
   useReporting,
   useSummary,
+  useCycleInfo,
 } from './lib/queries';
 import { defaultTabFilter, getTabFilters, matchesTabFilter, matchesTimingFilter, prettifyAction, timingFilters, worktrayActions } from './lib/utils';
 
@@ -53,7 +54,7 @@ const PATH_TITLES = {
   '/operaciones': 'Operaciones',
   '/contactos': 'Contactos',
   '/importaciones': 'Importaciones',
-  '/envios': 'Envíos',
+  '/envios': 'Configuración',
   '/asistente': 'Asistente IA',
 };
 
@@ -149,6 +150,8 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const reporting = useReporting().data;
   const imports = useImports().data || [];
   const emailJobs = useEmailJobs().data || [];
+  const cycleInfo = useCycleInfo().data;
+  const cycleStartedAt = cycleInfo?.cycle_started_at ?? null;
 
   // ── Cold start: si el backend tarda más de 7s, avisamos al usuario ──
   const [slowBackend, setSlowBackend] = useState(false);
@@ -216,11 +219,11 @@ function AuthenticatedApp({ theme, toggleTheme }) {
     const filters = getTabFilters(activeActionFilter);
     return filters.reduce((acc, filter) => {
       acc[filter] = actionScopedContacts.filter((c) =>
-        matchesTabFilter(c, activeActionFilter, filter),
+        matchesTabFilter(c, activeActionFilter, filter, { cycleStartedAt }),
       ).length;
       return acc;
     }, {});
-  }, [actionScopedContacts, activeActionFilter]);
+  }, [actionScopedContacts, activeActionFilter, cycleStartedAt]);
 
   const statusDistribution = useMemo(() => {
     const ORDER = ['prioridad', 'mantener', 'revisar', 'seguimiento', 'portal', 'sacar'];
@@ -233,7 +236,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const actionableContacts = useMemo(
     () =>
       actionScopedContacts
-        .filter((contact) => matchesTabFilter(contact, activeActionFilter, activeTimingFilter))
+        .filter((contact) => matchesTabFilter(contact, activeActionFilter, activeTimingFilter, { cycleStartedAt }))
         .sort((left, right) => {
           const leftFollowUp = left.follow_up_date
             ? new Date(`${left.follow_up_date}T00:00:00`).getTime()
@@ -603,7 +606,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
                   color: 'var(--amber-text)', cursor: 'pointer',
                 }}
               >
-                Ir a Envíos y re-autorizar
+                Ir a Configuración y re-autorizar
               </button>
             </div>
           </div>
@@ -685,6 +688,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
                 onActionFilterChange={(action) => { setActiveActionFilter(action); setActiveTimingFilter(defaultTabFilter(action)); }}
                 activeTimingFilter={activeTimingFilter}
                 onTimingFilterChange={setActiveTimingFilter}
+                cycleStartedAt={cycleStartedAt}
                 counts={worktrayCounts}
                 timingCounts={timingCounts}
                 reporting={reporting}

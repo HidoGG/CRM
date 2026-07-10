@@ -302,63 +302,6 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
         )}
       </section>
 
-      {/* ── Cola de envíos ── */}
-      <section aria-labelledby="jobs-heading" className="card">
-        <div className="section-head" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <span className="eyebrow">Automático · cada 10 min · Lun–Sáb</span>
-            <h3 id="jobs-heading" className="m-0 font-bold" style={{ color: 'var(--text-primary)', fontSize: '1.05rem', marginTop: 4 }}>
-              Cola de envíos
-            </h3>
-          </div>
-          <div className="flex gap-2 flex-wrap" role="toolbar" aria-label="Acciones de envío">
-            <button
-              type="button"
-              onClick={runNow}
-              className="ghost-button"
-              aria-label="Procesar envíos pendientes ahora"
-            >
-              Enviar ahora
-            </button>
-            {failedCount > 0 && (
-              <button
-                type="button"
-                onClick={retryFailed}
-                className="ghost-button"
-                style={{ color: 'var(--red-text)', borderColor: 'var(--red-text)' }}
-                aria-label={`Reintentar los ${failedCount} envíos fallidos`}
-              >
-                Reintentar fallidos ({failedCount})
-              </button>
-            )}
-          </div>
-        </div>
-
-        {emailJobs.length === 0 ? (
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            No hay envíos en la cola. Se crean al confirmar contactos con acción <em>Enviar</em>.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-4" role="list" aria-label="Cola de envíos">
-            {pendingJobs.length > 0 && (
-              <div>
-                <p className="eyebrow mb-2">Pendientes ({pendingJobs.length})</p>
-                <div className="flex flex-col gap-2">
-                  {pendingJobs.map(j => <JobRow key={j.id} job={j} onDelete={deleteJob} />)}
-                </div>
-              </div>
-            )}
-            {doneJobs.length > 0 && (
-              <div>
-                <p className="eyebrow mb-2">Historial</p>
-                <div className="flex flex-col gap-2">
-                  {doneJobs.map(j => <JobRow key={j.id} job={j} onDelete={deleteJob} />)}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
     </div>
   );
 }

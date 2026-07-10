@@ -70,7 +70,10 @@ def _verify_supabase_jwt(token: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    run_migrations()
+    try:
+        run_migrations()
+    except Exception as exc:
+        print(f"[startup] Error en migraciones Alembic: {exc} — continuando igualmente")
     init_db()
     _scheduler.add_job(
         crm_service.process_pending_email_jobs,
@@ -112,6 +115,14 @@ async def lifespan(app: FastAPI):
         id="reschedule_overdue",
         replace_existing=True,
     )
+    # Crear jobs para contactos sin job pendiente (cada hora, cubre cold starts).
+    _scheduler.add_job(
+        crm_service.backfill_missing_email_jobs,
+        trigger="interval",
+        hours=1,
+        id="backfill_jobs",
+        replace_existing=True,
+    )
     _scheduler.start()
     # Snapshot y re-encolar al arrancar (cubre cold starts de Render)
     try:
@@ -122,6 +133,10 @@ async def lifespan(app: FastAPI):
         crm_service.reschedule_overdue_jobs()
     except Exception as exc:
         print(f"[startup] No se pudo re-encolar jobs vencidos: {exc}")
+    try:
+        crm_service.backfill_missing_email_jobs()
+    except Exception as exc:
+        print(f"[startup] No se pudo hacer backfill de jobs: {exc}")
     yield
     _scheduler.shutdown(wait=False)
 
@@ -269,6 +284,11 @@ def delete_contact(contact_id: int):
         return crm_service.delete_contact(contact_id)
     except ServiceError as exc:
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
+@app.get("/cycle")
+def get_cycle():
+    return crm_service.get_cycle_info()
 
 
 @app.post("/contacts/{contact_id}/execute")

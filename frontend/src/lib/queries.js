@@ -23,6 +23,15 @@ export function useContacts() {
     refetchOnWindowFocus: true,  // refresca al volver a la pestaña si los datos están stale
   });
 }
+export function useCycleInfo() {
+  return useQuery({
+    queryKey: ['cycle'],
+    queryFn: fetchers.cycle,
+    placeholderData: { cycle_started_at: null, total_enviar: 0, sent_this_cycle: 0, pending_this_cycle: 0 },
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
 export function useSummary() {
   return useQuery({
     queryKey: ['summary'],

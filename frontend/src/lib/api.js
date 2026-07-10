@@ -55,6 +55,7 @@ export const fetchers = {
   imports: () => getJson('/imports'),
   capabilities: () => getJson('/capabilities'),
   reporting: () => getJson('/reporting/overview'),
+  cycle: () => getJson('/cycle'),
   templates: () => getJson('/templates'),
   cvFiles: () => getJson('/cv-files'),
   schedules: () => getJson('/schedules'),

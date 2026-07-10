@@ -701,7 +701,7 @@ _CONTACT_COLS = (
     "id, email, name, company, title, status, next_action, suggested_message, "
     "follow_up_date, portal_url, portal_status, discard_reason, source, notes, "
     "bounced_at, bounce_reason, industry, alternative_email, autoreply_reason, "
-    "created_at, updated_at"
+    "last_sent_at, created_at, updated_at"
 )
 
 
@@ -2156,10 +2156,13 @@ def process_pending_email_jobs() -> dict:
                     "scheduled_at": next_scheduled, "now": now_utc(),
                 })
                 follow_up_art = next_scheduled.astimezone(ART_TZ).date().isoformat()
+                sent_now = now_utc()
                 s.execute(text("""
-                    UPDATE contacts SET follow_up_date = :fdate, updated_at = :now
+                    UPDATE contacts
+                    SET follow_up_date = :fdate, last_sent_at = :sent_now, updated_at = :now
                     WHERE id = :id
-                """), {"fdate": follow_up_art, "now": now_utc(), "id": j["contact_id"]})
+                """), {"fdate": follow_up_art, "sent_now": sent_now, "now": sent_now, "id": j["contact_id"]})
+                _check_and_advance_cycle(s)
                 insert_history(s, event_type="email.sent", entity_type="contact",
                                entity_id=str(j["contact_id"]),
                                message=f"Email enviado a {j['email']}")
@@ -2244,12 +2247,47 @@ def get_email_preview(contact_id: int) -> dict:
             if j.get("cv_file_id"):
                 cv_info = {"id": j["cv_file_id"], "name": j.get("original_name")}
 
+        # Si no se resolvió template desde el job, buscar por sector del contacto
+        # (mismo criterio que _auto_create_email_job)
+        if tmpl_row is None:
+            sd_tmpl = session.execute(text("""
+                SELECT sd.template_id FROM sector_defaults sd
+                WHERE sd.sector = :sector AND sd.template_id IS NOT NULL LIMIT 1
+            """), {"sector": contact.get("industry")}).fetchone()
+            tmpl_id = sd_tmpl[0] if sd_tmpl else None
+            if tmpl_id is None:
+                default_tmpl = session.execute(
+                    text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
+                ).fetchone()
+                tmpl_id = default_tmpl[0] if default_tmpl else None
+            if tmpl_id:
+                tmpl_row = session.execute(
+                    text("SELECT * FROM message_templates WHERE id = :id"),
+                    {"id": tmpl_id},
+                ).fetchone()
+
+        # Si no se resolvió CV desde el job, buscar por sector
+        if cv_info is None:
+            sd_cv = session.execute(text("""
+                SELECT sd.cv_file_id, cv.original_name FROM sector_defaults sd
+                JOIN cv_files cv ON cv.id = sd.cv_file_id
+                WHERE sd.sector = :sector AND sd.cv_file_id IS NOT NULL LIMIT 1
+            """), {"sector": contact.get("industry")}).fetchone()
+            if sd_cv:
+                cv_info = {"id": sd_cv[0], "name": sd_cv[1]}
+            else:
+                default_cv = session.execute(
+                    text("SELECT id, original_name FROM cv_files WHERE is_default = 1 LIMIT 1")
+                ).fetchone()
+                if default_cv:
+                    cv_info = {"id": default_cv[0], "name": default_cv[1]}
+
     if tmpl_row:
         rendered = render_template(row_to_dict(tmpl_row), contact)
     else:
         rendered = {
             "subject": f"Postulacion y CV - {contact.get('company') or contact.get('email')}",
-            "body": f"{contact.get('name') or 'Hola'},\n\nTe comparto mi CV.\n\nGracias,\nGabriel",
+            "body": f"Hola,\n\nTe comparto mi CV.\n\nGracias,\nGabriel",
         }
 
     sched_str = None
@@ -2265,6 +2303,151 @@ def get_email_preview(contact_id: int) -> dict:
         "cv": cv_info,
         "scheduled_at": sched_str,
     }
+
+
+# ---------------------------------------------------------------------------
+# Ciclo de envío
+# ---------------------------------------------------------------------------
+
+def _get_cycle_started_at(session) -> datetime:
+    row = session.execute(
+        text("SELECT value FROM app_settings WHERE key = 'cycle_started_at'")
+    ).fetchone()
+    if row:
+        try:
+            dt = datetime.fromisoformat(row[0])
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            pass
+    return datetime.now(timezone.utc)
+
+
+def _start_new_cycle(session) -> datetime:
+    now = now_utc()
+    session.execute(text("""
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ('cycle_started_at', :val, :now)
+        ON CONFLICT (key) DO UPDATE SET value = :val, updated_at = :now
+    """), {"val": now.isoformat(), "now": now})
+    print(f"[ciclo] Nuevo ciclo iniciado: {now.isoformat()}")
+    return now
+
+
+def _check_and_advance_cycle(session) -> bool:
+    """Verifica si el ciclo terminó (todos los contactos enviados) y arranca uno nuevo."""
+    cycle_start = _get_cycle_started_at(session)
+    pending_count = session.execute(text("""
+        SELECT COUNT(*) FROM contacts
+        WHERE next_action = 'enviar'
+        AND (last_sent_at IS NULL OR last_sent_at < :cycle_start)
+    """), {"cycle_start": cycle_start}).scalar()
+    if pending_count == 0:
+        _start_new_cycle(session)
+        return True
+    return False
+
+
+def get_cycle_info() -> dict:
+    """Retorna la fecha de inicio del ciclo actual."""
+    with get_session() as session:
+        cycle_started_at = _get_cycle_started_at(session)
+        total = session.execute(text(
+            "SELECT COUNT(*) FROM contacts WHERE next_action = 'enviar'"
+        )).scalar()
+        sent_this_cycle = session.execute(text("""
+            SELECT COUNT(*) FROM contacts
+            WHERE next_action = 'enviar' AND last_sent_at >= :cycle_start
+        """), {"cycle_start": cycle_started_at}).scalar()
+    return {
+        "cycle_started_at": cycle_started_at.isoformat(),
+        "total_enviar": total,
+        "sent_this_cycle": sent_this_cycle,
+        "pending_this_cycle": total - sent_this_cycle,
+    }
+
+
+def backfill_missing_email_jobs() -> int:
+    """Crea jobs pendientes para contactos con next_action='enviar' sin job en cola.
+
+    Se llama al arrancar el servidor y desde el scheduler cada hora para recuperar
+    contactos que quedaron sin job (por ejemplo, tras una caída del backend).
+    """
+    with get_session() as session:
+        sched_row = session.execute(
+            text("SELECT * FROM delivery_schedules WHERE is_default = 1 LIMIT 1")
+        ).fetchone()
+        if sched_row is None:
+            return 0
+        schedule = row_to_dict(sched_row)
+        schedule_id = schedule["id"]
+
+        contacts = session.execute(text("""
+            SELECT c.id FROM contacts c
+            WHERE c.next_action = 'enviar'
+            AND NOT EXISTS (
+                SELECT 1 FROM email_jobs ej
+                WHERE ej.contact_id = c.id AND ej.status = 'pending'
+            )
+            ORDER BY c.id ASC
+        """)).fetchall()
+
+        if not contacts:
+            return 0
+
+        # El tail es el MAX(scheduled_at) de los jobs pending actuales para este schedule
+        max_row = session.execute(text("""
+            SELECT MAX(scheduled_at) FROM email_jobs
+            WHERE schedule_id = :sid AND status = 'pending'
+        """), {"sid": schedule_id}).fetchone()
+        tail = max_row[0] if max_row and max_row[0] else None
+        if tail is not None and hasattr(tail, "tzinfo") and tail.tzinfo is None:
+            tail = tail.replace(tzinfo=timezone.utc)
+
+        interval = max(1, int(schedule.get("interval_minutes") or 20))
+        created = 0
+        now = now_utc()
+
+        for (contact_id,) in contacts:
+            # Calcular el slot para este job
+            if tail is None:
+                tail = calc_job_scheduled_at(schedule, 0)
+            else:
+                tail = tail + timedelta(minutes=interval)
+                # Si el tail cayó fuera de la ventana horaria, avanzar al día siguiente
+                tail_art = tail.astimezone(ART_TZ)
+                end_h = int(schedule.get("end_hour_art") or 17)
+                if tail_art.hour >= end_h:
+                    next_day = _next_working_day(tail_art)
+                    start_h = int(schedule.get("start_hour_art") or 8)
+                    tail = next_day.replace(hour=start_h, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+
+            _auto_create_email_job(
+                session,
+                contact_id=contact_id,
+                next_action="enviar",
+                schedule_id=schedule_id,
+                job_index=0,
+            )
+            # Reemplazar el scheduled_at que puso _auto_create_email_job por el tail correcto
+            session.execute(text("""
+                UPDATE email_jobs SET scheduled_at = :t
+                WHERE contact_id = :cid AND status = 'pending'
+                AND scheduled_at = (
+                    SELECT MAX(scheduled_at) FROM email_jobs
+                    WHERE contact_id = :cid AND status = 'pending'
+                )
+            """), {"t": tail, "cid": contact_id})
+
+            follow_up_art = tail.astimezone(ART_TZ).date().isoformat()
+            session.execute(text("""
+                UPDATE contacts SET follow_up_date = :fdate, updated_at = :now WHERE id = :id
+            """), {"fdate": follow_up_art, "now": now, "id": contact_id})
+            created += 1
+
+    print(f"[backfill] {created} jobs creados para contactos sin job pendiente.")
+    return created
 
 
 def reschedule_overdue_jobs() -> int:
