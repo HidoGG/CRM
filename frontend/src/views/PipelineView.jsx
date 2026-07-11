@@ -366,7 +366,7 @@ function KanbanCard({ contact, actionDetails, onActionDetailsChange, executingId
       <div className="pipeline-contact-meta">
         <span className="provider-pill">{prettifyAction(contact.next_action || 'revisar_manual')}</span>
         <span className={`provider-pill ${isFollowUpDue(contact.follow_up_date) ? 'is-due' : ''}`}>
-          {formatFollowUpLabel(contact.follow_up_date)}
+          {formatFollowUpLabel(contact.follow_up_date, contact.next_job_scheduled_at)}
         </span>
       </div>
 
