@@ -100,10 +100,20 @@ export function formatDate(value) {
   return new Date(value).toLocaleString('es-AR');
 }
 
-export function formatFollowUpLabel(value) {
+export function formatFollowUpLabel(value, scheduledAtIso) {
   if (!value) return 'Sin fecha';
   const dateValue = new Date(`${value}T00:00:00`);
-  return `Seguimiento ${dateValue.toLocaleDateString('es-AR')}`;
+  const datePart = dateValue.toLocaleDateString('es-AR');
+  if (scheduledAtIso) {
+    const timePart = new Date(scheduledAtIso).toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'America/Argentina/Buenos_Aires',
+    });
+    return `Seguimiento ${datePart} · ${timePart} hs`;
+  }
+  return `Seguimiento ${datePart}`;
 }
 
 export function isFollowUpDue(value) {

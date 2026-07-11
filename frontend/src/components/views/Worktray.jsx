@@ -444,7 +444,7 @@ export function Worktray({
                             <td style={{ padding: '5px 8px' }}>
                               <div style={{ display: 'grid', gap: 5 }}>
                                 <span style={{ display: 'inline-flex', borderRadius: 999, padding: '2px 8px', fontSize: '0.78rem', fontWeight: 600, background: followUpDue ? 'var(--red-bg)' : 'var(--surface-subtle)', color: followUpDue ? 'var(--red-text)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                                  {formatFollowUpLabel(contact.follow_up_date)}
+                                  {formatFollowUpLabel(contact.follow_up_date, contact.next_job_scheduled_at)}
                                 </span>
                                 <div style={{ display: 'flex', gap: 4 }}>
                                   <input

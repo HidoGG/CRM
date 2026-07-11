@@ -708,7 +708,16 @@ _CONTACT_COLS = (
 def get_contacts(limit: int = 500, offset: int = 0) -> list[dict]:
     with get_session() as session:
         rows = session.execute(
-            text(f"SELECT {_CONTACT_COLS} FROM contacts ORDER BY id DESC LIMIT :limit OFFSET :offset"),
+            text(f"""
+                SELECT {_CONTACT_COLS}, ej.scheduled_at AS next_job_scheduled_at
+                FROM contacts c
+                LEFT JOIN LATERAL (
+                    SELECT scheduled_at FROM email_jobs
+                    WHERE contact_id = c.id AND status = 'pending'
+                    ORDER BY scheduled_at ASC LIMIT 1
+                ) ej ON true
+                ORDER BY c.id DESC LIMIT :limit OFFSET :offset
+            """),
             {"limit": limit, "offset": offset},
         ).fetchall()
     return [row_to_dict(row) for row in rows]
