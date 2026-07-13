@@ -30,6 +30,7 @@ class ContactCreate(BaseModel):
     source: str = "manual"
     notes: str | None = None
     schedule_id: int | None = None
+    industry: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -102,6 +103,7 @@ class ImportCandidate(BaseModel):
     notes: str | None = None
     decision: str = "pending"
     reason: str | None = None
+    industry: str | None = None
 
 
 class ImportConfirm(BaseModel):
@@ -133,6 +135,15 @@ class TemplateUpdate(BaseModel):
 
 class CvComment(BaseModel):
     comment: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Rubros / Sectores
+# ---------------------------------------------------------------------------
+
+class SectorDefaultUpdate(BaseModel):
+    template_id: int | None = None
+    cv_file_id: int | None = None
 
 
 # ---------------------------------------------------------------------------

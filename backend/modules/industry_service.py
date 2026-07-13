@@ -92,13 +92,14 @@ def classify_company(company_name: str) -> str:
     return "generalista"
 
 
-def resolve_industry(session, company_name: str | None) -> str:
+def resolve_industry(session, company_name: str | None, persist: bool = True) -> str:
     """Devuelve el sector de una empresa, con herencia y persistencia.
 
     Flujo:
     1. Si no hay nombre → 'generalista'.
     2. Busca en company_sectors (match exacto normalizado).
-    3. Si no existe → clasifica por keywords → guarda en company_sectors.
+    3. Si no existe → clasifica por keywords → guarda en company_sectors
+       (salvo persist=False, p.ej. durante un preview de importación).
     """
     if not company_name:
         return "generalista"
@@ -114,7 +115,8 @@ def resolve_industry(session, company_name: str | None) -> str:
         return row[0]
 
     sector = classify_company(key)
-    _save_company_sector(session, key, sector)
+    if persist:
+        _save_company_sector(session, key, sector)
     return sector
 
 

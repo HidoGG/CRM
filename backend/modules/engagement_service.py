@@ -295,6 +295,15 @@ def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None) ->
             text("UPDATE email_jobs SET replied_at = :now WHERE id = :job_id AND replied_at IS NULL"),
             {"now": now, "job_id": job["id"]},
         )
+        # El contacto pasa a 'revisar': cancelar su job pendiente para que no
+        # se le siga enviando. "Volver a cola" lo re-crea si corresponde.
+        session.execute(
+            text("""
+                UPDATE email_jobs SET status = 'cancelled', error_message = :err
+                WHERE contact_id = :id AND status = 'pending'
+            """),
+            {"err": f"Auto-respuesta: {reason}", "id": job["contact_id"]},
+        )
         insert_history(
             session,
             event_type="email.autoreply",
@@ -576,6 +585,15 @@ def _check_bounces(service) -> int:
                 text("""
                     UPDATE email_jobs SET status = 'failed', error_message = :err
                     WHERE contact_id = :id AND status = 'sent'
+                """),
+                {"err": f"Rebote: {reason}", "id": contact["id"]},
+            )
+            # Cancelar el job pendiente de la cola circular: a una dirección
+            # que rebotó no se le vuelve a enviar (protege la reputación).
+            session.execute(
+                text("""
+                    UPDATE email_jobs SET status = 'cancelled', error_message = :err
+                    WHERE contact_id = :id AND status = 'pending'
                 """),
                 {"err": f"Rebote: {reason}", "id": contact["id"]},
             )

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { capitalize, formatDate, prettifyAction } from '../lib/utils';
-import { useCapabilities, useCvFiles, useSchedules, useTemplates, useSectorDefaults } from '../lib/queries';
+import { useCapabilities, useCvFiles, useSchedules, useTemplates } from '../lib/queries';
 import { SectorBadge, SECTORS } from '../components/SectorBadge';
 
 const PROVIDER_LABEL = {
@@ -27,9 +27,6 @@ export function ImportsView({
   const templates = useTemplates().data || [];
   const cvFiles = useCvFiles().data || [];
   const schedules = useSchedules().data || [];
-  const sectorDefaults = useSectorDefaults().data || [];
-  const defaultTemplate = templates.find((t) => t.is_default) ?? templates[0];
-  const defaultCv = cvFiles.find((c) => c.is_default) ?? cvFiles[0];
   const defaultSchedule = schedules.find((s) => s.is_default) ?? schedules[0];
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [selectedCvId, setSelectedCvId] = useState(null);
@@ -40,9 +37,10 @@ export function ImportsView({
     const scheduleId = selectedScheduleId === ''
       ? null
       : (selectedScheduleId != null ? Number(selectedScheduleId) : (defaultSchedule?.id ?? null));
+    // null = automático: el backend resuelve plantilla y CV según el rubro de cada contacto
     onConfirm({
-      templateId: selectedTemplateId ?? defaultTemplate?.id ?? null,
-      cvFileId: selectedCvId ?? defaultCv?.id ?? null,
+      templateId: selectedTemplateId,
+      cvFileId: selectedCvId,
       scheduleId,
     });
   }
@@ -239,12 +237,6 @@ export function ImportsView({
                           sector={candidate.industry || 'generalista'}
                           onChange={(newSector) => {
                             onCandidateChange(candidate.id, 'industry', newSector);
-                            // Auto-seleccionar template/cv del rubro si no hay selección global
-                            const sd = sectorDefaults.find(d => d.sector === newSector);
-                            if (sd) {
-                              if (sd.template_id && !selectedTemplateId) setSelectedTemplateId(sd.template_id);
-                              if (sd.cv_file_id && !selectedCvId) setSelectedCvId(sd.cv_file_id);
-                            }
                           }}
                         />
                       </td>
@@ -301,13 +293,13 @@ export function ImportsView({
               <label>
                 Plantilla
                 <select
-                  value={selectedTemplateId ?? defaultTemplate?.id ?? ''}
+                  value={selectedTemplateId ?? ''}
                   onChange={(e) => setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)}
                 >
-                  {templates.length === 0 && <option value="">Sin plantillas</option>}
+                  <option value="">Automática según rubro</option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name}{t.is_default ? ' (por defecto)' : ''}
+                      {t.name}
                     </option>
                   ))}
                 </select>
@@ -315,10 +307,10 @@ export function ImportsView({
               <label>
                 CV adjunto
                 <select
-                  value={selectedCvId ?? defaultCv?.id ?? ''}
+                  value={selectedCvId ?? ''}
                   onChange={(e) => setSelectedCvId(e.target.value ? Number(e.target.value) : null)}
                 >
-                  <option value="">Sin CV</option>
+                  <option value="">Automático según rubro</option>
                   {cvFiles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.original_name}

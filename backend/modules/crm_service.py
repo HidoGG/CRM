@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import bindparam, text
 
 from modules.database import get_session, insert_history, now_utc, row_to_dict
+from modules import industry_service
 
 
 # ---------------------------------------------------------------------------
@@ -807,22 +808,32 @@ def create_contact(payload: dict) -> dict:
         if existing is not None:
             raise ServiceError("Ya existe un contacto con ese email.", HTTPStatus.CONFLICT)
 
+        # Rubro: usar el explícito si es válido; si no, clasificar por empresa
+        company = clean_optional(payload.get("company"))
+        industry = (
+            payload.get("industry")
+            if payload.get("industry") in industry_service.VALID_SECTORS
+            else industry_service.resolve_industry(session, company)
+        )
         result = session.execute(
             text(f"""
                 INSERT INTO contacts (
                     email, name, company, title, status, next_action, suggested_message,
-                    follow_up_date, portal_url, portal_status, discard_reason, source, notes, created_at, updated_at
+                    follow_up_date, portal_url, portal_status, discard_reason, source, notes,
+                    industry, created_at, updated_at
                 )
                 VALUES (
                     :email, :name, :company, :title, :status, :next_action, :suggested_message,
-                    :follow_up_date, :portal_url, :portal_status, :discard_reason, :source, :notes, :created_at, :updated_at
+                    :follow_up_date, :portal_url, :portal_status, :discard_reason, :source, :notes,
+                    :industry, :created_at, :updated_at
                 )
                 RETURNING id
             """),
             {
                 "email": email,
                 "name": name,
-                "company": clean_optional(payload.get("company")),
+                "company": company,
+                "industry": industry,
                 "title": clean_optional(payload.get("title")),
                 "status": normalize_status(payload.get("status", "mantener")),
                 "next_action": normalize_next_action(payload.get("next_action")),
@@ -913,6 +924,14 @@ def update_contact(contact_id: int, payload: dict) -> dict:
         email = updates["email"]
         if not email or not VALID_EMAIL_RE.fullmatch(email):
             raise ServiceError("Formato de email inválido.", HTTPStatus.UNPROCESSABLE_ENTITY)
+
+    if "industry" in updates and updates["industry"] is not None \
+            and updates["industry"] not in industry_service.VALID_SECTORS:
+        raise ServiceError(
+            f"Rubro inválido: {updates['industry']}. Valores permitidos: "
+            f"{', '.join(sorted(industry_service.VALID_SECTORS))}.",
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+        )
     with get_session() as session:
         row = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
@@ -929,6 +948,15 @@ def update_contact(contact_id: int, payload: dict) -> dict:
             ).fetchone()
             if duplicate is not None:
                 raise ServiceError("Ya existe un contacto con ese email.", HTTPStatus.CONFLICT)
+
+        # Si cambió la empresa pero no se especificó rubro → reclasificar
+        if "company" in updates and "industry" not in updates:
+            updates["industry"] = industry_service.resolve_industry(session, updates["company"])
+        # Si se cambió el rubro manualmente → persistir en company_sectors
+        elif "industry" in updates and updates["industry"]:
+            contact_company = updates.get("company") or previous.get("company")
+            if contact_company:
+                industry_service.save_company_sector(session, contact_company, updates["industry"])
 
         updates["updated_at"] = now_utc()
         _CONTACT_UPDATE_ALLOWED = frozenset(_UPDATABLE_CONTACT_FIELDS) | {"updated_at"}
@@ -957,12 +985,13 @@ def update_contact(contact_id: int, payload: dict) -> dict:
             ),
         )
 
-        # Si next_action cambió a enviar/seguir y no hay job pendiente, crear uno
+        # Si next_action cambió a enviar/seguir y no hay job vivo, crear uno
+        # ('processing' cuenta como vivo — la cola circular crea el siguiente)
         new_action = normalize_next_action(updates.get("next_action", ""))
         prev_action = normalize_next_action(previous.get("next_action", ""))
         if new_action in {"enviar", "seguir"} and new_action != prev_action:
             existing_job = session.execute(
-                text("SELECT id FROM email_jobs WHERE contact_id = :id AND status = 'pending' LIMIT 1"),
+                text("SELECT id FROM email_jobs WHERE contact_id = :id AND status IN ('pending', 'processing') LIMIT 1"),
                 {"id": contact_id},
             ).fetchone()
             if existing_job is None:
@@ -1096,6 +1125,13 @@ def execute_contact_action(contact_id: int, payload: dict) -> dict:
                 "id": contact_id,
             },
         )
+        # Si la acción saca al contacto del circuito de envío (descartar,
+        # portal, etc.), cancelar su job pendiente en la cola.
+        if normalize_next_action(next_action) not in {"enviar", "seguir"}:
+            session.execute(text("""
+                UPDATE email_jobs SET status = 'cancelled', error_message = :err
+                WHERE contact_id = :id AND status = 'pending'
+            """), {"err": f"Contacto fuera de la cola (acción: {action})", "id": contact_id})
         insert_history(
             session,
             event_type="contact.action_executed",
@@ -1350,9 +1386,17 @@ def preview_import(filename: str, mime_type: str, raw_bytes: bytes, source: str)
             {"import_id": import_id},
         ).fetchall()
 
+        # Rubro detectado por empresa — solo informativo en el preview
+        # (se persiste recién al confirmar la importación)
+        candidate_dicts = []
+        for row in candidates:
+            d = row_to_dict(row)
+            d["industry"] = industry_service.resolve_industry(session, d.get("company"), persist=False)
+            candidate_dicts.append(d)
+
     return {
         "batch": row_to_dict(batch),
-        "candidates": [row_to_dict(row) for row in candidates],
+        "candidates": candidate_dicts,
         "warnings": extraction["warnings"],
         "stats": totals,
         "provider": extraction["provider"],
@@ -1428,15 +1472,22 @@ def confirm_import(import_id: int, payload: dict) -> dict:
                 )
                 continue
 
+            # Rubro: usar el elegido en la pantalla si es válido; si no, clasificar
+            candidate_industry = candidate.get("industry")
+            if candidate_industry not in industry_service.VALID_SECTORS:
+                candidate_industry = industry_service.resolve_industry(session, company)
+            elif company:
+                industry_service.save_company_sector(session, company, candidate_industry)
+
             result = session.execute(
                 text("""
                     INSERT INTO contacts (
                         email, name, company, title, status, next_action, suggested_message,
-                        follow_up_date, source, notes, created_at, updated_at
+                        follow_up_date, source, notes, industry, created_at, updated_at
                     )
                     VALUES (
                         :email, :name, :company, :title, :status, :next_action, :suggested_message,
-                        :follow_up_date, :source, :notes, :created_at, :updated_at
+                        :follow_up_date, :source, :notes, :industry, :created_at, :updated_at
                     )
                     RETURNING id
                 """),
@@ -1444,7 +1495,8 @@ def confirm_import(import_id: int, payload: dict) -> dict:
                     "email": email, "name": name, "company": company, "title": title,
                     "status": status, "next_action": next_action, "suggested_message": suggested_message,
                     "follow_up_date": infer_follow_up_date_for_action(next_action),
-                    "source": source, "notes": notes, "created_at": now, "updated_at": now,
+                    "source": source, "notes": notes, "industry": candidate_industry,
+                    "created_at": now, "updated_at": now,
                 },
             )
             contact_id = int(result.fetchone()[0])
@@ -1614,6 +1666,61 @@ def set_default_template(template_id: int) -> dict:
         return [row_to_dict(r) for r in rows]
 
 
+def resolve_job_template_cv(
+    session,
+    industry: str | None,
+    template_id: int | None = None,
+    cv_file_id: int | None = None,
+) -> tuple[dict | None, dict | None]:
+    """Resuelve la plantilla y el CV efectivos para un envío o preview.
+
+    Prioridad: valor explícito del job → default del rubro (sector_defaults)
+    → default global (is_default = 1). Única fuente de verdad compartida por
+    el preview y el envío real: lo que se muestra es lo que sale.
+
+    Devuelve (template_dict | None, cv_dict | None); cv_dict tiene
+    id, original_name y file_path.
+    """
+    tmpl_row = None
+    if template_id:
+        tmpl_row = session.execute(
+            text("SELECT * FROM message_templates WHERE id = :id"),
+            {"id": template_id},
+        ).fetchone()
+    if tmpl_row is None and industry:
+        tmpl_row = session.execute(text("""
+            SELECT mt.* FROM sector_defaults sd
+            JOIN message_templates mt ON mt.id = sd.template_id
+            WHERE sd.sector = :sector LIMIT 1
+        """), {"sector": industry}).fetchone()
+    if tmpl_row is None:
+        tmpl_row = session.execute(
+            text("SELECT * FROM message_templates WHERE is_default = 1 LIMIT 1")
+        ).fetchone()
+
+    cv_row = None
+    if cv_file_id:
+        cv_row = session.execute(
+            text("SELECT id, original_name, file_path FROM cv_files WHERE id = :id"),
+            {"id": cv_file_id},
+        ).fetchone()
+    if cv_row is None and industry:
+        cv_row = session.execute(text("""
+            SELECT cv.id, cv.original_name, cv.file_path FROM sector_defaults sd
+            JOIN cv_files cv ON cv.id = sd.cv_file_id
+            WHERE sd.sector = :sector LIMIT 1
+        """), {"sector": industry}).fetchone()
+    if cv_row is None:
+        cv_row = session.execute(
+            text("SELECT id, original_name, file_path FROM cv_files WHERE is_default = 1 LIMIT 1")
+        ).fetchone()
+
+    return (
+        row_to_dict(tmpl_row) if tmpl_row else None,
+        row_to_dict(cv_row) if cv_row else None,
+    )
+
+
 def _auto_create_email_job(
     session,
     contact_id: int,
@@ -1624,35 +1731,13 @@ def _auto_create_email_job(
     job_index: int = 0,
 ) -> None:
     """Crea un email_job para un contacto. Solo actúa para acciones enviar/seguir.
+
+    template_id/cv_file_id en NULL significan "automático": se resuelven por
+    rubro recién al momento del envío (resolve_job_template_cv), de modo que
+    los cambios de rubro o de configuración se aplican a toda la cola.
     Si se provee schedule_id, calcula scheduled_at respetando la ventana horaria ART."""
     if normalize_next_action(next_action) not in {"enviar", "seguir"}:
         return
-    if template_id is None:
-        sd_tmpl = session.execute(text("""
-            SELECT sd.template_id FROM sector_defaults sd
-            JOIN contacts c ON c.industry = sd.sector
-            WHERE c.id = :cid AND sd.template_id IS NOT NULL LIMIT 1
-        """), {"cid": contact_id}).fetchone()
-        if sd_tmpl:
-            template_id = sd_tmpl[0]
-        else:
-            tmpl = session.execute(
-                text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
-            ).fetchone()
-            template_id = tmpl[0] if tmpl else None
-    if cv_file_id is None:
-        sd_cv = session.execute(text("""
-            SELECT sd.cv_file_id FROM sector_defaults sd
-            JOIN contacts c ON c.industry = sd.sector
-            WHERE c.id = :cid AND sd.cv_file_id IS NOT NULL LIMIT 1
-        """), {"cid": contact_id}).fetchone()
-        if sd_cv:
-            cv_file_id = sd_cv[0]
-        else:
-            cv = session.execute(
-                text("SELECT id FROM cv_files WHERE is_default = 1 LIMIT 1")
-            ).fetchone()
-            cv_file_id = cv[0] if cv else None
 
     # Calcular scheduled_at según el cronograma asignado
     if schedule_id is not None:
@@ -1924,17 +2009,23 @@ def delete_schedule(schedule_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 def get_email_jobs() -> list[dict]:
+    # template/cv NULL = automático por rubro: para el listado se muestra el
+    # nombre efectivo resuelto vía sector_defaults del rubro del contacto.
     with get_session() as session:
         rows = session.execute(text("""
             SELECT ej.*, c.name as contact_name, c.email as contact_email,
-                   c.company as contact_company, mt.name as template_name,
-                   cv.original_name as cv_name,
+                   c.company as contact_company,
+                   COALESCE(mt.name, mt_sd.name) as template_name,
+                   COALESCE(cv.original_name, cv_sd.original_name) as cv_name,
                    ds.name as schedule_name, ds.start_hour_art, ds.end_hour_art,
                    ds.interval_minutes
             FROM email_jobs ej
             LEFT JOIN contacts c ON ej.contact_id = c.id
             LEFT JOIN message_templates mt ON ej.template_id = mt.id
             LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
+            LEFT JOIN sector_defaults sd ON sd.sector = c.industry
+            LEFT JOIN message_templates mt_sd ON ej.template_id IS NULL AND mt_sd.id = sd.template_id
+            LEFT JOIN cv_files cv_sd ON ej.cv_file_id IS NULL AND cv_sd.id = sd.cv_file_id
             LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
             ORDER BY ej.scheduled_at ASC
         """)).fetchall()
@@ -2046,13 +2137,12 @@ def process_pending_email_jobs() -> dict:
                 SELECT ej.id, ej.contact_id, ej.template_id, ej.cv_file_id,
                        ej.frequency_days, ej.scheduled_at, ej.schedule_id,
                        ej.retry_count,
-                       c.email, c.name, c.company,
-                       cv.file_path, cv.original_name,
+                       c.email, c.name, c.company, c.industry,
+                       c.next_action AS contact_next_action, c.bounced_at,
                        ds.name as schedule_name,
                        ds.start_hour_art, ds.end_hour_art, ds.interval_minutes
                 FROM email_jobs ej
                 LEFT JOIN contacts c ON ej.contact_id = c.id
-                LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
                 LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
                 WHERE ej.id IN :ids
                 ORDER BY ej.scheduled_at ASC
@@ -2064,6 +2154,22 @@ def process_pending_email_jobs() -> dict:
     # Procesar cada job con sesión independiente.
     for job in jobs:
         j = row_to_dict(job)
+
+        # Re-chequear estado del contacto: si rebotó o salió del circuito de
+        # envío después de encolarse, cancelar el job en vez de enviar.
+        contact_action = normalize_next_action(j.get("contact_next_action"))
+        if j.get("bounced_at") is not None or contact_action not in {"enviar", "seguir"}:
+            with get_session() as s:
+                s.execute(text("""
+                    UPDATE email_jobs SET status = 'cancelled', error_message = :err
+                    WHERE id = :id
+                """), {
+                    "err": "Rebote previo" if j.get("bounced_at") else f"Contacto fuera de la cola ({contact_action or 'sin acción'})",
+                    "id": j["id"],
+                })
+            skipped += 1
+            print(f"[email_jobs] Job {j['id']} cancelado — contacto no enviable ({j.get('email')})")
+            continue
 
         # Validación de ventana horaria ART: usamos la hora del scheduled_at original
         # para que jobs que debían enviarse durante la ventana se procesen aunque el
@@ -2090,23 +2196,22 @@ def process_pending_email_jobs() -> dict:
                 continue
 
         try:
-            cv_bytes: bytes | None = None
-            cv_filename = j.get("original_name")
-            if j.get("cv_file_id") and j.get("file_path"):
-                from modules import supabase_storage
-                cv_bytes = supabase_storage.download(j["file_path"])
+            # Plantilla y CV: explícito del job o automático por rubro
+            # (misma resolución que el preview — lo que se ve es lo que sale)
+            with get_session() as s:
+                tmpl, cv_info = resolve_job_template_cv(
+                    s, j.get("industry"), j.get("template_id"), j.get("cv_file_id")
+                )
 
-            tmpl_row = None
-            if j["template_id"]:
-                with get_session() as s:
-                    tmpl_row = s.execute(
-                        text("SELECT * FROM message_templates WHERE id = :id"),
-                        {"id": j["template_id"]}
-                    ).fetchone()
+            cv_bytes: bytes | None = None
+            cv_filename = cv_info.get("original_name") if cv_info else None
+            if cv_info and cv_info.get("file_path"):
+                from modules import supabase_storage
+                cv_bytes = supabase_storage.download(cv_info["file_path"])
 
             contact = {"name": j["name"], "company": j["company"], "email": j["email"]}
-            if tmpl_row:
-                rendered = render_template(row_to_dict(tmpl_row), contact)
+            if tmpl:
+                rendered = render_template(tmpl, contact)
             else:
                 rendered = {
                     "subject": f"Postulacion y CV - {j['company'] or j['email']}",
@@ -2234,65 +2339,30 @@ def get_email_preview(contact_id: int) -> dict:
         contact = row_to_dict(row)
 
         job_row = session.execute(text("""
-            SELECT ej.id, ej.template_id, ej.cv_file_id, ej.scheduled_at,
-                   cv.original_name, cv.file_path
+            SELECT ej.id, ej.template_id, ej.cv_file_id, ej.scheduled_at
             FROM email_jobs ej
-            LEFT JOIN cv_files cv ON ej.cv_file_id = cv.id
             WHERE ej.contact_id = :id AND ej.status = 'pending'
             ORDER BY ej.scheduled_at ASC LIMIT 1
         """), {"id": contact_id}).fetchone()
 
-        tmpl_row = None
-        cv_info = None
+        job_template_id = None
+        job_cv_file_id = None
         job_scheduled_at = None
         if job_row:
             j = row_to_dict(job_row)
             job_scheduled_at = j.get("scheduled_at")
-            if j.get("template_id"):
-                tmpl_row = session.execute(
-                    text("SELECT * FROM message_templates WHERE id = :id"),
-                    {"id": j["template_id"]},
-                ).fetchone()
-            if j.get("cv_file_id"):
-                cv_info = {"id": j["cv_file_id"], "name": j.get("original_name")}
+            job_template_id = j.get("template_id")
+            job_cv_file_id = j.get("cv_file_id")
 
-        # Si no se resolvió template desde el job, buscar por sector del contacto
-        # (mismo criterio que _auto_create_email_job)
-        if tmpl_row is None:
-            sd_tmpl = session.execute(text("""
-                SELECT sd.template_id FROM sector_defaults sd
-                WHERE sd.sector = :sector AND sd.template_id IS NOT NULL LIMIT 1
-            """), {"sector": contact.get("industry")}).fetchone()
-            tmpl_id = sd_tmpl[0] if sd_tmpl else None
-            if tmpl_id is None:
-                default_tmpl = session.execute(
-                    text("SELECT id FROM message_templates WHERE is_default = 1 LIMIT 1")
-                ).fetchone()
-                tmpl_id = default_tmpl[0] if default_tmpl else None
-            if tmpl_id:
-                tmpl_row = session.execute(
-                    text("SELECT * FROM message_templates WHERE id = :id"),
-                    {"id": tmpl_id},
-                ).fetchone()
+        # Misma resolución que el envío real (resolve_job_template_cv):
+        # explícito del job → default del rubro → default global
+        tmpl, cv_row = resolve_job_template_cv(
+            session, contact.get("industry"), job_template_id, job_cv_file_id
+        )
+        cv_info = {"id": cv_row["id"], "name": cv_row["original_name"]} if cv_row else None
 
-        # Si no se resolvió CV desde el job, buscar por sector
-        if cv_info is None:
-            sd_cv = session.execute(text("""
-                SELECT sd.cv_file_id, cv.original_name FROM sector_defaults sd
-                JOIN cv_files cv ON cv.id = sd.cv_file_id
-                WHERE sd.sector = :sector AND sd.cv_file_id IS NOT NULL LIMIT 1
-            """), {"sector": contact.get("industry")}).fetchone()
-            if sd_cv:
-                cv_info = {"id": sd_cv[0], "name": sd_cv[1]}
-            else:
-                default_cv = session.execute(
-                    text("SELECT id, original_name FROM cv_files WHERE is_default = 1 LIMIT 1")
-                ).fetchone()
-                if default_cv:
-                    cv_info = {"id": default_cv[0], "name": default_cv[1]}
-
-    if tmpl_row:
-        rendered = render_template(row_to_dict(tmpl_row), contact)
+    if tmpl:
+        rendered = render_template(tmpl, contact)
     else:
         rendered = {
             "subject": f"Postulacion y CV - {contact.get('company') or contact.get('email')}",
@@ -2392,12 +2462,15 @@ def backfill_missing_email_jobs() -> int:
         schedule = row_to_dict(sched_row)
         schedule_id = schedule["id"]
 
+        # 'processing' cuenta como job vivo: si el contacto está siendo enviado
+        # en este momento, la cola circular ya le creará su próximo job — crear
+        # otro acá duplicaría sus envíos de forma permanente.
         contacts = session.execute(text("""
             SELECT c.id FROM contacts c
             WHERE c.next_action = 'enviar'
             AND NOT EXISTS (
                 SELECT 1 FROM email_jobs ej
-                WHERE ej.contact_id = c.id AND ej.status = 'pending'
+                WHERE ej.contact_id = c.id AND ej.status IN ('pending', 'processing')
             )
             ORDER BY c.id ASC
         """)).fetchall()
@@ -2460,29 +2533,35 @@ def backfill_missing_email_jobs() -> int:
 
 
 def reschedule_overdue_jobs() -> int:
-    """Reprograma jobs pending con scheduled_at vencido al final de la cola.
+    """Reprograma jobs pending ESTANCADOS (de días anteriores) al final de la cola.
 
-    Corre al inicio de cada ciclo de envío para que los contactos vencidos
-    desaparezcan del filtro 'Hoy' y vuelvan a aparecer en su posición correcta
-    de la cola circular.
+    Los jobs atrasados de hoy NO se tocan: el claim de process_pending_email_jobs
+    los envía con normalidad (máx. 25 por ciclo), así una caída temporal del
+    backend no frena la cola. Solo los jobs cuyo día ya pasó se reubican al
+    final, para que salgan del filtro 'Hoy' y retomen su posición circular.
+    Los jobs sin cronograma tampoco se tocan: se envían apenas el backend
+    esté disponible.
     """
     now = now_utc()
+    # Umbral: inicio del día actual en ART. Lo anterior a esto es "estancado".
+    today_art_start = now.astimezone(ART_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    threshold = today_art_start.astimezone(timezone.utc)
 
     with get_session() as session:
         rows = session.execute(text("""
             SELECT ej.id, ej.contact_id, ej.schedule_id,
                    ds.start_hour_art, ds.end_hour_art, ds.interval_minutes
             FROM email_jobs ej
-            LEFT JOIN delivery_schedules ds ON ej.schedule_id = ds.id
-            WHERE ej.status = 'pending' AND ej.scheduled_at < :now
-            ORDER BY ej.schedule_id NULLS LAST, ej.id ASC
-        """), {"now": now}).fetchall()
+            JOIN delivery_schedules ds ON ej.schedule_id = ds.id
+            WHERE ej.status = 'pending' AND ej.scheduled_at < :threshold
+            ORDER BY ej.schedule_id, ej.id ASC
+        """), {"threshold": threshold}).fetchall()
 
         if not rows:
             return 0
 
         # Para cada schedule_id, el "final de cola" es MAX(scheduled_at) de jobs
-        # pending NO vencidos. Lo calculamos una sola vez por schedule y lo
+        # pending NO estancados. Lo calculamos una sola vez por schedule y lo
         # actualizamos a medida que agregamos jobs.
         tail: dict = {}
 
@@ -2495,24 +2574,22 @@ def reschedule_overdue_jobs() -> int:
             if sid not in tail:
                 max_row = session.execute(text("""
                     SELECT MAX(scheduled_at) FROM email_jobs
-                    WHERE schedule_id = :sid AND status = 'pending' AND scheduled_at >= :now
-                """), {"sid": sid, "now": now}).fetchone()
+                    WHERE schedule_id = :sid AND status = 'pending' AND scheduled_at >= :threshold
+                """), {"sid": sid, "threshold": threshold}).fetchone()
                 max_sched = max_row[0] if max_row and max_row[0] else None
                 if max_sched is not None:
                     if hasattr(max_sched, "tzinfo") and max_sched.tzinfo is None:
                         max_sched = max_sched.replace(tzinfo=timezone.utc)
-                    tail[sid] = max_sched
+                    # El primer reubicado va DESPUÉS del último de la cola
+                    tail[sid] = max_sched + timedelta(minutes=interval)
                 else:
                     # Cola vacía: calcular próximo slot hábil desde ahora
-                    if j.get("start_hour_art"):
-                        sched_dict = {
-                            "start_hour_art": j["start_hour_art"],
-                            "end_hour_art": j["end_hour_art"],
-                            "interval_minutes": interval,
-                        }
-                        tail[sid] = calc_job_scheduled_at(sched_dict, 0)
-                    else:
-                        tail[sid] = datetime.now(timezone.utc) + timedelta(days=1)
+                    sched_dict = {
+                        "start_hour_art": j["start_hour_art"],
+                        "end_hour_art": j["end_hour_art"],
+                        "interval_minutes": interval,
+                    }
+                    tail[sid] = calc_job_scheduled_at(sched_dict, 0)
             else:
                 tail[sid] = tail[sid] + timedelta(minutes=interval)
 
@@ -2536,12 +2613,25 @@ def reschedule_overdue_jobs() -> int:
 
 
 def retry_failed_email_jobs() -> dict:
-    """Resetea todos los jobs con status='failed' a 'pending' con scheduled_at=ahora."""
+    """Resetea jobs con status='failed' a 'pending' con scheduled_at=ahora.
+
+    Solo reintenta jobs de contactos que siguen en el circuito de envío
+    (enviar/seguir, sin rebote) y que no tengan ya otro job vivo — evita
+    duplicar la cola y re-enviar a direcciones que rebotaron."""
     with get_session() as session:
         result = session.execute(text("""
-            UPDATE email_jobs
+            UPDATE email_jobs ej
             SET status = 'pending', scheduled_at = :now, error_message = NULL
-            WHERE status = 'failed'
+            FROM contacts c
+            WHERE ej.contact_id = c.id
+              AND ej.status = 'failed'
+              AND c.next_action IN ('enviar', 'seguir')
+              AND c.bounced_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM email_jobs vivo
+                  WHERE vivo.contact_id = ej.contact_id
+                    AND vivo.status IN ('pending', 'processing')
+              )
         """), {"now": now_utc()})
         retried = result.rowcount
     print(f"[email_jobs] Retry: {retried} jobs fallidos reseteados a pending.")
