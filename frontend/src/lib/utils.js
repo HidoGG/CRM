@@ -7,8 +7,6 @@ const ENVIAR_FILTERS = ['hoy', 'en_cola', 'enviados'];
 const REVISAR_FILTERS = ['todos', 'rebote_permanente', 'rebote_temporario', 'auto_respuesta'];
 const NO_FILTERS = ['todos'];
 
-export const timingFilters = ['todos', 'urgente', 'sin_fecha', 'esta_semana', 'futuro']; // legacy
-
 export function getTabFilters(action) {
   if (action === 'enviar') return ENVIAR_FILTERS;
   if (action === 'revisar') return REVISAR_FILTERS;
@@ -71,17 +69,6 @@ export function capitalize(value) {
 export function prettifyAction(value) {
   if (value === 'revisar_manual') return 'Revisar manual';
   return capitalize(value);
-}
-
-export function prettifyTimingFilter(value) {
-  const LABELS = {
-    todos:       'Todos',
-    urgente:     'Urgente',
-    sin_fecha:   'Sin fecha',
-    esta_semana: 'Esta semana',
-    futuro:      'Futuro',
-  };
-  return LABELS[value] ?? capitalize(value);
 }
 
 export function formatDelta(value) {
@@ -223,20 +210,6 @@ const EVENT_LABELS = {
 
 export function prettifyEvent(value) {
   return EVENT_LABELS[value] ?? capitalize(String(value || '').replaceAll('.', ' '));
-}
-
-export function matchesTimingFilter(value, filter) {
-  if (filter === 'todos') return true;
-  if (filter === 'sin_fecha') return !value;
-  if (!value) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dueDate = new Date(`${value}T00:00:00`);
-  const diffDays = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
-  if (filter === 'urgente')     return diffDays <= 0;
-  if (filter === 'esta_semana') return diffDays > 0 && diffDays <= 6;
-  if (filter === 'futuro')      return diffDays > 6;
-  return true;
 }
 
 export function createEmptyReporting() {

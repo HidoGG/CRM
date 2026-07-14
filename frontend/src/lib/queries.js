@@ -130,7 +130,8 @@ const SCOPE_KEYS = {
   cvs: [['cvFiles']],
   templates: [['templates']],
   schedules: [['schedules']],
-  contacts: [['contacts'], ['summary'], ['reporting'], ['templateStats']],
+  // Tras una acción sobre contactos también cambian la cola y el ciclo
+  contacts: [['contacts'], ['summary'], ['reporting'], ['templateStats'], ['emailJobs'], ['cycle']],
   sectorDefaults: [['sectorDefaults']],
 };
 

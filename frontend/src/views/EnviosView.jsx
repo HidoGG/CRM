@@ -12,7 +12,7 @@ const TABS = [
   { id: 'estadisticas', label: 'Estadísticas'},
 ];
 
-export function EnviosView({ contacts, emailJobs, onRefresh }) {
+export function EnviosView({ onRefresh }) {
   const [activeTab, setActiveTab] = useState('cola');
   const templates = useTemplates().data || [];
   const cvFiles = useCvFiles().data || [];
@@ -101,9 +101,6 @@ export function EnviosView({ contacts, emailJobs, onRefresh }) {
       {/* Contenido de cada tab */}
       {activeTab === 'cola' && (
         <EmailJobsView
-          contacts={contacts}
-          templates={templates}
-          emailJobs={emailJobs}
           cvFiles={cvFiles}
           gmailStatus={gmailStatus}
           onRefresh={onRefresh}
@@ -160,7 +157,7 @@ function TemplateStatsPanel({ stats, onSync }) {
     }
   }
 
-  const rows = stats?.by_template ?? [];
+  const rows = stats?.templates ?? [];
   const totals = stats?.totals ?? { sent: 0, replied: 0, response_rate: 0 };
 
   return (
@@ -213,7 +210,7 @@ function TemplateStatsPanel({ stats, onSync }) {
               {rows.map(row => (
                 <tr key={row.template_id} style={{ borderBottom: '1px solid var(--border-faint)' }}>
                   <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-                    {row.template_name}
+                    {row.name}
                   </td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{row.sent}</td>
                   <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{row.replied}</td>

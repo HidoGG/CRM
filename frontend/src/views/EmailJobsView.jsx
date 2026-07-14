@@ -2,30 +2,13 @@ import { useRef, useState } from 'react';
 import { API_BASE, apiFetch } from '../lib/api';
 import { ConfirmModal, InfoModal } from '../components/ConfirmModal';
 
-const STATUS_LABEL = { pending: 'Pendiente', sent: 'Enviado', failed: 'Fallido', processing: 'Procesando' };
-
-const STATUS_STYLE = {
-  pending:    { background: 'var(--amber-bg)',  color: 'var(--amber-text)' },
-  sent:       { background: 'var(--green-bg)',  color: 'var(--green-text)' },
-  failed:     { background: 'var(--red-bg)',    color: 'var(--red-text)'   },
-  processing: { background: 'var(--blue-subtle)', color: 'var(--blue)'    },
-};
-
-function formatDate(iso) {
-  if (!iso) return '—';
-  try { return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
-  catch { return iso; }
-}
-
-export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailStatus, onRefresh }) {
+export function EmailJobsView({ cvFiles, gmailStatus, onRefresh }) {
   const [uploadingCv, setUploadingCv]   = useState(false);
   const [uploadError, setUploadError]   = useState('');
   const [pendingFile, setPendingFile]   = useState(null);
   const [pendingComment, setPendingComment] = useState('');
   const cvInputRef = useRef(null);
   const [confirmCv, setConfirmCv]   = useState(null);
-  const [confirmJob, setConfirmJob] = useState(null);
-  const [runResult, setRunResult]   = useState(null);
   const [authError, setAuthError]   = useState('');
 
   function handleFileSelected(e) {
@@ -68,28 +51,6 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     await onRefresh('cvs');
   }
 
-  function deleteJob(id) { setConfirmJob(id); }
-  async function confirmDeleteJob() {
-    const id = confirmJob;
-    setConfirmJob(null);
-    await apiFetch(`${API_BASE}/email-jobs/${id}`, { method: 'DELETE' });
-    await onRefresh('jobs');
-  }
-
-  async function runNow() {
-    const res  = await apiFetch(`${API_BASE}/email-jobs/run-now`, { method: 'POST' });
-    const data = res.ok ? await res.json() : { sent: 0, failed: 0 };
-    await onRefresh('jobs');
-    setRunResult(data);
-  }
-
-  async function retryFailed() {
-    const res  = await apiFetch(`${API_BASE}/email-jobs/retry-failed`, { method: 'POST' });
-    const data = res.ok ? await res.json() : { retried: 0 };
-    await onRefresh('jobs');
-    setRunResult({ sent: 0, failed: 0, retried: data.retried });
-  }
-
   async function authorize() {
     try {
       const res = await apiFetch(`${API_BASE}/gmail/auth-url`);
@@ -105,44 +66,9 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
     }
   }
 
-  const pendingJobs = emailJobs.filter(j => j.status === 'pending' || j.status === 'processing');
-  const doneJobs    = emailJobs.filter(j => j.status !== 'pending' && j.status !== 'processing');
-  const failedCount = emailJobs.filter(j => j.status === 'failed').length;
-
-  /* ─── Textos de resultado ─── */
-  function resultTitle() {
-    if (runResult?.assigned != null) return runResult.assigned > 0 ? 'CV asignado' : 'Sin envíos para actualizar';
-    if (runResult?.retried > 0)      return 'Envíos reactivados';
-    if (runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0) return 'Sin fallidos';
-    if (runResult?.sent > 0 && runResult?.failed === 0) return 'Correos enviados';
-    if (runResult?.sent === 0 && runResult?.failed === 0) return 'Sin envíos pendientes';
-    if (runResult?.sent > 0) return 'Envíos con errores';
-    return 'Fallo en el envío';
-  }
-
-  function resultMessage() {
-    if (runResult?.retried > 0)
-      return `${runResult.retried} envío(s) reactivados. Se procesarán en el próximo ciclo automático. También podés presionar "Enviar ahora".`;
-    if (runResult?.retried === 0 && runResult?.sent === 0 && runResult?.failed === 0)
-      return 'No hay envíos fallidos para reintentar.';
-    if (runResult?.sent > 0 && runResult?.failed === 0)
-      return `Se enviaron correctamente ${runResult.sent} correo(s). Revisá tu bandeja de entrada.`;
-    if (runResult?.sent === 0 && runResult?.failed === 0)
-      return 'No había correos pendientes de envío ahora.';
-    if (runResult?.sent > 0)
-      return `Se enviaron ${runResult.sent} correos, pero ${runResult.failed} fallaron. Revisá los detalles en la cola.`;
-    return 'No se pudo enviar. Revisá el estado de Gmail o los detalles del error en la cola.';
-  }
-
   return (
     <div className="flex flex-col gap-5">
       {/* Modales */}
-      <InfoModal
-        open={runResult !== null}
-        title={resultTitle()}
-        message={<p className="m-0">{resultMessage()}</p>}
-        onClose={() => setRunResult(null)}
-      />
       <InfoModal
         open={Boolean(authError)}
         title="Error de autorización"
@@ -156,14 +82,6 @@ export function EmailJobsView({ contacts, templates, emailJobs, cvFiles, gmailSt
         confirmLabel="Eliminar"
         onConfirm={confirmDeleteCv}
         onCancel={() => setConfirmCv(null)}
-      />
-      <ConfirmModal
-        open={confirmJob !== null}
-        title="Cancelar envío"
-        message="¿Seguro que querés cancelar este envío programado?"
-        confirmLabel="Cancelar envío"
-        onConfirm={confirmDeleteJob}
-        onCancel={() => setConfirmJob(null)}
       />
 
       {/* ── Estado Gmail ── */}
@@ -396,65 +314,3 @@ function CvRow({ cv, onDelete, onRefresh }) {
   );
 }
 
-function JobRow({ job, onDelete }) {
-  const statusStyle = STATUS_STYLE[job.status] || STATUS_STYLE.pending;
-
-  return (
-    <div
-      role="listitem"
-      className="job-row"
-      style={{
-        border: '1px solid var(--border-faint)',
-        borderRadius: 12,
-        padding: '12px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 12,
-        background: 'var(--surface-raised)',
-      }}
-    >
-      <div className="job-row-info" style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {job.contact_name || '—'}{' '}
-          <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>— {job.contact_email}</span>
-        </span>
-        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-          Plantilla: {job.template_name || 'por defecto'} · CV: {job.cv_name || 'sin adjunto'} ·{' '}
-          {job.frequency_days > 0 ? `Cada ${job.frequency_days} días` : 'Una vez'}
-        </span>
-        {job.status === 'failed' && job.error_message && (
-          <span
-            style={{ fontSize: '0.8rem', color: 'var(--red-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 480 }}
-            title={job.error_message}
-          >
-            {job.error_message}
-          </span>
-        )}
-      </div>
-
-      <div className="job-row-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-          {job.status === 'sent' ? `Enviado ${formatDate(job.sent_at)}` : `Programado ${formatDate(job.scheduled_at)}`}
-        </span>
-        <span
-          style={{ ...statusStyle, fontSize: '0.78rem', padding: '3px 10px', borderRadius: 999, fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}
-          aria-label={`Estado: ${STATUS_LABEL[job.status] || job.status}`}
-        >
-          {STATUS_LABEL[job.status] || job.status}
-        </span>
-        {(job.status === 'pending' || job.status === 'processing') && (
-          <button
-            type="button"
-            onClick={() => onDelete(job.id)}
-            className="ghost-button"
-            style={{ fontSize: '0.8rem', padding: '4px 10px', color: 'var(--red-text)', borderColor: 'var(--red-text)' }}
-            aria-label={`Cancelar envío a ${job.contact_email}`}
-          >
-            Cancelar
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}

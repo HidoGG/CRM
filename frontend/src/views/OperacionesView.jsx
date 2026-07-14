@@ -23,14 +23,13 @@ export function OperacionesView({
   editingFollowUp,
   onFollowUpChange,
   onSaveFollowUp,
-  actionDetails,
-  onActionDetailsChange,
   selectedContactId,
   onSelectContact,
   selectedContact,
   historyItems,
   loadingHistory,
   statusDistribution,
+  cycleStartedAt,
 }) {
   const total = statusDistribution.reduce((sum, s) => sum + s.count, 0);
 
@@ -102,8 +101,7 @@ export function OperacionesView({
         editingFollowUp={editingFollowUp}
         onFollowUpChange={onFollowUpChange}
         onSaveFollowUp={onSaveFollowUp}
-        actionDetails={actionDetails}
-        onActionDetailsChange={onActionDetailsChange}
+        cycleStartedAt={cycleStartedAt}
         selectedContactId={selectedContactId}
         onSelectContact={onSelectContact}
         selectedContact={selectedContact}

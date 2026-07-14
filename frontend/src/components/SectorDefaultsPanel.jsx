@@ -11,6 +11,7 @@ export function SectorDefaultsPanel() {
   const cvFiles = useCvFiles().data || [];
 
   const [saving, setSaving] = useState(null);
+  const [feedback, setFeedback] = useState(null); // { sector, ok, text }
   const [localOverrides, setLocalOverrides] = useState({});
 
   function getVal(sector, field) {
@@ -28,14 +29,21 @@ export function SectorDefaultsPanel() {
 
   async function save(sectorKey) {
     setSaving(sectorKey);
+    setFeedback(null);
     try {
       const templateId = getVal(sectorKey, 'template_id') || null;
       const cvFileId = getVal(sectorKey, 'cv_file_id') || null;
       await patchSectorDefault(sectorKey, templateId, cvFileId);
       await queryClient.invalidateQueries({ queryKey: ['sectorDefaults'] });
       setLocalOverrides(prev => { const n = { ...prev }; delete n[sectorKey]; return n; });
-    } catch {
-      // error visible via disabled state
+      setFeedback({ sector: sectorKey, ok: true, text: '✓ Guardado' });
+      setTimeout(() => setFeedback(null), 4000);
+    } catch (err) {
+      setFeedback({
+        sector: sectorKey,
+        ok: false,
+        text: `No se pudo guardar: ${err?.message === 'Failed to fetch' ? 'sin conexión con el servidor' : (err?.message || 'error desconocido')}. Reintentá.`,
+      });
     } finally {
       setSaving(null);
     }
@@ -115,15 +123,22 @@ export function SectorDefaultsPanel() {
                 </select>
               </div>
 
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => save(s.key)}
-                disabled={saving === s.key || !isDirty}
-                style={{ whiteSpace: 'nowrap', opacity: isDirty ? 1 : 0.45 }}
-              >
-                {saving === s.key ? 'Guardando…' : 'Guardar'}
-              </button>
+              <div style={{ display: 'grid', gap: 4, justifyItems: 'end' }}>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => save(s.key)}
+                  disabled={saving === s.key || !isDirty}
+                  style={{ whiteSpace: 'nowrap', opacity: isDirty ? 1 : 0.45 }}
+                >
+                  {saving === s.key ? 'Guardando…' : 'Guardar'}
+                </button>
+                {feedback?.sector === s.key && (
+                  <small style={{ color: feedback.ok ? 'var(--green-text)' : 'var(--red-text)', fontSize: '0.75rem', maxWidth: 180, textAlign: 'right' }}>
+                    {feedback.text}
+                  </small>
+                )}
+              </div>
             </div>
           );
         })}

@@ -73,8 +73,6 @@ export function Worktray({
   editingFollowUp,
   onFollowUpChange,
   onSaveFollowUp,
-  actionDetails,
-  onActionDetailsChange,
   selectedContactId,
   onSelectContact,
   selectedContact,
@@ -90,10 +88,10 @@ export function Worktray({
   async function openPreview(contactId) {
     setPreviewContactId(contactId);
     setPreviewData(null);
-    setShowCv(false);
     setPreviewLoading(true);
     try {
       const res = await apiFetch(`${API_BASE}/contacts/${contactId}/email-preview`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
       const data = await res.json();
       setPreviewData(data);
     } catch {
@@ -106,7 +104,23 @@ export function Worktray({
   function closePreview() {
     setPreviewContactId(null);
     setPreviewData(null);
-    setShowCv(false);
+  }
+
+  // Descarga autenticada del CV (window.open no envía la API key → 401)
+  async function downloadPreviewCv(cv) {
+    try {
+      const res = await apiFetch(`${API_BASE}/cv-files/${cv.id}/download`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = cv.name || 'CV.pdf';
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // silencioso — el usuario puede reintentar
+    }
   }
 
   const tabFilters = getTabFilters(activeActionFilter);
@@ -764,9 +778,9 @@ export function Worktray({
                         type="button"
                         className="ghost-button"
                         style={{ fontSize: '0.82rem', padding: '6px 14px', flexShrink: 0 }}
-                        onClick={() => window.open(`${API_BASE}/cv-files/${previewData.cv.id}/download`, '_blank')}
+                        onClick={() => downloadPreviewCv(previewData.cv)}
                       >
-                        Ver CV
+                        Descargar CV
                       </button>
                     </div>
                   )}

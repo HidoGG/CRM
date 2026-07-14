@@ -99,7 +99,8 @@ export function TemplatesView({ templates, onRefresh }) {
               Cuerpos de email
             </h3>
             <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
-              La plantilla por defecto se usa automáticamente en los envíos.
+              Cada envío usa la plantilla del <strong>rubro</strong> del contacto (configuración de abajo).
+              La marcada "por defecto" solo se usa si el rubro no tiene una asignada.
             </p>
           </div>
           <button type="button" onClick={openNew} className="primary-button" aria-label="Crear nueva plantilla">

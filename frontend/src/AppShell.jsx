@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
@@ -21,7 +21,7 @@ import {
   useSummary,
   useCycleInfo,
 } from './lib/queries';
-import { defaultTabFilter, getTabFilters, matchesTabFilter, matchesTimingFilter, prettifyAction, timingFilters, worktrayActions } from './lib/utils';
+import { defaultTabFilter, getTabFilters, matchesTabFilter, prettifyAction, worktrayActions } from './lib/utils';
 
 const defaultForm = {
   email: '',
@@ -82,6 +82,8 @@ function useTheme() {
 function AppShell() {
   // ── Sesión Supabase (opcional) ──
   const [session, setSession] = useState(undefined); // undefined = cargando
+  // Los hooks siempre antes de cualquier return condicional (regla de React)
+  const { theme, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
     if (!authEnabled) {
@@ -109,7 +111,6 @@ function AppShell() {
   if (authEnabled && !session) {
     return <LoginView />;
   }
-  const { theme, toggle: toggleTheme } = useTheme();
   return <AuthenticatedApp theme={theme} toggleTheme={toggleTheme} />;
 }
 
@@ -168,7 +169,6 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const [confirming, setConfirming] = useState(false);
   const [executingId, setExecutingId] = useState(null);
   const [editingFollowUp, setEditingFollowUp] = useState({});
-  const [actionDetails, setActionDetails] = useState({});
   const [selectedWorktrayId, setSelectedWorktrayId] = useState(null);
   const [selectedHistory, setSelectedHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -188,6 +188,28 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       setStatusMessage('El servidor está despertando… puede tardar hasta 60 segundos la primera vez.');
     }
   }, [contactsQuery.isError, contactsQuery.isSuccess, slowBackend]);
+
+  // Errores de acciones: traducir los de red y no dejarlos pegados en el
+  // sidebar — a los 12 segundos vuelve el estado general de la conexión.
+  const statusTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(statusTimerRef.current), []);
+  function reportError(error, fallback) {
+    const raw = error?.message || '';
+    const isNetwork = raw === 'Failed to fetch' || raw.includes('NetworkError') || raw.includes('Load failed');
+    setStatusMessage(
+      isNetwork
+        ? 'Sin conexión con el servidor (puede estar despertando). Esperá unos segundos y reintentá.'
+        : (raw || fallback),
+    );
+    clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => {
+      setStatusMessage(
+        contactsQuery.isError
+          ? 'No pude conectar con la API. Verificá que el backend esté levantado.'
+          : 'API conectada. Ya podés cargar, confirmar y operar desde la bandeja.',
+      );
+    }, 12000);
+  }
 
   // ── Derivados ──
   const filteredContacts = useMemo(
@@ -248,7 +270,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
           const rightPriority = String(right.status || '').toLowerCase() === 'prioridad' ? 1 : 0;
           return leftFollowUp - rightFollowUp || rightPriority - leftPriority || right.id - left.id;
         }),
-    [actionScopedContacts, activeActionFilter, activeTimingFilter],
+    [actionScopedContacts, activeActionFilter, activeTimingFilter, cycleStartedAt],
   );
 
   useEffect(() => {
@@ -290,7 +312,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       await refresh('contacts');
       navigate('/contactos');
     } catch (error) {
-      setStatusMessage(error.message || 'Error al guardar el contacto.');
+      reportError(error, 'Error al guardar el contacto.');
     } finally {
       setSaving(false);
     }
@@ -315,7 +337,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
     const response = await apiFetch(`${API_BASE}/contacts/${contactId}`, { method: 'DELETE' });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
-      setStatusMessage(errorBody.detail || 'No se pudo eliminar el contacto.');
+      reportError(new Error(errorBody.detail || ''), 'No se pudo eliminar el contacto.');
       return;
     }
     const result = await response.json().catch(() => ({}));
@@ -346,7 +368,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       await refresh();
       navigate('/importaciones');
     } catch (error) {
-      setStatusMessage(error.message || 'Error al registrar la importacion.');
+      reportError(error, 'Error al registrar la importación.');
     }
   }
 
@@ -373,7 +395,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       navigate('/importaciones');
       await refresh();
     } catch (error) {
-      setStatusMessage(error.message || 'No se pudo procesar el archivo.');
+      reportError(error, 'No se pudo procesar el archivo.');
     } finally {
       setImporting(false);
       event.target.value = '';
@@ -419,25 +441,20 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       await refresh();
       navigate('/operaciones');
     } catch (error) {
-      setStatusMessage(error.message || 'Error al confirmar la importacion.');
+      reportError(error, 'Error al confirmar la importación.');
     } finally {
       setConfirming(false);
     }
   }
 
   async function executeContactAction(contact, action) {
+    if (executingId != null) return; // evita doble-click → doble ejecución
     setExecutingId(contact.id);
     try {
-      const details = actionDetails[contact.id] || {};
       const response = await apiFetch(`${API_BASE}/contacts/${contact.id}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          portal_url: details.portal_url,
-          portal_status: details.portal_status,
-          discard_reason: details.discard_reason,
-        }),
+        body: JSON.stringify({ action }),
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
@@ -453,13 +470,14 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       setStatusMessage(result.message || `Accion ${prettifyAction(action)} ejecutada.`);
       await refresh('contacts');
     } catch (error) {
-      setStatusMessage(error.message || 'Error al ejecutar la accion.');
+      reportError(error, 'Error al ejecutar la acción.');
     } finally {
       setExecutingId(null);
     }
   }
 
   async function saveFollowUpDate(contact) {
+    if (executingId != null) return; // evita doble-click → doble ejecución
     const follow_up_date = editingFollowUp[contact.id] ?? contact.follow_up_date ?? '';
     setExecutingId(contact.id);
     try {
@@ -476,7 +494,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       setEditingFollowUp((current) => ({ ...current, [contact.id]: follow_up_date }));
       await refresh('contacts');
     } catch (error) {
-      setStatusMessage(error.message || 'Error al guardar la fecha de seguimiento.');
+      reportError(error, 'Error al guardar la fecha de seguimiento.');
     } finally {
       setExecutingId(null);
     }
@@ -494,7 +512,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       setSelectedHistory(history);
     } catch (error) {
       setSelectedHistory([]);
-      setStatusMessage(error.message || 'Error al cargar historial del contacto.');
+      reportError(error, 'Error al cargar historial del contacto.');
     } finally {
       setLoadingHistory(false);
     }
@@ -697,8 +715,6 @@ function AuthenticatedApp({ theme, toggleTheme }) {
                 editingFollowUp={editingFollowUp}
                 onFollowUpChange={setEditingFollowUp}
                 onSaveFollowUp={saveFollowUpDate}
-                actionDetails={actionDetails}
-                onActionDetailsChange={setActionDetails}
                 selectedContactId={selectedWorktrayId}
                 onSelectContact={setSelectedWorktrayId}
                 selectedContact={actionableContacts.find((contact) => contact.id === selectedWorktrayId) || null}
@@ -748,11 +764,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
           <Route
             path="/envios"
             element={
-              <EnviosView
-                contacts={contacts}
-                emailJobs={emailJobs}
-                onRefresh={refresh}
-              />
+              <EnviosView onRefresh={refresh} />
             }
           />
           <Route path="/asistente" element={<CareerView />} />
