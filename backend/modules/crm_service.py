@@ -2227,12 +2227,20 @@ def process_pending_email_jobs() -> dict:
             )
 
             with get_session() as s:
+                # Sellar la plantilla/CV que realmente se usaron (los jobs
+                # automáticos tienen NULL): las estadísticas por plantilla
+                # cuentan sobre lo efectivamente enviado.
                 s.execute(text("""
                     UPDATE email_jobs SET status = 'sent', sent_at = :now,
-                        gmail_message_id = :msg_id, thread_id = :thread_id WHERE id = :id
+                        gmail_message_id = :msg_id, thread_id = :thread_id,
+                        template_id = :used_tmpl, cv_file_id = :used_cv
+                    WHERE id = :id
                 """), {
                     "now": now_utc(), "msg_id": send_result["id"],
-                    "thread_id": send_result.get("thread_id"), "id": j["id"],
+                    "thread_id": send_result.get("thread_id"),
+                    "used_tmpl": tmpl["id"] if tmpl else None,
+                    "used_cv": cv_info["id"] if cv_info else None,
+                    "id": j["id"],
                 })
 
                 # Cola circular: siempre crear nuevo job al final de la cola
