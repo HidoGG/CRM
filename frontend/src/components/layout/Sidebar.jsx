@@ -17,7 +17,7 @@ const MoonIcon = () => (
 );
 
 const navItems = [
-  { id: 'dashboard',     label: 'Hoy',          note: 'Centro de control'            },
+  { id: 'dashboard',     label: 'Hoy',          note: 'Centro de control',           badge: true },
   { id: 'operaciones',   label: 'Operaciones',   note: 'Bandeja · Pipeline · Agenda', badge: true },
   { id: 'contactos',     label: 'Contactos',     note: 'Base y filtros'               },
   { id: 'importaciones', label: 'Importaciones', note: 'Cargar empresas'              },
@@ -31,8 +31,14 @@ const CloseIcon = () => (
   </svg>
 );
 
-export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount = 0, theme, toggleTheme, isOpen, onClose }) {
+export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount = 0, unseenRepliesCount = 0, theme, toggleTheme, isOpen, onClose }) {
   const isDark = theme === 'dark';
+
+  // Contador rojo por ítem del menú: Hoy = respuestas sin ver, Operaciones = vencidos
+  const badgeByItem = {
+    dashboard: unseenRepliesCount,
+    operaciones: overdueCount,
+  };
 
   function handleNavClick(id) {
     setActiveView(id);
@@ -70,7 +76,8 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
             (item.id === 'operaciones' && (activeView === 'bandeja' || activeView === 'pipeline')) ||
             (item.id === 'envios' && (activeView === 'plantillas' || activeView === 'cronogramas'));
 
-          const showBadge = item.badge && overdueCount > 0;
+          const badgeCount = item.badge ? (badgeByItem[item.id] || 0) : 0;
+          const badgeLabel = item.id === 'dashboard' ? 'respuestas sin ver' : 'vencidos';
 
           return (
             <button
@@ -79,19 +86,19 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
               className={`nav-item ${isActive ? 'is-active' : ''}`}
               onClick={() => handleNavClick(item.id)}
               aria-current={isActive ? 'page' : undefined}
-              aria-label={showBadge ? `${item.label} — ${overdueCount} vencidos` : item.label}
+              aria-label={badgeCount > 0 ? `${item.label} — ${badgeCount} ${badgeLabel}` : item.label}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-col gap-0.5">
                   <span className="font-semibold text-[15px] leading-tight">{item.label}</span>
                   <small>{item.note}</small>
                 </div>
-                {showBadge && (
+                {badgeCount > 0 && (
                   <span
                     className="flex-shrink-0 min-w-[22px] h-[22px] rounded-full bg-[var(--red-text)] text-white text-[12px] font-bold flex items-center justify-center px-1"
                     aria-hidden="true"
                   >
-                    {overdueCount > 99 ? '99+' : overdueCount}
+                    {badgeCount > 99 ? '99+' : badgeCount}
                   </span>
                 )}
               </div>

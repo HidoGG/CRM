@@ -419,6 +419,10 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
                 continue
             if my_email and my_email in from_val:
                 continue
+            # Los avisos de rebote llegan al mismo thread: NO son respuestas
+            # del contacto (de esos se encarga _check_bounces).
+            if "mailer-daemon" in from_val or "postmaster" in from_val:
+                continue
             reply_msg_id = msg["id"]
             reply_header_map = hmap
             reply_subject = hmap.get("subject", "")

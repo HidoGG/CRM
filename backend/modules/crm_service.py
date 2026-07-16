@@ -702,7 +702,7 @@ _CONTACT_COLS = (
     "id, email, name, company, title, status, next_action, suggested_message, "
     "follow_up_date, portal_url, portal_status, discard_reason, source, notes, "
     "bounced_at, bounce_reason, industry, alternative_email, autoreply_reason, "
-    "last_sent_at, created_at, updated_at"
+    "replied_at, reply_seen_at, last_sent_at, created_at, updated_at"
 )
 
 
@@ -997,6 +997,36 @@ def update_contact(contact_id: int, payload: dict) -> dict:
             if existing_job is None:
                 _auto_create_email_job(session, contact_id, new_action)
 
+        updated = session.execute(
+            text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
+            {"id": contact_id},
+        ).fetchone()
+    return row_to_dict(updated)
+
+
+def mark_reply_seen(contact_id: int) -> dict:
+    """Marca la respuesta del contacto como vista (sale del panel de Respuestas)."""
+    with get_session() as session:
+        row = session.execute(
+            text("SELECT id, email, replied_at FROM contacts WHERE id = :id"),
+            {"id": contact_id},
+        ).fetchone()
+        if row is None:
+            raise ServiceError("Contacto no encontrado.", HTTPStatus.NOT_FOUND)
+        if row[2] is None:
+            raise ServiceError("El contacto no tiene una respuesta registrada.", HTTPStatus.UNPROCESSABLE_ENTITY)
+        now = now_utc()
+        session.execute(
+            text("UPDATE contacts SET reply_seen_at = :now, updated_at = :now WHERE id = :id"),
+            {"now": now, "id": contact_id},
+        )
+        insert_history(
+            session,
+            event_type="contact.reply_seen",
+            entity_type="contact",
+            entity_id=str(contact_id),
+            message=f"Respuesta de {row[1]} marcada como vista",
+        )
         updated = session.execute(
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
             {"id": contact_id},

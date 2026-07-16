@@ -636,6 +636,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
         setActiveView={setActiveView}
         statusMessage={statusMessage}
         overdueCount={reporting.queue.overdue}
+        unseenRepliesCount={contacts.filter((c) => c.replied_at && !c.reply_seen_at).length}
         theme={theme}
         toggleTheme={toggleTheme}
         isOpen={sidebarOpen}
