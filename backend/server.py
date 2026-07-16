@@ -278,6 +278,14 @@ def update_contact(contact_id: int, payload: schemas.ContactUpdate):
         raise HTTPException(status_code=exc.status.value, detail=exc.message)
 
 
+@app.post("/contacts/{contact_id}/reply-seen")
+def mark_reply_seen(contact_id: int):
+    try:
+        return crm_service.mark_reply_seen(contact_id)
+    except ServiceError as exc:
+        raise HTTPException(status_code=exc.status.value, detail=exc.message)
+
+
 @app.delete("/contacts/{contact_id}")
 def delete_contact(contact_id: int):
     try:

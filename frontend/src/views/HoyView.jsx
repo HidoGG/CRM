@@ -89,9 +89,10 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
     [activeContacts]
   );
 
+  // Solo respuestas SIN revisar: el botón "Visto" las saca de la lista
   const recentReplied = useMemo(() =>
     activeContacts
-      .filter(c => c.replied_at)
+      .filter(c => c.replied_at && !c.reply_seen_at)
       .sort((a, b) => new Date(b.replied_at) - new Date(a.replied_at))
       .slice(0, 50),
     [activeContacts]
@@ -154,6 +155,20 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
       await onRefresh?.('jobs');
     } catch (e) {
       console.error('[cancel-job]', e);
+    } finally {
+      stopProcessing(key);
+    }
+  }
+
+  async function handleReplySeen(contact) {
+    const key = `visto-${contact.id}`;
+    if (isProcessing(key)) return;
+    startProcessing(key);
+    try {
+      await apiFetch(`${API_BASE}/contacts/${contact.id}/reply-seen`, { method: 'POST' });
+      await onRefresh?.('contacts');
+    } catch (e) {
+      console.error('[reply-seen]', e);
     } finally {
       stopProcessing(key);
     }
@@ -316,18 +331,19 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
           ))}
         </DetailPanel>
 
-        {/* Columna 3 — Respuestas */}
+        {/* Columna 3 — Respuestas sin revisar */}
         <DetailPanel
           title="Respuestas recibidas"
-          count={stats.replied}
-          emptyMsg="Sin respuestas todavía. Aparecerán aquí cuando alguien conteste."
+          count={recentReplied.length}
+          emptyMsg="Sin respuestas pendientes de revisar. Aparecerán aquí cuando alguien conteste."
           countColor="var(--green-text)"
           countBg="var(--green-bg)"
         >
           {recentReplied.map(c => {
             const threadId = threadByContact[c.id];
+            // #all funciona aunque el mail esté archivado (a diferencia de #inbox)
             const gmailUrl = threadId
-              ? `https://mail.google.com/mail/u/0/#inbox/${threadId}`
+              ? `https://mail.google.com/mail/u/0/#all/${threadId}`
               : null;
             return (
               <ContactRow
@@ -360,9 +376,16 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
                       cursor: 'pointer',
                     }}
                   >
-                    <IconGmail /> Ver en Gmail
+                    <IconGmail /> Abrir en Gmail
                   </a>
                 )}
+                <ActionButton
+                  label={isProcessing(`visto-${c.id}`) ? '…' : 'Visto ✓'}
+                  loading={isProcessing(`visto-${c.id}`)}
+                  variant="neutral"
+                  onClick={() => handleReplySeen(c)}
+                  title="Marca la respuesta como revisada y la saca de esta lista."
+                />
               </ContactRow>
             );
           })}
