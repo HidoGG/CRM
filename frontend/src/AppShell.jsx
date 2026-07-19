@@ -296,7 +296,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   }, [selectedWorktrayId]);
 
   // ── Acciones ──
-  // Devuelve true si el contacto se guardó (el modal se cierra solo en ese caso)
+  // Devuelve { ok, error } para que el modal muestre el resultado en pantalla
   async function handleSubmit(event) {
     event.preventDefault();
     setSaving(true);
@@ -314,10 +314,14 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       setStatusMessage('Contacto guardado correctamente.');
       await refresh('contacts');
       navigate('/contactos');
-      return true;
+      return { ok: true };
     } catch (error) {
+      const isNetwork = error?.message === 'Failed to fetch';
+      const message = isNetwork
+        ? 'Sin conexión con el servidor (puede estar despertando). Esperá unos segundos y reintentá.'
+        : (error?.message || 'Error al guardar el contacto.');
       reportError(error, 'Error al guardar el contacto.');
-      return false;
+      return { ok: false, error: message };
     } finally {
       setSaving(false);
     }
@@ -694,10 +698,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
             onFormChange={setForm}
             saving={saving}
             onClose={() => setShowNewContact(false)}
-            onSubmit={async (e) => {
-              const ok = await handleSubmit(e);
-              if (ok) setShowNewContact(false);
-            }}
+            onSubmit={handleSubmit}
           />
         )}
 
