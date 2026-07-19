@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { capitalize, prettifyAction } from '../lib/utils';
 import { useSchedules } from '../lib/queries';
 
@@ -113,14 +113,30 @@ export function ContactForm({ form, onFormChange, onSubmit, onCancel, saving }) 
   );
 }
 
-/** Ventana emergente del botón "Nuevo contacto" de la barra superior. */
+/** Ventana emergente del botón "Nuevo contacto" de la barra superior.
+ *
+ *  Fases: formulario → cargando → resultado (éxito con "Aceptar" que cierra,
+ *  o error con el motivo y "Volver al formulario" con los datos intactos). */
 export function NewContactModal({ form, onFormChange, onSubmit, onClose, saving }) {
-  // Cerrar con Escape
+  const [phase, setPhase] = useState('form'); // 'form' | 'saving' | 'done'
+  const [result, setResult] = useState(null); // { ok, error, company }
+
+  // Cerrar con Escape (salvo mientras está guardando)
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onKey(e) { if (e.key === 'Escape' && phase !== 'saving') onClose(); }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, phase]);
+
+  async function handleFormSubmit(e) {
+    e.preventDefault();
+    const company = (form.company || '').trim() || (form.email || '').trim() || 'el contacto';
+    setResult({ company });
+    setPhase('saving');
+    const res = await onSubmit(e);
+    setResult({ ok: Boolean(res?.ok), error: res?.error, company });
+    setPhase('done');
+  }
 
   return (
     <div
@@ -135,19 +151,76 @@ export function NewContactModal({ form, onFormChange, onSubmit, onClose, saving 
         padding: '5vh 16px 16px',
         overflowY: 'auto',
       }}
-      onClick={onClose}
+      onClick={() => { if (phase !== 'saving') onClose(); }}
       role="dialog"
       aria-modal="true"
       aria-label="Nuevo contacto"
     >
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 560 }}>
-        <ContactForm
-          form={form}
-          onFormChange={onFormChange}
-          onSubmit={onSubmit}
-          onCancel={onClose}
-          saving={saving}
-        />
+
+        {phase === 'form' && (
+          <ContactForm
+            form={form}
+            onFormChange={onFormChange}
+            onSubmit={handleFormSubmit}
+            onCancel={onClose}
+            saving={saving}
+          />
+        )}
+
+        {phase === 'saving' && (
+          <div style={{ background: 'var(--surface-raised)', borderRadius: 24, border: '1px solid var(--border-faint)', padding: '48px 32px', display: 'grid', gap: 12, justifyItems: 'center', textAlign: 'center' }}>
+            <span style={{ fontSize: '2rem' }} aria-hidden="true">⏳</span>
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '1.05rem' }}>
+              Cargando contacto…
+            </h3>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
+              {result?.company || 'Guardando los datos'}
+            </p>
+          </div>
+        )}
+
+        {phase === 'done' && result?.ok && (
+          <div style={{ background: 'var(--surface-raised)', borderRadius: 24, border: '1px solid var(--green-text)', padding: '40px 32px', display: 'grid', gap: 12, justifyItems: 'center', textAlign: 'center' }}>
+            <span style={{ fontSize: '2.2rem' }} aria-hidden="true">✅</span>
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--green-text)', fontSize: '1.1rem' }}>
+              ¡Carga exitosa!
+            </h3>
+            <p style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600 }}>
+              {result.company}
+            </p>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.87rem' }}>
+              El contacto quedó guardado y ya aparece en tu base.
+            </p>
+            <button type="button" className="primary-button" style={{ marginTop: 8, minWidth: 140 }} onClick={onClose}>
+              Aceptar
+            </button>
+          </div>
+        )}
+
+        {phase === 'done' && !result?.ok && (
+          <div style={{ background: 'var(--surface-raised)', borderRadius: 24, border: '1px solid var(--red-text)', padding: '40px 32px', display: 'grid', gap: 12, justifyItems: 'center', textAlign: 'center' }}>
+            <span style={{ fontSize: '2.2rem' }} aria-hidden="true">❌</span>
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--red-text)', fontSize: '1.1rem' }}>
+              No se pudo cargar
+            </h3>
+            <p style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600 }}>
+              {result?.company}
+            </p>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.88rem', maxWidth: 380 }}>
+              {result?.error || 'Ocurrió un error desconocido.'}
+            </p>
+            <button
+              type="button"
+              className="primary-button"
+              style={{ marginTop: 8, minWidth: 180 }}
+              onClick={() => setPhase('form')}
+            >
+              Volver al formulario
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );
