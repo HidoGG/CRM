@@ -6,7 +6,7 @@ export function Topbar({
   createMockImport,
   importing,
   handleFileSelection,
-  setActiveView,
+  onNewContact,
 }) {
   return (
     <header className="topbar" role="banner">
@@ -52,7 +52,7 @@ export function Topbar({
 
         <button
           type="button"
-          onClick={() => setActiveView('contactos')}
+          onClick={onNewContact}
           className="primary-button"
           aria-label="Crear nuevo contacto"
         >
