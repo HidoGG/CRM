@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
+import { NewContactModal } from './components/ContactForm';
 import { HoyView } from './views/HoyView';
 import { OperacionesView } from './views/OperacionesView';
 import { ContactsView } from './views/ContactsView';
@@ -178,6 +179,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const [activeTimingFilter, setActiveTimingFilter] = useState('hoy');
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
+  const [showNewContact, setShowNewContact] = useState(false);
 
   useEffect(() => {
     if (contactsQuery.isError) {
@@ -294,6 +296,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   }, [selectedWorktrayId]);
 
   // ── Acciones ──
+  // Devuelve true si el contacto se guardó (el modal se cierra solo en ese caso)
   async function handleSubmit(event) {
     event.preventDefault();
     setSaving(true);
@@ -311,8 +314,10 @@ function AuthenticatedApp({ theme, toggleTheme }) {
       setStatusMessage('Contacto guardado correctamente.');
       await refresh('contacts');
       navigate('/contactos');
+      return true;
     } catch (error) {
       reportError(error, 'Error al guardar el contacto.');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -680,8 +685,21 @@ function AuthenticatedApp({ theme, toggleTheme }) {
           createMockImport={createMockImport}
           importing={importing}
           handleFileSelection={handleFileSelection}
-          setActiveView={setActiveView}
+          onNewContact={() => setShowNewContact(true)}
         />
+
+        {showNewContact && (
+          <NewContactModal
+            form={form}
+            onFormChange={setForm}
+            saving={saving}
+            onClose={() => setShowNewContact(false)}
+            onSubmit={async (e) => {
+              const ok = await handleSubmit(e);
+              if (ok) setShowNewContact(false);
+            }}
+          />
+        )}
 
         <Routes>
           <Route
