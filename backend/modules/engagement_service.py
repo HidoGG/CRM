@@ -323,43 +323,116 @@ def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None) ->
 # muy por debajo del límite por usuario de la Gmail API.
 REPLY_WINDOW_DAYS = 30
 REPLY_BATCH_LIMIT = 40
+REPLY_CURSOR_KEY = "reply_check_cursor"  # system_settings.key: cursor rotativo (JSON {"sent_at": iso, "id": job_id}) o "" para reiniciar el barrido desde lo más reciente
 BOUNCE_QUERY = "from:(mailer-daemon OR postmaster) newer_than:90d"
 BOUNCE_BATCH_LIMIT = 25
+
+# Evita corridas superpuestas (scheduler cada 2h + botón manual + auto-sync al
+# abrir el CRM pueden coincidir) y ráfagas de sync por recargas seguidas (F5)
+# o varias pestañas abiertas. Estado simple en system_settings (no hace falta
+# un lock real de Postgres para una cuenta de Gmail personal de un solo
+# usuario): si "running" es true y arrancó hace menos de SYNC_STALE_SECONDS,
+# hay una corrida en curso; si la última corrida arrancó hace menos de
+# SYNC_MIN_INTERVAL_SECONDS, todavía no toca repetir. SYNC_STALE_SECONDS
+# también evita que una corrida que se cortó a mitad de camino (crash, redeploy)
+# deje el sistema bloqueado para siempre.
+SYNC_STATE_KEY = "engagement_sync_state"
+SYNC_MIN_INTERVAL_SECONDS = 60
+SYNC_STALE_SECONDS = 600
+
+
+def _acquire_sync_slot() -> tuple[bool, str]:
+    """Best-effort: evita corridas superpuestas y ráfagas de sync. Ver comentario
+    junto a SYNC_STATE_KEY. No es un lock atómico de Postgres — para una cuenta
+    de Gmail personal de un solo usuario la ventana de carrera (dos requests
+    leyendo el estado casi al mismo tiempo) es un riesgo aceptable y ya
+    preexistente; esto reduce drásticamente los casos comunes (F5, pestañas
+    múltiples, scheduler + botón + auto-sync coincidiendo)."""
+    now = now_utc()
+    with get_session() as session:
+        row = session.execute(
+            text("SELECT value FROM system_settings WHERE key = :k"),
+            {"k": SYNC_STATE_KEY},
+        ).fetchone()
+        state = {}
+        if row and row[0]:
+            try:
+                state = json.loads(row[0])
+            except (ValueError, TypeError):
+                state = {}
+        started_at = None
+        if state.get("started_at"):
+            try:
+                started_at = datetime.fromisoformat(state["started_at"])
+            except ValueError:
+                started_at = None
+        if started_at is not None:
+            elapsed = (now - started_at).total_seconds()
+            if state.get("running") and elapsed < SYNC_STALE_SECONDS:
+                return False, "Ya hay una sincronización en curso."
+            if elapsed < SYNC_MIN_INTERVAL_SECONDS:
+                return False, "Se sincronizó hace muy poco, todavía no toca repetir."
+        session.execute(
+            text("""
+                INSERT INTO system_settings (key, value) VALUES (:k, :v)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            """),
+            {"k": SYNC_STATE_KEY, "v": json.dumps({"running": True, "started_at": now.isoformat()})},
+        )
+    return True, ""
+
+
+def _release_sync_slot() -> None:
+    with get_session() as session:
+        session.execute(
+            text("""
+                INSERT INTO system_settings (key, value) VALUES (:k, :v)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            """),
+            {"k": SYNC_STATE_KEY, "v": json.dumps({"running": False, "started_at": now_utc().isoformat()})},
+        )
 
 
 def sync_replies_and_bounces() -> dict:
     """Job del scheduler (y endpoint manual): busca respuestas y rebotes."""
     from modules import gmail_service
 
-    if not gmail_service.is_authorized():
-        return {"ok": False, "reason": "Gmail no autorizado.", "replies_found": 0, "bounces_found": 0}
-    if not gmail_service.has_readonly_scope():
-        return {
-            "ok": False,
-            "reason": "El token actual no tiene permiso de lectura. Re-autorizá Gmail desde Envíos.",
-            "replies_found": 0,
-            "bounces_found": 0,
-        }
+    allowed, skip_reason = _acquire_sync_slot()
+    if not allowed:
+        return {"ok": True, "skipped": True, "reason": skip_reason, "replies_found": 0, "bounces_found": 0}
 
     try:
-        service = gmail_service._build_service()
-    except Exception as exc:
-        return {"ok": False, "reason": str(exc), "replies_found": 0, "bounces_found": 0}
+        if not gmail_service.is_authorized():
+            return {"ok": False, "reason": "Gmail no autorizado.", "replies_found": 0, "bounces_found": 0}
+        if not gmail_service.has_readonly_scope():
+            return {
+                "ok": False,
+                "reason": "El token actual no tiene permiso de lectura. Re-autorizá Gmail desde Envíos.",
+                "replies_found": 0,
+                "bounces_found": 0,
+            }
 
-    my_email = gmail_service.get_profile_email().lower()
-    replies, threads_checked = _check_replies(service, my_email)
-    bounces = _check_bounces(service)
-    reclassified = _backfill_bounce_reasons(service)
-    print(
-        f"[engagement] Sync — threads revisados: {threads_checked}, "
-        f"respuestas: {replies}, rebotes: {bounces}, reclasificados: {reclassified}"
-    )
-    return {
-        "ok": True,
-        "replies_found": replies,
-        "bounces_found": bounces,
-        "threads_checked": threads_checked,
-    }
+        try:
+            service = gmail_service._build_service()
+        except Exception as exc:
+            return {"ok": False, "reason": str(exc), "replies_found": 0, "bounces_found": 0}
+
+        my_email = gmail_service.get_profile_email().lower()
+        replies, threads_checked = _check_replies(service, my_email)
+        bounces = _check_bounces(service)
+        reclassified = _backfill_bounce_reasons(service)
+        print(
+            f"[engagement] Sync — threads revisados: {threads_checked}, "
+            f"respuestas: {replies}, rebotes: {bounces}, reclasificados: {reclassified}"
+        )
+        return {
+            "ok": True,
+            "replies_found": replies,
+            "bounces_found": bounces,
+            "threads_checked": threads_checked,
+        }
+    finally:
+        _release_sync_slot()
 
 
 def _check_replies(service, my_email: str) -> tuple[int, int]:
@@ -368,24 +441,70 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
     Distingue entre respuesta real y auto-respuesta (vacaciones, enfermedad,
     maternidad, etc.). Las auto-respuestas actualizan autoreply_reason y
     alternative_email en el contacto sin marcarlo como seguimiento respondido.
+
+    Barrido rotativo: en vez de revisar siempre los REPLY_BATCH_LIMIT envíos
+    más recientes (lo que nunca llega a los más viejos cuando el volumen de
+    envíos supera el límite por corrida), se guarda en system_settings un
+    cursor keyset (sent_at, id) del envío más viejo visto en la última corrida
+    y cada corrida sigue barriendo hacia atrás en el tiempo desde ahí. Se usa
+    (sent_at, id) en vez de solo sent_at para no perder jobs empatados en el
+    mismo segundo justo en el borde de una tanda (el id, autoincremental,
+    desempata de forma estable). Al llegar al fondo de la ventana de
+    REPLY_WINDOW_DAYS días (tanda incompleta), el cursor se reinicia para
+    volver a arrancar desde lo más reciente — así el backlog completo rota
+    con el tiempo en vez de quedar siempre atascado en el mismo lote.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=REPLY_WINDOW_DAYS)
     with get_session() as session:
-        rows = session.execute(
-            text("""
-                SELECT ej.id, ej.contact_id, ej.thread_id, c.email
-                FROM email_jobs ej
-                JOIN contacts c ON ej.contact_id = c.id
-                WHERE ej.status = 'sent'
-                  AND ej.thread_id IS NOT NULL AND ej.thread_id != ''
-                  AND ej.replied_at IS NULL
-                  AND ej.sent_at >= :cutoff
-                ORDER BY ej.sent_at DESC
-                LIMIT :limit
-            """),
-            {"cutoff": cutoff, "limit": REPLY_BATCH_LIMIT},
-        ).fetchall()
+        cursor_row = session.execute(
+            text("SELECT value FROM system_settings WHERE key = :k"),
+            {"k": REPLY_CURSOR_KEY},
+        ).fetchone()
+        cursor = None
+        if cursor_row and cursor_row[0]:
+            try:
+                raw = json.loads(cursor_row[0])
+                cursor = (datetime.fromisoformat(raw["sent_at"]), int(raw["id"]))
+            except (ValueError, TypeError, KeyError):
+                cursor = None  # valor corrupto: arrancamos de nuevo desde lo más reciente
+
+        sql = """
+            SELECT ej.id, ej.contact_id, ej.thread_id, c.email, ej.sent_at
+            FROM email_jobs ej
+            JOIN contacts c ON ej.contact_id = c.id
+            WHERE ej.status = 'sent'
+              AND ej.thread_id IS NOT NULL AND ej.thread_id != ''
+              AND ej.replied_at IS NULL
+              AND ej.sent_at >= :cutoff
+        """
+        params = {"cutoff": cutoff, "limit": REPLY_BATCH_LIMIT}
+        if cursor is not None:
+            sql += " AND (ej.sent_at, ej.id) < (:cursor_sent_at, :cursor_id)"
+            params["cursor_sent_at"] = cursor[0]
+            params["cursor_id"] = cursor[1]
+        sql += " ORDER BY ej.sent_at DESC, ej.id DESC LIMIT :limit"
+
+        rows = session.execute(text(sql), params).fetchall()
         jobs = [row_to_dict(r) for r in rows]
+
+        # Tanda completa (== LIMIT filas): puede haber más envíos viejos por
+        # revisar, guardamos (sent_at, id) de la última fila de esta tanda
+        # (la más vieja, porque el ORDER BY es DESC) como próximo punto de
+        # partida. Tanda incompleta: llegamos al fondo de la ventana de
+        # REPLY_WINDOW_DAYS días — reiniciamos el cursor para que la próxima
+        # corrida vuelva a arrancar desde lo más reciente (barrido circular).
+        if len(jobs) == REPLY_BATCH_LIMIT:
+            last = jobs[-1]
+            next_cursor = json.dumps({"sent_at": last["sent_at"].isoformat(), "id": last["id"]})
+        else:
+            next_cursor = ""
+        session.execute(
+            text("""
+                INSERT INTO system_settings (key, value) VALUES (:k, :v)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            """),
+            {"k": REPLY_CURSOR_KEY, "v": next_cursor},
+        )
 
     found = 0
     checked = 0
