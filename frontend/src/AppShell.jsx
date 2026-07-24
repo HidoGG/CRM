@@ -155,6 +155,22 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const cycleInfo = useCycleInfo().data;
   const cycleStartedAt = cycleInfo?.cycle_started_at ?? null;
 
+  // ── Auto-sync de Gmail al abrir el CRM (una sola vez por carga de la app) ──
+  const didAutoSyncRef = useRef(false);
+  useEffect(() => {
+    if (didAutoSyncRef.current) return;
+    didAutoSyncRef.current = true;
+    apiFetch(`${API_BASE}/engagement/sync`, { method: 'POST' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.ok && ((data.replies_found ?? 0) > 0 || (data.bounces_found ?? 0) > 0)) {
+          refresh('jobs');
+          refresh('contacts');
+        }
+      })
+      .catch(() => {}); // silencioso: no es una acción disparada por el usuario, no hay feedback visual que dar
+  }, []);
+
   // ── Cold start: si el backend tarda más de 7s, avisamos al usuario ──
   const [slowBackend, setSlowBackend] = useState(false);
   useEffect(() => {
