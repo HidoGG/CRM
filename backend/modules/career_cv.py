@@ -87,10 +87,15 @@ PERFIL DE GABRIEL — usá SOLO estos datos, no inventés nada:
 Seguí esta estructura EXACTA usando las etiquetas entre corchetes:
 
 [SUBTITULO]
-Título del puesto | Especialización secundaria (máx. 2 items separados por |)
+Usá el título real del puesto del aviso (PUESTO de arriba) como base, no inventes una etiqueta
+genérica tipo "Perfil Técnico". Opcional: agregá una especialización secundaria real separada
+por | (máx. 2 items).
 
 [PERFIL]
-2-3 oraciones. Perfil profesional orientado a ESE puesto. Integrá keywords naturalmente. Sin frases genéricas.
+2-3 oraciones cortas (40-75 palabras en total). Directo: rol al que apunta + experiencia
+concreta real + 1-2 logros o certificaciones puntuales. Integrá keywords naturalmente. PROHIBIDO
+usar frases de relleno tipo "se encuentra preparado para", "cuenta con sólida formación",
+"comprometido con la excelencia" — cada oración tiene que aportar un dato concreto, no relleno.
 
 [EXPERIENCIA]
 ## Título del Puesto en la Empresa
@@ -133,9 +138,18 @@ _Materias o detalle relevante (itálica, solo si es relevante para el puesto)_
    SU experiencia real, adaptada al vocabulario del puesto, sin afirmar que hizo algo que no
    hizo.
 4. Incluí solo las experiencias y certs más relevantes para el puesto
-5. Integrá las keywords ATS de forma natural, solo donde reflejen algo real del perfil
-6. Máximo 550 palabras en total (una sola página)
-7. Respondé SOLO con el contenido del CV, sin comentarios ni explicaciones"""
+5. Cada keyword de KEYWORDS ATS que describa una habilidad, tarea, equipo o herramienta que
+   Gabriel realmente maneja según su perfil tiene que aparecer LITERAL (mismas palabras
+   exactas, no sinónimos ni paráfrasis) al menos una vez en el CV — no la omitas. Las keywords
+   que describan condiciones o beneficios de la EMPRESA (ej. "ofrecen capacitación", régimen
+   de turnos) no son habilidades de Gabriel: no las pongas como si lo fueran, solo si aplican
+   honestamente a algo real de su perfil.
+6. Si el CONTEXTO DEL AVISO menciona una certificación concreta de Gabriel como relevante para
+   el puesto (por nombre, ej. "Coiled Tubing", "Control de Pozos"), esa certificación tiene que
+   aparecer en la sección [CERTIFICACIONES] — no se puede omitir si está en el perfil real y
+   fue señalada como relevante.
+7. Máximo 550 palabras en total (una sola página)
+8. Respondé SOLO con el contenido del CV, sin comentarios ni explicaciones"""
 
 
 def _sanitize_prompt_field(value: str | None, max_length: int = 800) -> str:

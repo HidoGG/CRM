@@ -224,10 +224,11 @@ Incluí estas palabras exactas en el CV y el email para pasar los filtros autom�
 5. Apenas termines de armar el análisis y el email del paso 2-3 (en ese mismo turno, ANTES de
    mostrárselo a Gabriel, sin esperar que él confirme nada aparte), llamá a la herramienta
    guardar_resumen para registrar la búsqueda (empresa, cargo, resumen de requisitos, CV
-   recomendado, asunto y cuerpo del email). Esto es automático cada vez que analizás un aviso
-   nuevo — habilita el botón de generar CV y actualiza el título de la búsqueda en su
-   historial. Si más adelante el análisis cambia (otro CV, email reescrito), volvé a llamar la
-   herramienta para actualizar lo guardado.
+   recomendado, asunto y cuerpo del email, Y las keywords_ats — pasá la MISMA lista que pusiste
+   en "🔑 KEYWORDS ATS DETECTADAS", literal, sin resumirla). Esto es automático cada vez que
+   analizás un aviso nuevo — habilita el botón de generar CV y actualiza el título de la
+   búsqueda en su historial. Si más adelante el análisis cambia (otro CV, email reescrito),
+   volvé a llamar la herramienta para actualizar lo guardado.
 
 6. NUNCA inventes ni exageres datos, logros, certificaciones o experiencia de Gabriel que no
    estén en su perfil real de arriba. No copies frases textuales del aviso como si fueran su
@@ -247,6 +248,7 @@ def _make_guardar_resumen(session_id: int):
         cv_recomendado: str,
         asunto_email: str,
         cuerpo_email: str,
+        keywords_ats: str = "",
     ) -> str:
         """Guarda en la base de datos un resumen de la búsqueda analizada.
         Usá esta herramienta cuando el usuario confirme que va a aplicar,
@@ -259,6 +261,10 @@ def _make_guardar_resumen(session_id: int):
             cv_recomendado: Cuál de los 4 CVs usar para esta búsqueda.
             asunto_email: Asunto del email generado (cadena vacía si no se generó).
             cuerpo_email: Cuerpo del email generado (cadena vacía si no se generó).
+            keywords_ats: Las keywords ATS detectadas del aviso, separadas por coma,
+                tal cual las mostraste en la sección "KEYWORDS ATS DETECTADAS" del
+                análisis. Se usan después para armar el CV — no las resumas ni las
+                parafrasees, pasalas literales.
         """
         title = f"{empresa} — {cargo}" if empresa and cargo else (cargo or empresa or "Búsqueda sin título")
         with Session(engine) as db:
@@ -271,6 +277,7 @@ def _make_guardar_resumen(session_id: int):
                         summary       = :resumen,
                         email_subject = :asunto,
                         email_body    = :cuerpo,
+                        keywords_ats  = :keywords,
                         updated_at    = :now
                     WHERE id = :session_id
                 """),
@@ -281,6 +288,7 @@ def _make_guardar_resumen(session_id: int):
                     "resumen":    resumen_requisitos,
                     "asunto":     asunto_email,
                     "cuerpo":     cuerpo_email,
+                    "keywords":   keywords_ats,
                     "now":        now_utc(),
                     "session_id": session_id,
                 },
