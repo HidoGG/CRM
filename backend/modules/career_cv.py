@@ -138,12 +138,22 @@ _Materias o detalle relevante (itálica, solo si es relevante para el puesto)_
    SU experiencia real, adaptada al vocabulario del puesto, sin afirmar que hizo algo que no
    hizo.
 4. Incluí solo las experiencias y certs más relevantes para el puesto
-5. Cada keyword de KEYWORDS ATS que describa una habilidad, tarea, equipo o herramienta que
-   Gabriel realmente maneja según su perfil tiene que aparecer LITERAL (mismas palabras
-   exactas, no sinónimos ni paráfrasis) al menos una vez en el CV — no la omitas. Las keywords
-   que describan condiciones o beneficios de la EMPRESA (ej. "ofrecen capacitación", régimen
-   de turnos) no son habilidades de Gabriel: no las pongas como si lo fueran, solo si aplican
-   honestamente a algo real de su perfil.
+5. Antes de usar una keyword, distinguí de qué tipo es:
+   a) Keywords que nombran el PUESTO o LA TAREA GLOBAL que ofrece la empresa (ej. "Flow Back",
+      "pruebas de producción", "Operador de X"): Gabriel NO las hizo todavía, son el objetivo
+      de la búsqueda. NUNCA van en [COMPETENCIAS] ni en ningún lugar que implique que ya las
+      sabe hacer. Solo pueden aparecer en [SUBTITULO] (como el rol al que apunta) o como
+      objetivo explícito en [PERFIL] (ej. "orientado a roles de Flow Back", "busca
+      incorporarse a tareas de pruebas de producción") — nunca como experiencia adquirida.
+   b) Keywords que nombran una tarea, herramienta o equipo puntual que el perfil real de
+      Gabriel prueba que manejó (ej. "piletas", "líneas de alta presión", "BOP"): estas SÍ son
+      competencias reales, van literales en [COMPETENCIAS] o [EXPERIENCIA].
+   c) Keywords que describen condiciones o beneficios de la EMPRESA (ej. "ofrecen
+      capacitación", régimen de turnos): no son habilidades de Gabriel, no las pongas como si
+      lo fueran.
+   Ejemplo concreto: si KEYWORDS ATS incluye "Flow Back" pero el perfil de Gabriel no tiene
+   ningún trabajo de Flow Back, "Flow Back" NO puede aparecer en [COMPETENCIAS] como si ya
+   supiera hacerlo — solo puede nombrarse como el rol al que se postula.
 6. Si el CONTEXTO DEL AVISO menciona una certificación concreta de Gabriel como relevante para
    el puesto (por nombre, ej. "Coiled Tubing", "Control de Pozos"), esa certificación tiene que
    aparecer en la sección [CERTIFICACIONES] — no se puede omitir si está en el perfil real y
