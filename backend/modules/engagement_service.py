@@ -634,10 +634,17 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
                 text("UPDATE email_jobs SET replied_at = :now WHERE id = :id"),
                 {"now": now, "id": job["id"]},
             )
+            # Sin el guard "replied_at IS NULL": la cola circular vuelve a
+            # contactar a la misma empresa en cada vuelta, y si ya habia una
+            # respuesta anterior marcada como vista (reply_seen_at), una
+            # respuesta nueva quedaba invisible para siempre (el contacto
+            # nunca volvia a aparecer en "Respuestas recibidas"). Ahora se
+            # actualiza replied_at a la respuesta mas reciente y se limpia
+            # reply_seen_at para que reaparezca como no revisada.
             session.execute(
                 text("""
-                    UPDATE contacts SET replied_at = :now, updated_at = :now
-                    WHERE id = :id AND replied_at IS NULL
+                    UPDATE contacts SET replied_at = :now, reply_seen_at = NULL, updated_at = :now
+                    WHERE id = :id
                 """),
                 {"now": now, "id": job["contact_id"]},
             )
