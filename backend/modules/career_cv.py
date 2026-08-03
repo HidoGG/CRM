@@ -148,8 +148,13 @@ _Materias o detalle relevante (itálica, solo si es relevante para el puesto)_
    el puesto (por nombre, ej. "Coiled Tubing", "Control de Pozos"), esa certificación tiene que
    aparecer en la sección [CERTIFICACIONES] — no se puede omitir si está en el perfil real y
    fue señalada como relevante.
-7. Máximo 550 palabras en total (una sola página)
-8. Respondé SOLO con el contenido del CV, sin comentarios ni explicaciones"""
+7. Las 6 secciones del FORMATO OBLIGATORIO son TODAS obligatorias — ninguna puede quedar vacía
+   ni omitirse, especialmente [PERFIL]. Usá la etiqueta exacta entre corchetes tal cual figura
+   en el FORMATO OBLIGATORIO (ej. "[PERFIL]"), NUNCA el título largo que se muestra en el CV
+   final (NO escribas "[PERFIL PROFESIONAL]", "[EXPERIENCIA LABORAL]", etc. — solo la palabra
+   corta entre corchetes).
+8. Máximo 550 palabras en total (una sola página)
+9. Respondé SOLO con el contenido del CV, sin comentarios ni explicaciones"""
 
 
 def _sanitize_prompt_field(value: str | None, max_length: int = 800) -> str:
@@ -185,14 +190,36 @@ async def generate_cv_content(
 
 # ── Parseo del texto generado ─────────────────────────────────────────────────
 
+# Etiquetas canónicas que espera el resto del código (section_order en
+# cv_content_to_html / cv_content_to_pdf usa estas claves exactas).
+_KNOWN_TAGS = ["SUBTITULO", "PERFIL", "EXPERIENCIA", "COMPETENCIAS", "FORMACION", "CERTIFICACIONES"]
+
+
+def _normalize_tag(raw: str) -> str | None:
+    """Normaliza el contenido de una etiqueta [TAG] a una de las _KNOWN_TAGS.
+
+    El modelo a veces escribe la etiqueta con el nombre completo que ve en el
+    título renderizado (ej. "[PERFIL PROFESIONAL]" en vez de "[PERFIL]",
+    "[EXPERIENCIA LABORAL]" en vez de "[EXPERIENCIA]"). Sin esto, esa línea no
+    matchea la etiqueta esperada y toda la sección se pierde en silencio.
+    """
+    cleaned = re.sub(r"[^A-ZÁÉÍÓÚÑ]", "", raw.upper())
+    for tag in _KNOWN_TAGS:
+        if cleaned.startswith(tag):
+            return tag
+    return None
+
+
 def _parse_sections(cv_text: str) -> dict[str, list[str]]:
-    """Divide el CV en secciones por etiquetas [NOMBRE]."""
+    """Divide el CV en secciones por etiquetas [NOMBRE], tolerando variantes
+    del modelo (ver _normalize_tag)."""
     sections: dict[str, list[str]] = {}
     current = None
     for line in cv_text.split("\n"):
-        m = re.match(r"^\[([A-ZÁÉÍÓÚÑ]+)\]\s*$", line.strip())
-        if m:
-            current = m.group(1)
+        m = re.match(r"^\[(.+?)\]\s*$", line.strip())
+        tag = _normalize_tag(m.group(1)) if m else None
+        if tag:
+            current = tag
             sections[current] = []
         elif current is not None:
             sections[current].append(line)
