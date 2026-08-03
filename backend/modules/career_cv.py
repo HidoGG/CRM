@@ -123,11 +123,19 @@ _Materias o detalle relevante (itálica, solo si es relevante para el puesto)_
 - Certificación - Institución
 
 ━━━ REGLAS ━━━
-1. NUNCA inventés datos, fechas, logros ni certificaciones que no estén en el perfil
-2. Incluí solo las experiencias y certs más relevantes para el puesto
-3. Integrá las keywords ATS de forma natural en todo el documento
-4. Máximo 550 palabras en total (una sola página)
-5. Respondé SOLO con el contenido del CV, sin comentarios ni explicaciones"""
+1. NUNCA inventés datos, fechas, logros, certificaciones, referencias, contactos ni ningún
+   otro dato que no esté EXPLÍCITAMENTE en el perfil de arriba. Si no está en el perfil, no
+   va en el CV — ni una palabra ni un nombre inventado.
+2. NO agregues secciones que no estén en el FORMATO OBLIGATORIO de arriba. Nada de
+   "Referencias", "Objetivo", "Idiomas" ni ninguna otra sección típica de CV que no haya sido
+   pedida — ni siquiera una línea genérica tipo "Referencias disponibles a pedido".
+3. No copies frases textuales del aviso como si fueran logros o experiencia de Gabriel: usá
+   SU experiencia real, adaptada al vocabulario del puesto, sin afirmar que hizo algo que no
+   hizo.
+4. Incluí solo las experiencias y certs más relevantes para el puesto
+5. Integrá las keywords ATS de forma natural, solo donde reflejen algo real del perfil
+6. Máximo 550 palabras en total (una sola página)
+7. Respondé SOLO con el contenido del CV, sin comentarios ni explicaciones"""
 
 
 def _sanitize_prompt_field(value: str | None, max_length: int = 800) -> str:

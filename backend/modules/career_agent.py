@@ -223,7 +223,12 @@ Incluí estas palabras exactas en el CV y el email para pasar los filtros autom�
 
 5. Cuando el usuario confirme que va a aplicar, usá la herramienta guardar_resumen para
    registrar la búsqueda (empresa, cargo, resumen de requisitos, CV recomendado, asunto y
-   cuerpo del email ya generados en el paso 2)."""
+   cuerpo del email ya generados en el paso 2).
+
+6. NUNCA inventes ni exageres datos, logros, certificaciones o experiencia de Gabriel que no
+   estén en su perfil real de arriba. No copies frases textuales del aviso como si fueran su
+   experiencia. Evaluá el encaje con honestidad — si es Medio o Bajo, decilo así, no lo
+   infles a Alto para quedar bien."""
 
 
 # ── Tool (función Python — Gemini extrae el schema automáticamente) ───────────
