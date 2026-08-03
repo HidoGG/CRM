@@ -321,8 +321,13 @@ def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None) ->
 # Ventanas y límites conservadores de cuota:
 # threads.get cuesta 10 unidades; 40 threads/ciclo = 400 unidades,
 # muy por debajo del límite por usuario de la Gmail API.
-REPLY_WINDOW_DAYS = 30
-REPLY_BATCH_LIMIT = 40
+# 180 días cubre cómodamente toda una búsqueda laboral: un envío fuera de esta
+# ventana nunca se vuelve a revisar (queda excluido de la consulta para
+# siempre), así que conviene un margen generoso antes que perder respuestas
+# tardías a envíos viejos.
+REPLY_WINDOW_DAYS = 180
+REPLY_RECENT_LIMIT = 40   # envíos más recientes: se revisan SIEMPRE, sin depender del cursor
+REPLY_BACKFILL_LIMIT = 40  # backlog viejo: sigue el cursor rotativo, de a poco
 REPLY_CURSOR_KEY = "reply_check_cursor"  # system_settings.key: cursor rotativo (JSON {"sent_at": iso, "id": job_id}) o "" para reiniciar el barrido desde lo más reciente
 BOUNCE_QUERY = "from:(mailer-daemon OR postmaster) newer_than:90d"
 BOUNCE_BATCH_LIMIT = 25
@@ -442,20 +447,49 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
     maternidad, etc.). Las auto-respuestas actualizan autoreply_reason y
     alternative_email en el contacto sin marcarlo como seguimiento respondido.
 
-    Barrido rotativo: en vez de revisar siempre los REPLY_BATCH_LIMIT envíos
-    más recientes (lo que nunca llega a los más viejos cuando el volumen de
-    envíos supera el límite por corrida), se guarda en system_settings un
-    cursor keyset (sent_at, id) del envío más viejo visto en la última corrida
-    y cada corrida sigue barriendo hacia atrás en el tiempo desde ahí. Se usa
-    (sent_at, id) en vez de solo sent_at para no perder jobs empatados en el
-    mismo segundo justo en el borde de una tanda (el id, autoincremental,
-    desempata de forma estable). Al llegar al fondo de la ventana de
-    REPLY_WINDOW_DAYS días (tanda incompleta), el cursor se reinicia para
-    volver a arrancar desde lo más reciente — así el backlog completo rota
-    con el tiempo en vez de quedar siempre atascado en el mismo lote.
+    Dos pasadas por corrida:
+    1. Prioridad — los REPLY_RECENT_LIMIT envíos sin respuesta más recientes
+       se revisan SIEMPRE, sin depender del cursor. Así una respuesta nueva
+       se detecta en la próxima corrida del scheduler (cada 2hs), sin importar
+       cuánto backlog viejo quede por barrer.
+    2. Backfill rotativo — el resto del historial (más allá de los recientes)
+       se va completando de a poco con un cursor keyset (sent_at, id) del
+       envío más viejo visto en la última corrida; cada corrida sigue
+       barriendo hacia atrás en el tiempo desde ahí. Se usa (sent_at, id) en
+       vez de solo sent_at para no perder jobs empatados en el mismo segundo
+       justo en el borde de una tanda (el id, autoincremental, desempata de
+       forma estable). Al llegar al fondo de la ventana de REPLY_WINDOW_DAYS
+       días (tanda incompleta), el cursor se reinicia para volver a arrancar
+       desde lo más reciente — así el backlog completo rota con el tiempo en
+       vez de quedar siempre atascado en el mismo lote.
+
+    Antes había una sola pasada con cursor rotativo: mientras el cursor
+    estaba a mitad de un barrido del backlog viejo, cualquier envío nuevo
+    (con sent_at más reciente que la posición del cursor) quedaba excluido
+    de la consulta hasta que el barrido completo terminara y el cursor
+    reiniciara — lo que podía tardar varios días si el volumen de envíos
+    superaba el ritmo de revisión. Eso hacía que respuestas a envíos
+    recientes (bien dentro de la ventana de 30 días) no se detectaran.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=REPLY_WINDOW_DAYS)
     with get_session() as session:
+        recent_rows = session.execute(
+            text("""
+                SELECT ej.id, ej.contact_id, ej.thread_id, c.email, ej.sent_at
+                FROM email_jobs ej
+                JOIN contacts c ON ej.contact_id = c.id
+                WHERE ej.status = 'sent'
+                  AND ej.thread_id IS NOT NULL AND ej.thread_id != ''
+                  AND ej.replied_at IS NULL
+                  AND ej.sent_at >= :cutoff
+                ORDER BY ej.sent_at DESC, ej.id DESC
+                LIMIT :limit
+            """),
+            {"cutoff": cutoff, "limit": REPLY_RECENT_LIMIT},
+        ).fetchall()
+        recent_jobs = [row_to_dict(r) for r in recent_rows]
+        recent_ids = [j["id"] for j in recent_jobs]
+
         cursor_row = session.execute(
             text("SELECT value FROM system_settings WHERE key = :k"),
             {"k": REPLY_CURSOR_KEY},
@@ -477,15 +511,22 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
               AND ej.replied_at IS NULL
               AND ej.sent_at >= :cutoff
         """
-        params = {"cutoff": cutoff, "limit": REPLY_BATCH_LIMIT}
+        params: dict = {"cutoff": cutoff, "limit": REPLY_BACKFILL_LIMIT}
         if cursor is not None:
             sql += " AND (ej.sent_at, ej.id) < (:cursor_sent_at, :cursor_id)"
             params["cursor_sent_at"] = cursor[0]
             params["cursor_id"] = cursor[1]
+        if recent_ids:
+            # Evita revisar dos veces lo que ya cubrió la pasada de "recientes".
+            sql += " AND ej.id NOT IN :recent_ids"
+            params["recent_ids"] = recent_ids
         sql += " ORDER BY ej.sent_at DESC, ej.id DESC LIMIT :limit"
 
-        rows = session.execute(text(sql), params).fetchall()
-        jobs = [row_to_dict(r) for r in rows]
+        stmt = text(sql)
+        if recent_ids:
+            stmt = stmt.bindparams(bindparam("recent_ids", expanding=True))
+        backfill_rows = session.execute(stmt, params).fetchall()
+        backfill_jobs = [row_to_dict(r) for r in backfill_rows]
 
         # Tanda completa (== LIMIT filas): puede haber más envíos viejos por
         # revisar, guardamos (sent_at, id) de la última fila de esta tanda
@@ -493,8 +534,8 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
         # partida. Tanda incompleta: llegamos al fondo de la ventana de
         # REPLY_WINDOW_DAYS días — reiniciamos el cursor para que la próxima
         # corrida vuelva a arrancar desde lo más reciente (barrido circular).
-        if len(jobs) == REPLY_BATCH_LIMIT:
-            last = jobs[-1]
+        if len(backfill_jobs) == REPLY_BACKFILL_LIMIT:
+            last = backfill_jobs[-1]
             next_cursor = json.dumps({"sent_at": last["sent_at"].isoformat(), "id": last["id"]})
         else:
             next_cursor = ""
@@ -505,6 +546,8 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
             """),
             {"k": REPLY_CURSOR_KEY, "v": next_cursor},
         )
+
+        jobs = recent_jobs + backfill_jobs
 
     found = 0
     checked = 0
