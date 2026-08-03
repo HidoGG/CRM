@@ -140,6 +140,10 @@ function TemplateStatsPanel({ stats, onSync }) {
         setSyncMsg(`Sin acceso: ${result?.reason || 'Gmail no autorizado.'}`);
         return;
       }
+      if (result.skipped) {
+        setSyncMsg(`No se sincronizó todavía: ${result?.reason || 'ya hay una sincronización reciente en curso.'} Probá de nuevo en un minuto.`);
+        return;
+      }
       const replies = result.replies_found ?? 0;
       const bounces = result.bounces_found ?? 0;
       if (replies === 0 && bounces === 0) {
