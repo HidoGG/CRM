@@ -789,21 +789,25 @@ async def generate_career_cv(session_id: int):
 
     with Session(engine) as db:
         row = db.execute(
-            text("SELECT company, role, summary FROM career_sessions WHERE id = :id"),
+            text("SELECT company, role, summary, keywords_ats FROM career_sessions WHERE id = :id"),
             {"id": session_id},
         ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Sesión no encontrada")
-        empresa, cargo, resumen = row
+        empresa, cargo, resumen, keywords_ats = row
 
     if not cargo and not empresa:
         raise HTTPException(status_code=400, detail="Todavía no se analizó ningún aviso en esta sesión.")
+
+    # keywords_ats es la lista real detectada por el chat; si la sesión es vieja
+    # (guardada antes de que existiera esta columna) cae al resumen como antes.
+    keywords = keywords_ats or resumen or ""
 
     cv_text = await career_cv.generate_cv_content(
         empresa=empresa or "",
         cargo=cargo or "",
         resumen=resumen or "",
-        keywords=resumen or "",
+        keywords=keywords,
     )
 
     with Session(engine) as db:

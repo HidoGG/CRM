@@ -1,7 +1,7 @@
 """Agente de RRHH personalizado para búsqueda laboral de Gabriel Hidalgo.
 
 Usa Google Gemini (google-generativeai) con function calling nativo.
-Modelo por defecto: gemini-2.0-flash (gratuito).
+Modelo por defecto: gemini-3.5-flash.
 """
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def _fetch_url(url: str) -> str:
 # ── Cliente ───────────────────────────────────────────────────────────────────
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-_MODEL_NAME = os.getenv("CAREER_GEMINI_MODEL", "gemini-2.0-flash")
+_MODEL_NAME = os.getenv("CAREER_GEMINI_MODEL", "gemini-3.5-flash")
 
 # ── System prompt con perfil completo ────────────────────────────────────────
 
@@ -180,19 +180,60 @@ Disponibilidad: inmediata
 
 ━━━ INSTRUCCIONES ━━━
 1. Respondé SIEMPRE en español rioplatense. Sé directo y concreto.
-2. Cuando recibas un aviso (imagen, PDF o texto):
-   - Extraé empresa, cargo, requisitos técnicos y blandos
-   - Evaluá el encaje de Gabriel (alto/medio/bajo) con justificación
-   - Indicá cuál CV usar de los 4 disponibles
-   - Ofrecé generar el email personalizado
-3. Cuando generes un email:
-   - Asunto: específico, menciona el puesto y un diferenciador clave
-   - Cuerpo: 3 párrafos máximos, tono profesional pero natural (no corporativo)
-   - Párrafo 1: conexión con el puesto y propuesta de valor
-   - Párrafo 2: 2-3 logros/certificaciones más relevantes para ESE puesto
-   - Párrafo 3: cierre con disponibilidad y call to action
-4. Si el usuario pregunta cómo llenar un formulario o qué responder, dá una respuesta concreta con ejemplos.
-5. Cuando el usuario confirme que va a aplicar, usá la herramienta guardar_resumen para registrar la búsqueda."""
+
+2. Cuando recibas un aviso de trabajo (imagen, PDF, link o texto pegado), respondé SIEMPRE
+   con este formato EXACTO — mismos títulos, emojis y separadores, sin cambiarlos, sin
+   resumirlos ni saltear secciones:
+
+───────────────────────────────
+🎯 ANÁLISIS DEL PUESTO
+
+Empresa: [nombre de la empresa, o "No especificada" si el aviso no la menciona]
+Cargo: [nombre del puesto]
+Encaje: [Alto/Medio/Bajo] ✓
+Motivo: [1-3 líneas, basado en el perfil real de Gabriel]
+
+📋 CV A USAR: [uno de los 4 CVs disponibles]
+Tip: [qué destacar de su experiencia/certificaciones para ESTE puesto puntual]
+
+🔑 KEYWORDS ATS DETECTADAS
+Incluí estas palabras exactas en el CV y el email para pasar los filtros automáticos:
+[keywords del aviso, separadas por coma]
+
+📨 ENVIAR A
+[email de la empresa si el aviso lo menciona, o "No especificado" si no aparece]
+
+───────────────────────────────
+📧 ASUNTO DEL EMAIL
+[asunto específico, menciona el puesto y un diferenciador clave]
+
+✉️ CUERPO DEL EMAIL
+[email de 3 párrafos máximo, tono profesional pero natural (no corporativo):
+ párrafo 1 = conexión con el puesto y propuesta de valor;
+ párrafo 2 = 2-3 logros/certificaciones más relevantes para ESE puesto;
+ párrafo 3 = cierre con disponibilidad y llamado a la acción]
+───────────────────────────────
+
+3. Generá el análisis Y el email completos en el mismo mensaje, sin preguntar antes si
+   redactás el email — Gabriel lo quiere listo para copiar de una.
+
+4. Si el usuario pregunta cómo llenar un formulario o qué responder (y no es un aviso nuevo
+   para analizar), respondé en lenguaje natural, sin forzar el template de arriba — dá una
+   respuesta concreta con ejemplos.
+
+5. Apenas termines de armar el análisis y el email del paso 2-3 (en ese mismo turno, ANTES de
+   mostrárselo a Gabriel, sin esperar que él confirme nada aparte), llamá a la herramienta
+   guardar_resumen para registrar la búsqueda (empresa, cargo, resumen de requisitos, CV
+   recomendado, asunto y cuerpo del email, Y las keywords_ats — pasá la MISMA lista que pusiste
+   en "🔑 KEYWORDS ATS DETECTADAS", literal, sin resumirla). Esto es automático cada vez que
+   analizás un aviso nuevo — habilita el botón de generar CV y actualiza el título de la
+   búsqueda en su historial. Si más adelante el análisis cambia (otro CV, email reescrito),
+   volvé a llamar la herramienta para actualizar lo guardado.
+
+6. NUNCA inventes ni exageres datos, logros, certificaciones o experiencia de Gabriel que no
+   estén en su perfil real de arriba. No copies frases textuales del aviso como si fueran su
+   experiencia. Evaluá el encaje con honestidad — si es Medio o Bajo, decilo así, no lo
+   infles a Alto para quedar bien."""
 
 
 # ── Tool (función Python — Gemini extrae el schema automáticamente) ───────────
@@ -207,6 +248,7 @@ def _make_guardar_resumen(session_id: int):
         cv_recomendado: str,
         asunto_email: str,
         cuerpo_email: str,
+        keywords_ats: str = "",
     ) -> str:
         """Guarda en la base de datos un resumen de la búsqueda analizada.
         Usá esta herramienta cuando el usuario confirme que va a aplicar,
@@ -219,6 +261,10 @@ def _make_guardar_resumen(session_id: int):
             cv_recomendado: Cuál de los 4 CVs usar para esta búsqueda.
             asunto_email: Asunto del email generado (cadena vacía si no se generó).
             cuerpo_email: Cuerpo del email generado (cadena vacía si no se generó).
+            keywords_ats: Las keywords ATS detectadas del aviso, separadas por coma,
+                tal cual las mostraste en la sección "KEYWORDS ATS DETECTADAS" del
+                análisis. Se usan después para armar el CV — no las resumas ni las
+                parafrasees, pasalas literales.
         """
         title = f"{empresa} — {cargo}" if empresa and cargo else (cargo or empresa or "Búsqueda sin título")
         with Session(engine) as db:
@@ -231,6 +277,7 @@ def _make_guardar_resumen(session_id: int):
                         summary       = :resumen,
                         email_subject = :asunto,
                         email_body    = :cuerpo,
+                        keywords_ats  = :keywords,
                         updated_at    = :now
                     WHERE id = :session_id
                 """),
@@ -241,6 +288,7 @@ def _make_guardar_resumen(session_id: int):
                     "resumen":    resumen_requisitos,
                     "asunto":     asunto_email,
                     "cuerpo":     cuerpo_email,
+                    "keywords":   keywords_ats,
                     "now":        now_utc(),
                     "session_id": session_id,
                 },
