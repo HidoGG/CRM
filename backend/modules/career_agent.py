@@ -221,9 +221,13 @@ Incluí estas palabras exactas en el CV y el email para pasar los filtros autom�
    para analizar), respondé en lenguaje natural, sin forzar el template de arriba — dá una
    respuesta concreta con ejemplos.
 
-5. Cuando el usuario confirme que va a aplicar, usá la herramienta guardar_resumen para
-   registrar la búsqueda (empresa, cargo, resumen de requisitos, CV recomendado, asunto y
-   cuerpo del email ya generados en el paso 2).
+5. Apenas termines de armar el análisis y el email del paso 2-3 (en ese mismo turno, ANTES de
+   mostrárselo a Gabriel, sin esperar que él confirme nada aparte), llamá a la herramienta
+   guardar_resumen para registrar la búsqueda (empresa, cargo, resumen de requisitos, CV
+   recomendado, asunto y cuerpo del email). Esto es automático cada vez que analizás un aviso
+   nuevo — habilita el botón de generar CV y actualiza el título de la búsqueda en su
+   historial. Si más adelante el análisis cambia (otro CV, email reescrito), volvé a llamar la
+   herramienta para actualizar lo guardado.
 
 6. NUNCA inventes ni exageres datos, logros, certificaciones o experiencia de Gabriel que no
    estén en su perfil real de arriba. No copies frases textuales del aviso como si fueran su
