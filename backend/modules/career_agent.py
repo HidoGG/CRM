@@ -1,7 +1,7 @@
 """Agente de RRHH personalizado para búsqueda laboral de Gabriel Hidalgo.
 
 Usa Google Gemini (google-generativeai) con function calling nativo.
-Modelo por defecto: gemini-2.0-flash (gratuito).
+Modelo por defecto: gemini-3.5-flash.
 """
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def _fetch_url(url: str) -> str:
 # ── Cliente ───────────────────────────────────────────────────────────────────
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-_MODEL_NAME = os.getenv("CAREER_GEMINI_MODEL", "gemini-2.0-flash")
+_MODEL_NAME = os.getenv("CAREER_GEMINI_MODEL", "gemini-3.5-flash")
 
 # ── System prompt con perfil completo ────────────────────────────────────────
 
