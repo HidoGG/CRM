@@ -34,6 +34,7 @@ const defaultForm = {
   source: 'manual',
   notes: '',
   schedule_id: null,
+  industry: null,
 };
 
 // Rutas reales (URL navegable, botón atrás del navegador funciona)

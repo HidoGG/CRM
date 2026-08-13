@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { capitalize, prettifyAction } from '../lib/utils';
 import { useSchedules } from '../lib/queries';
+import { SECTORS } from './SectorBadge';
 
 const STATUS_OPTIONS = ['mantener', 'revisar', 'seguimiento', 'prioridad', 'sacar', 'portal'];
 const ACTION_OPTIONS = ['enviar', 'seguir', 'portal', 'descartar', 'revisar_manual'];
@@ -72,6 +73,20 @@ export function ContactForm({ form, onFormChange, onSubmit, onCancel, saving }) 
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="detail-field">
+        <span>Rubro</span>
+        <select
+          value={form.industry || ''}
+          onChange={e => onFormChange({ ...form, industry: e.target.value || null })}
+          aria-label="Rubro de la empresa"
+        >
+          <option value="">Detectar automáticamente por empresa</option>
+          {SECTORS.map(s => (
+            <option key={s.key} value={s.key}>{s.emoji} {s.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="detail-field">
