@@ -268,7 +268,7 @@ def _extract_alternative_email(body_text: str, original_email: str) -> str | Non
     return others[0] if len(others) == 1 else None
 
 
-def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None) -> None:
+def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None, reply_thread_id: str | None = None) -> None:
     """Persiste la detección de auto-respuesta: actualiza contacto e inserta historial."""
     now = now_utc()
     set_parts = [
@@ -291,10 +291,19 @@ def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None) ->
             text(f"UPDATE contacts SET {', '.join(set_parts)} WHERE id = :id"),
             params,
         )
-        session.execute(
-            text("UPDATE email_jobs SET replied_at = :now WHERE id = :job_id AND replied_at IS NULL"),
-            {"now": now, "job_id": job["id"]},
-        )
+        # Si la auto-respuesta cayó en un thread nuevo (threading roto por el
+        # auto-responder), guardamos ESE thread_id para que los links a Gmail
+        # lleven a la conversación real.
+        if reply_thread_id:
+            session.execute(
+                text("UPDATE email_jobs SET replied_at = :now, thread_id = :thread_id WHERE id = :job_id AND replied_at IS NULL"),
+                {"now": now, "thread_id": reply_thread_id, "job_id": job["id"]},
+            )
+        else:
+            session.execute(
+                text("UPDATE email_jobs SET replied_at = :now WHERE id = :job_id AND replied_at IS NULL"),
+                {"now": now, "job_id": job["id"]},
+            )
         # El contacto pasa a 'revisar': cancelar su job pendiente para que no
         # se le siga enviando. "Volver a cola" lo re-crea si corresponde.
         session.execute(
@@ -329,6 +338,7 @@ REPLY_WINDOW_DAYS = 180
 REPLY_RECENT_LIMIT = 40   # envíos más recientes: se revisan SIEMPRE, sin depender del cursor
 REPLY_BACKFILL_LIMIT = 40  # backlog viejo: sigue el cursor rotativo, de a poco
 REPLY_CURSOR_KEY = "reply_check_cursor"  # system_settings.key: cursor rotativo (JSON {"sent_at": iso, "id": job_id}) o "" para reiniciar el barrido desde lo más reciente
+REPLY_SEARCH_MAX_RESULTS = 5  # candidatos a revisar en el fallback por remitente
 BOUNCE_QUERY = "from:(mailer-daemon OR postmaster) newer_than:90d"
 BOUNCE_BATCH_LIMIT = 25
 
@@ -438,6 +448,125 @@ def sync_replies_and_bounces() -> dict:
         }
     finally:
         _release_sync_slot()
+
+
+def _find_reply_in_thread(service, my_email: str, thread_id: str) -> dict | None:
+    """Busca en el thread conocido (el que abrió nuestro envío) un mensaje que
+    no sea nuestro ni un aviso de rebote. Devuelve
+    {"id", "headers", "subject", "thread_id"} o None si no hay coincidencia o
+    no se pudo leer el thread.
+    """
+    try:
+        thread = service.users().threads().get(
+            userId="me", id=thread_id,
+            format="metadata",
+            metadataHeaders=["From", "Subject", "Auto-Submitted",
+                             "X-Autoreply", "X-Autoresponder", "X-Auto-Response-Suppress"],
+        ).execute()
+    except Exception as exc:
+        print(f"[engagement] No se pudo leer thread {thread_id}: {exc}")
+        return None
+
+    messages = thread.get("messages", [])
+    if len(messages) < 2:
+        return None
+
+    for msg in messages:
+        raw_headers = msg.get("payload", {}).get("headers", [])
+        hmap = {h.get("name", "").lower(): h.get("value", "") for h in raw_headers}
+        from_val = hmap.get("from", "").lower()
+        if not from_val:
+            continue
+        if my_email and my_email in from_val:
+            continue
+        # Los avisos de rebote llegan al mismo thread: NO son respuestas
+        # del contacto (de esos se encarga _check_bounces).
+        if "mailer-daemon" in from_val or "postmaster" in from_val:
+            continue
+        return {"id": msg["id"], "headers": hmap, "subject": hmap.get("subject", ""), "thread_id": thread_id}
+    return None
+
+
+def _find_reply_by_sender_search(service, contact_email: str, sent_at: datetime) -> dict | None:
+    """Respaldo para cuando el thread conocido no tiene respuesta.
+
+    Muchos auto-responders corporativos (ATS, Outlook/Exchange "Automatic
+    reply: ...") no arman el reply con las cabeceras References/In-Reply-To
+    correctas y a veces cambian el Subject — Gmail exige coincidencia de
+    threadId + esas cabeceras + Subject para agrupar en el mismo thread
+    (https://developers.google.com/gmail/api/guides/threads), así que la
+    respuesta termina en un thread nuevo que threads.get(job.thread_id) jamás
+    va a encontrar, sin importar cuántas veces se repita el chequeo. Acá se
+    busca directamente por remitente + fecha, sin depender del threading.
+
+    Usa epoch en el query (after:epoch, no fecha) porque el operador
+    "after:" de Gmail solo filtra por día (medianoche), no por hora exacta —
+    con fecha se podría confundir un mensaje de más temprano ese mismo día
+    con una respuesta. Igual se valida internalDate por las dudas.
+
+    Trade-off aceptado: al no exigir coincidencia de asunto/thread, un email
+    no relacionado que el contacto mande a esta casilla dentro de la ventana
+    (poco probable tratándose de casillas de RRHH/reclutamiento) podría
+    marcarse como respuesta. El impacto de un falso positivo es bajo: si se
+    clasifica como "respuesta real" no cancela envíos pendientes (solo
+    aparece en "Respuestas recibidas", visible y corregible a mano); si se
+    clasifica como auto-respuesta sí cancela la cola para ese contacto —
+    revisar el caso concreto si esto llegara a pasar.
+    """
+    epoch = int(sent_at.timestamp())
+    query = f"from:{contact_email} after:{epoch} -in:chats -in:sent"
+    try:
+        listing = service.users().messages().list(
+            userId="me", q=query, maxResults=REPLY_SEARCH_MAX_RESULTS
+        ).execute()
+    except Exception as exc:
+        print(f"[engagement] Búsqueda por remitente falló para {contact_email}: {exc}")
+        return None
+
+    for item in listing.get("messages", []):
+        try:
+            msg = service.users().messages().get(
+                userId="me", id=item["id"], format="metadata",
+                metadataHeaders=["From", "Subject", "Auto-Submitted",
+                                 "X-Autoreply", "X-Autoresponder", "X-Auto-Response-Suppress"],
+            ).execute()
+        except Exception as exc:
+            print(f"[engagement] No se pudo leer mensaje {item.get('id')}: {exc}")
+            continue
+
+        try:
+            internal_ms = int(msg.get("internalDate", "0"))
+        except (TypeError, ValueError):
+            internal_ms = 0
+        # internal_ms <= 0 cubre tanto "0" (Gmail no mandó internalDate) como
+        # un valor no parseable: sin fecha confiable no podemos confirmar que
+        # es posterior al envío, así que se descarta el candidato en vez de
+        # aceptarlo a ciegas.
+        if internal_ms <= 0 or internal_ms / 1000 <= epoch:
+            continue  # sin fecha confiable, o llegó antes de que mandáramos el email
+
+        raw_headers = msg.get("payload", {}).get("headers", [])
+        hmap = {h.get("name", "").lower(): h.get("value", "") for h in raw_headers}
+        from_val = hmap.get("from", "").lower()
+        if "mailer-daemon" in from_val or "postmaster" in from_val:
+            continue
+        return {
+            "id": item["id"], "headers": hmap, "subject": hmap.get("subject", ""),
+            "thread_id": msg.get("threadId", ""),
+        }
+    return None
+
+
+def _resolve_reply_thread_id(reply: dict, job: dict) -> str:
+    """Thread a persistir en email_jobs.thread_id.
+
+    Si la respuesta cayó en un thread nuevo (auto-responder que rompió el
+    threading), guardamos ESE thread_id para que "Abrir en Gmail" en el
+    frontend lleve a la conversación real y no solo a nuestro envío
+    original. Si por algún motivo no vino thread_id en la respuesta
+    (no debería pasar), mantenemos el thread_id original del job.
+    """
+    return reply.get("thread_id") or job["thread_id"]
 
 
 def _check_replies(service, my_email: str) -> tuple[int, int]:
@@ -552,46 +681,20 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
     found = 0
     checked = 0
     for job in jobs:
-        try:
-            thread = service.users().threads().get(
-                userId="me", id=job["thread_id"],
-                format="metadata",
-                metadataHeaders=["From", "Subject", "Auto-Submitted",
-                                 "X-Autoreply", "X-Autoresponder", "X-Auto-Response-Suppress"],
-            ).execute()
-        except Exception as exc:
-            print(f"[engagement] No se pudo leer thread {job['thread_id']}: {exc}")
-            continue
+        reply = _find_reply_in_thread(service, my_email, job["thread_id"])
         checked += 1
-
-        messages = thread.get("messages", [])
-        if len(messages) < 2:
+        if reply is None:
+            # El thread conocido no tiene respuesta: puede que el auto-responder
+            # del contacto haya roto el threading de Gmail (ver docstring de
+            # _find_reply_by_sender_search). Buscamos por remitente como respaldo.
+            reply = _find_reply_by_sender_search(service, job["email"], job["sent_at"])
+        if reply is None:
             continue
 
-        # Buscar primer mensaje que no sea del propio remitente
-        reply_msg_id = None
-        reply_header_map: dict[str, str] = {}
-        reply_subject = ""
-
-        for msg in messages:
-            raw_headers = msg.get("payload", {}).get("headers", [])
-            hmap = {h.get("name", "").lower(): h.get("value", "") for h in raw_headers}
-            from_val = hmap.get("from", "").lower()
-            if not from_val:
-                continue
-            if my_email and my_email in from_val:
-                continue
-            # Los avisos de rebote llegan al mismo thread: NO son respuestas
-            # del contacto (de esos se encarga _check_bounces).
-            if "mailer-daemon" in from_val or "postmaster" in from_val:
-                continue
-            reply_msg_id = msg["id"]
-            reply_header_map = hmap
-            reply_subject = hmap.get("subject", "")
-            break
-
-        if not reply_msg_id:
-            continue
+        reply_msg_id = reply["id"]
+        reply_header_map = reply["headers"]
+        reply_subject = reply["subject"]
+        reply_thread_id = _resolve_reply_thread_id(reply, job)
 
         # Detectar auto-respuesta por headers y asunto (sin consumir cuota extra)
         auto_submitted = reply_header_map.get("auto-submitted", "").lower()
@@ -620,7 +723,7 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
                     combined = f"{reply_subject} {body_text} {snippet}"
                     reason = _classify_autoreply_reason(combined)
                     alt_email = _extract_alternative_email(body_text, job["email"])
-                    _store_autoreply_detection(job, reason, alt_email)
+                    _store_autoreply_detection(job, reason, alt_email, reply_thread_id)
                     found += 1
                     continue
             except Exception as exc:
@@ -631,8 +734,8 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
         now = now_utc()
         with get_session() as session:
             session.execute(
-                text("UPDATE email_jobs SET replied_at = :now WHERE id = :id"),
-                {"now": now, "id": job["id"]},
+                text("UPDATE email_jobs SET replied_at = :now, thread_id = :thread_id WHERE id = :id"),
+                {"now": now, "thread_id": reply_thread_id, "id": job["id"]},
             )
             # Sin el guard "replied_at IS NULL": la cola circular vuelve a
             # contactar a la misma empresa en cada vuelta, y si ya habia una
@@ -655,7 +758,7 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
                 entity_id=str(job["contact_id"]),
                 message=f"Respuesta detectada de {job['email']}",
                 metadata_json=json.dumps(
-                    {"job_id": job["id"], "thread_id": job["thread_id"]},
+                    {"job_id": job["id"], "thread_id": reply_thread_id},
                     ensure_ascii=True,
                 ),
             )
