@@ -75,47 +75,61 @@ COMPETENCIAS TÉCNICAS:
 _CV_PROMPT = """Sos un experto en redacción de CVs para el sector industrial y Oil & Gas en Argentina,
 especializado en optimización ATS y en CVs de una sola página.
 
-Generá un CV completo para Gabriel Hidalgo, adaptado específicamente para:
-PUESTO: {cargo} en {empresa}
+Generá un CV para Gabriel Hidalgo, adaptado específicamente para esta postulación:
+PUESTO OBJETIVO: {cargo}
+EMPRESA A LA QUE SE POSTULA: {empresa}
 KEYWORDS ATS: {keywords}
 CONTEXTO DEL AVISO: {resumen}
 
-PERFIL DE GABRIEL — usá SOLO estos datos, no inventés nada:
+⚠️ Gabriel NO trabaja ni trabajó en {empresa} — se está POSTULANDO ahí. En ningún lugar del CV
+puede aparecer texto que dé a entender que ya tiene ese cargo o que ya es empleado de esa
+empresa. El nombre de la empresa objetivo NUNCA va en el encabezado del CV.
+
+PERFIL REAL DE GABRIEL — usá SOLO estos datos, no inventés nada:
 {perfil}
 
 ━━━ FORMATO OBLIGATORIO ━━━
-Seguí esta estructura EXACTA usando las etiquetas entre corchetes:
+Seguí esta estructura EXACTA usando las etiquetas cortas entre corchetes. Cada etiqueta va SOLA
+en su propia línea, sin texto ni símbolos de markdown alrededor (MAL: "**[PERFIL]**",
+"### [PERFIL]", "[PERFIL] Técnico con..." — BIEN: una línea que diga únicamente "[PERFIL]").
 
 [SUBTITULO]
-Usá el título real del puesto del aviso (PUESTO de arriba) como base, no inventes una etiqueta
-genérica tipo "Perfil Técnico". Opcional: agregá una especialización secundaria real separada
-por | (máx. 2 items).
+El perfil/título profesional real de Gabriel — NUNCA el nombre de {empresa}. Formato: "Título al
+que aspira | especialización real" o solo su título técnico. El nombre de la empresa objetivo NO
+PUEDE aparecer acá bajo ninguna forma.
+  MAL: "Operador Especialista en Kompass" (implica que ya trabaja en Kompass — FALSO)
+  BIEN: "Técnico en Petróleo y Gas | Operaciones de Pozo y Sistemas Hidráulicos"
 
 [PERFIL]
-2-3 oraciones cortas (40-75 palabras en total). Directo: rol al que apunta + experiencia
-concreta real + 1-2 logros o certificaciones puntuales. Integrá keywords naturalmente. PROHIBIDO
-usar frases de relleno tipo "se encuentra preparado para", "cuenta con sólida formación",
-"comprometido con la excelencia" — cada oración tiene que aportar un dato concreto, no relleno.
+2-3 oraciones cortas (40-75 palabras en total). Primera persona implícita — arrancá directo con
+el perfil/rol, SIN nombrar a Gabriel ni usar tercera persona ("él", "Gabriel es"). Contenido:
+experiencia concreta real + 1-2 logros o certificaciones puntuales +, si corresponde, el objetivo
+al que apunta (aclarando que es una postulación, nunca un cargo ya asignado). PROHIBIDO frases de
+relleno ("se encuentra preparado para", "cuenta con sólida formación") y PROHIBIDO tercera
+persona con nombre propio.
+  MAL: "Gabriel Hidalgo es un técnico especializado en sistemas hidráulicos... Busca incorporarse
+  como Operador Especialista en Kompass." (tercera persona + implica que el cargo ya es suyo)
+  BIEN: "Técnico especializado en sistemas hidráulicos de alta presión y operaciones de pozo, con
+  certificaciones en Control de Pozos y Coiled Tubing. Orientado a roles de flowback y pruebas de
+  producción en la cuenca neuquina."
 
 [EXPERIENCIA]
+Incluí SOLO los trabajos relevantes para este puesto. Está PERMITIDO omitir por completo un
+trabajo que no aporte nada al puesto (ej. empleos de hace muchos años sin relación con el rubro)
+— NUNCA fuerces bullets vacíos ni frases tipo "- No aplica" en un trabajo sin detalle relevante:
+si no aporta, no lo incluyas.
 ## Título del Puesto en la Empresa
 Empresa · Mes Año - Mes Año
 _Contexto breve si corresponde (régimen, categoría, etc.) — omitir si no aplica_
-- Logro/responsabilidad relevante (con keywords ATS integradas)
+- Logro/responsabilidad relevante y real (ver reglas de honestidad abajo antes de usar keywords)
 - Logro/responsabilidad
-- Logro/responsabilidad
-- Logro/responsabilidad (máximo 4 bullets por trabajo)
-
-## Título del Puesto 2
-Empresa · Mes Año - Mes Año
-- bullet
-- bullet
+(1 a 4 bullets reales por trabajo — nunca vacíos, nunca genéricos)
 
 [COMPETENCIAS]
 **Categoría principal:** ítem, ítem, ítem, ítem
 **Categoría 2:** ítem, ítem, ítem
-**Categoría 3:** ítem, ítem
-(4-6 filas, ordenadas por relevancia para el puesto)
+(4-6 filas, ordenadas por relevancia — solo habilidades que Gabriel YA tiene, ver reglas de
+honestidad abajo)
 
 [FORMACION]
 **Título Académico** — Institución | Fecha
@@ -125,36 +139,38 @@ _Materias o detalle relevante (itálica, solo si es relevante para el puesto)_
 [CERTIFICACIONES]
 **Grupo temático**
 - Certificación - Institución (horas/cert. si aplica)
-- Certificación - Institución
 
-━━━ REGLAS ━━━
-1. NUNCA inventés datos, fechas, logros, certificaciones, referencias, contactos ni ningún
-   otro dato que no esté EXPLÍCITAMENTE en el perfil de arriba. Si no está en el perfil, no
-   va en el CV — ni una palabra ni un nombre inventado.
-2. NO agregues secciones que no estén en el FORMATO OBLIGATORIO de arriba. Nada de
-   "Referencias", "Objetivo", "Idiomas" ni ninguna otra sección típica de CV que no haya sido
-   pedida — ni siquiera una línea genérica tipo "Referencias disponibles a pedido".
-3. No copies frases textuales del aviso como si fueran logros o experiencia de Gabriel: usá
-   SU experiencia real, adaptada al vocabulario del puesto, sin afirmar que hizo algo que no
-   hizo.
-4. Incluí solo las experiencias y certs más relevantes para el puesto
-5. Cada keyword de KEYWORDS ATS que describa una habilidad, tarea, equipo o herramienta que
-   Gabriel realmente maneja según su perfil tiene que aparecer LITERAL (mismas palabras
-   exactas, no sinónimos ni paráfrasis) al menos una vez en el CV — no la omitas. Las keywords
-   que describan condiciones o beneficios de la EMPRESA (ej. "ofrecen capacitación", régimen
-   de turnos) no son habilidades de Gabriel: no las pongas como si lo fueran, solo si aplican
-   honestamente a algo real de su perfil.
-6. Si el CONTEXTO DEL AVISO menciona una certificación concreta de Gabriel como relevante para
-   el puesto (por nombre, ej. "Coiled Tubing", "Control de Pozos"), esa certificación tiene que
-   aparecer en la sección [CERTIFICACIONES] — no se puede omitir si está en el perfil real y
-   fue señalada como relevante.
-7. Las 6 secciones del FORMATO OBLIGATORIO son TODAS obligatorias — ninguna puede quedar vacía
-   ni omitirse, especialmente [PERFIL]. Usá la etiqueta exacta entre corchetes tal cual figura
-   en el FORMATO OBLIGATORIO (ej. "[PERFIL]"), NUNCA el título largo que se muestra en el CV
-   final (NO escribas "[PERFIL PROFESIONAL]", "[EXPERIENCIA LABORAL]", etc. — solo la palabra
-   corta entre corchetes).
-8. Máximo 550 palabras en total (una sola página)
-9. Respondé SOLO con el contenido del CV, sin comentarios ni explicaciones"""
+━━━ HONESTIDAD — LA REGLA MÁS IMPORTANTE, LEÉLA ANTES DE ESCRIBIR CUALQUIER LÍNEA ━━━
+Cada keyword de KEYWORDS ATS es una de estas tres cosas — identificá cuál ANTES de usarla:
+
+a) Nombra el PUESTO o LA TAREA GLOBAL que ofrece {empresa} (ej. "Flow Back", "Operador de X",
+   "pruebas de producción"): Gabriel todavía NO lo hizo, es el objetivo de la búsqueda. Solo
+   puede aparecer en [SUBTITULO] (como el rol al que aspira, SIN el nombre de la empresa) o en
+   [PERFIL] como objetivo explícito ("orientado a roles de X") — NUNCA en [COMPETENCIAS] ni en
+   [EXPERIENCIA] como si ya lo supiera hacer.
+b) Nombra una tarea, herramienta o equipo puntual que el PERFIL REAL de Gabriel (arriba) prueba
+   que manejó (ej. "piletas", "líneas de alta presión", "BOP"): es una competencia real, va
+   literal en [COMPETENCIAS] o [EXPERIENCIA].
+c) Describe una condición o beneficio de la EMPRESA (ej. "ofrecen capacitación", régimen de
+   turnos): no es una habilidad de Gabriel, no la pongas como si lo fuera.
+
+Además, siempre:
+1. NUNCA inventés dato, fecha, logro, certificación, referencia o contacto que no esté
+   EXPLÍCITAMENTE en el perfil real de arriba — ni una palabra ni un nombre inventado.
+2. No copies frases textuales del aviso como si fueran logros de Gabriel: adaptá SU experiencia
+   real al vocabulario del puesto, sin afirmar que hizo algo que no hizo.
+3. Si el CONTEXTO DEL AVISO señala una certificación concreta de Gabriel como relevante (ej.
+   "Coiled Tubing"), esa certificación tiene que aparecer en [CERTIFICACIONES] — no se puede
+   omitir si es real y fue señalada como relevante.
+
+━━━ REGLAS DE FORMATO Y ESTRUCTURA ━━━
+1. Las 6 secciones de arriba son obligatorias y ninguna puede quedar vacía — la única excepción
+   es omitir un trabajo puntual de [EXPERIENCIA] por irrelevante (eso sí está permitido).
+2. No agregues secciones fuera de las 6 de arriba: nada de "Referencias", "Objetivo", "Idiomas",
+   ni una línea genérica tipo "Referencias disponibles a pedido".
+3. Máximo 550 palabras en total (una sola página).
+4. Respondé SOLO con el contenido del CV — sin comentarios, saludos ni explicaciones antes o
+   después del contenido."""
 
 
 def _sanitize_prompt_field(value: str | None, max_length: int = 800) -> str:
@@ -185,7 +201,41 @@ async def generate_cv_content(
         temperature=0.25,
         max_tokens=2500,
     )
-    return response.choices[0].message.content or ""
+    choice = response.choices[0]
+    if choice.finish_reason == "length":
+        print(
+            f"[career_cv] Aviso: la respuesta de Groq se truncó por longitud "
+            f"(cargo={cargo!r}, empresa={empresa!r}) — el CV puede estar incompleto."
+        )
+    cv_text = choice.message.content or ""
+    _warn_missing_sections(cv_text, cargo=cargo, empresa=empresa)
+    return cv_text
+
+
+def _warn_missing_sections(cv_text: str, cargo: str, empresa: str) -> None:
+    """Avisa en el log si el CV generado quedó sin contenido en alguna sección
+    obligatoria (todas menos [EXPERIENCIA], que puede quedar corta si se omiten
+    trabajos irrelevantes a propósito). Solo informativo — no bloquea la
+    generación, para no romper el flujo si el modelo se desvía puntualmente.
+    """
+    sections = _parse_sections(cv_text)
+    required = [t for t in _KNOWN_TAGS if t != "EXPERIENCIA"]
+    missing = [t for t in required if not any(l.strip() for l in sections.get(t, []))]
+    if missing:
+        print(
+            f"[career_cv] Aviso: CV generado sin contenido en {missing} "
+            f"(cargo={cargo!r}, empresa={empresa!r})"
+        )
+    unknown = _find_unknown_tags(cv_text)
+    if unknown:
+        # _parse_sections descarta todo el texto bajo una etiqueta no reconocida
+        # hasta la próxima etiqueta válida -- esto avisa que eso pasó, para no
+        # perder contenido en silencio sin dejar rastro en el log.
+        print(
+            f"[career_cv] Aviso: el modelo escribió etiqueta(s) no reconocida(s) {unknown} "
+            f"-- el texto bajo esa etiqueta se descartó del CV "
+            f"(cargo={cargo!r}, empresa={empresa!r})"
+        )
 
 
 # ── Parseo del texto generado ─────────────────────────────────────────────────
@@ -210,18 +260,46 @@ def _normalize_tag(raw: str) -> str | None:
     return None
 
 
+def _find_unknown_tags(cv_text: str) -> list[str]:
+    """Etiquetas [algo] presentes en el texto que no matchean ninguna _KNOWN_TAGS.
+
+    Señal de que el modelo se desvió del formato pedido: _parse_sections descarta
+    todo el contenido bajo una de estas etiquetas hasta la próxima reconocida, así
+    que esto sirve para detectar esa pérdida en el log en vez de que pase
+    desapercibida.
+    """
+    unknown = []
+    for line in cv_text.split("\n"):
+        bare = re.sub(r"^[#*\s]+|[#*\s]+$", "", line.strip())
+        m = re.match(r"^\[(.+?)\]\s*$", bare)
+        if m and not _normalize_tag(m.group(1)):
+            unknown.append(m.group(1))
+    return unknown
+
+
 def _parse_sections(cv_text: str) -> dict[str, list[str]]:
     """Divide el CV en secciones por etiquetas [NOMBRE], tolerando variantes
-    del modelo (ver _normalize_tag)."""
+    del modelo (ver _normalize_tag) y decoración markdown alrededor de la
+    etiqueta (ej. "**[PERFIL]**", "### [PERFIL]").
+
+    Una línea que tiene forma de etiqueta ([...] sola en su línea, ignorando
+    markdown) pero no matchea ninguna _KNOWN_TAGS CIERRA la sección anterior y
+    descarta todo lo que venga después hasta la próxima etiqueta reconocida —
+    evita que aparezca basura tipo "[EDUCACIÓN]" (o el contenido que sigue)
+    literal en el CV final si el modelo inventa una etiqueta no pedida.
+    """
     sections: dict[str, list[str]] = {}
     current = None
     for line in cv_text.split("\n"):
-        m = re.match(r"^\[(.+?)\]\s*$", line.strip())
-        tag = _normalize_tag(m.group(1)) if m else None
-        if tag:
-            current = tag
-            sections[current] = []
-        elif current is not None:
+        bare = re.sub(r"^[#*\s]+|[#*\s]+$", "", line.strip())
+        m = re.match(r"^\[(.+?)\]\s*$", bare)
+        if m:
+            tag = _normalize_tag(m.group(1))
+            current = tag  # tag válido abre esa sección; None descarta lo que sigue
+            if tag:
+                sections[current] = []
+            continue
+        if current is not None:
             sections[current].append(line)
     return sections
 

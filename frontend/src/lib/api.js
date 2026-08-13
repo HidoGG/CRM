@@ -123,6 +123,19 @@ export async function sendCareerEmail(sessionId, cvId = null, to = null) {
   return res.json();
 }
 
+export async function updateCareerEmail(sessionId, subject, body) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/email`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subject, body }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'No se pudo guardar el email');
+  }
+  return res.json();
+}
+
 export async function generateCareerCv(sessionId) {
   const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/cv`, { method: 'POST' });
   if (!res.ok) {
