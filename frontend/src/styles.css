@@ -1453,6 +1453,71 @@ tr:last-child td {
   letter-spacing: 0.06em;
 }
 
+.career-draft-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.career-draft-label-row .career-draft-label {
+  margin: 0;
+}
+
+.career-draft-edit-btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.career-draft-edit-btn:hover {
+  background: var(--surface-input);
+  color: var(--text-primary);
+}
+
+.career-draft-edit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+}
+
+.career-draft-edit-field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.career-draft-edit-input,
+.career-draft-edit-textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.87rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.career-draft-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .career-draft-row {
   display: flex;
   gap: 8px;

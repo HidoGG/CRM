@@ -8,6 +8,7 @@ import {
   fetchCareerCvHtml,
   sendCareerMessage,
   sendCareerEmail,
+  updateCareerEmail,
   generateCareerCv,
   getCareerCvPdfUrl,
 } from '../lib/api';
@@ -248,7 +249,7 @@ function CvPreviewButton({ sessionId, onCvGenerated, cvHtml, onOpenModal }) {
   );
 }
 
-function GmailSendButton({ sessionId, messageContent, hasCv }) {
+function GmailSendButton({ sessionId, messageContent, hasCv, emailSubject, emailBody, onEmailSaved }) {
   const cvFiles = useCvFiles();
   const cvs = cvFiles.data || [];
   const [selectedCvId, setSelectedCvId] = useState('');
@@ -259,6 +260,13 @@ function GmailSendButton({ sessionId, messageContent, hasCv }) {
   const detectedEmail = messageContent ? extractContactEmail(messageContent) : null;
   const [recipientEmail, setRecipientEmail] = useState(detectedEmail || '');
 
+  // Edición manual de asunto/cuerpo del email antes de enviarlo
+  const [editing, setEditing] = useState(false);
+  const [draftSubject, setDraftSubject] = useState(emailSubject || '');
+  const [draftBody, setDraftBody] = useState(emailBody || '');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
   useEffect(() => {
     if (detectedEmail && !recipientEmail) setRecipientEmail(detectedEmail);
   }, [detectedEmail]);
@@ -268,6 +276,15 @@ function GmailSendButton({ sessionId, messageContent, hasCv }) {
       setSelectedCvId(String(cvs[0].id));
     }
   }, [cvs, selectedCvId, hasCv]);
+
+  // Si el chat regenera el análisis (nuevo asunto/cuerpo guardado), reflejarlo
+  // acá salvo que el usuario esté editando en ese momento.
+  useEffect(() => {
+    if (!editing) {
+      setDraftSubject(emailSubject || '');
+      setDraftBody(emailBody || '');
+    }
+  }, [emailSubject, emailBody, editing]);
 
   const emailValid = recipientEmail.trim().includes('@');
 
@@ -291,9 +308,79 @@ function GmailSendButton({ sessionId, messageContent, hasCv }) {
     }
   }
 
+  function openEditor() {
+    setDraftSubject(emailSubject || '');
+    setDraftBody(emailBody || '');
+    setSaveError('');
+    setEditing(true);
+  }
+
+  async function handleSaveEmail() {
+    setSavingEmail(true);
+    setSaveError('');
+    try {
+      await updateCareerEmail(sessionId, draftSubject.trim(), draftBody);
+      onEmailSaved?.(draftSubject.trim(), draftBody);
+      setEditing(false);
+      setDone(false); // si ya se había enviado, un cambio nuevo habilita reenviar
+    } catch (err) {
+      setSaveError(err.message || 'No se pudo guardar el email');
+    } finally {
+      setSavingEmail(false);
+    }
+  }
+
   return (
     <div className="career-draft-box">
-      <p className="career-draft-label">Enviar email</p>
+      <div className="career-draft-label-row">
+        <p className="career-draft-label">Enviar email</p>
+        {!editing && (
+          <button type="button" className="career-draft-edit-btn" onClick={openEditor}>
+            ✏️ Modificar
+          </button>
+        )}
+      </div>
+      {editing && (
+        <div className="career-draft-edit-box">
+          <label className="career-draft-edit-field-label" htmlFor="career-email-subject">Asunto</label>
+          <input
+            id="career-email-subject"
+            type="text"
+            className="career-draft-edit-input"
+            value={draftSubject}
+            onChange={e => setDraftSubject(e.target.value)}
+            disabled={savingEmail}
+          />
+          <label className="career-draft-edit-field-label" htmlFor="career-email-body">Cuerpo</label>
+          <textarea
+            id="career-email-body"
+            className="career-draft-edit-textarea"
+            rows={8}
+            value={draftBody}
+            onChange={e => setDraftBody(e.target.value)}
+            disabled={savingEmail}
+          />
+          {saveError && <p className="career-draft-error">{saveError}</p>}
+          <div className="career-draft-edit-actions">
+            <button
+              type="button"
+              className="career-draft-btn"
+              onClick={handleSaveEmail}
+              disabled={savingEmail || !draftSubject.trim()}
+            >
+              {savingEmail ? 'Guardando…' : 'Guardar'}
+            </button>
+            <button
+              type="button"
+              className="career-draft-retry-btn"
+              onClick={() => { setEditing(false); setSaveError(''); }}
+              disabled={savingEmail}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
       <div className="career-draft-to-row">
         <label className="career-draft-to-label">Para:</label>
         <input
@@ -476,6 +563,10 @@ export function CareerView() {
   const [cvHtml, setCvHtml] = useState(null);
   const [showCvModal, setShowCvModal] = useState(false);
 
+  // Asunto/cuerpo del email de esta sesión (lo que realmente se manda al enviar)
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
@@ -494,6 +585,8 @@ export function CareerView() {
     setCvHtml(null);
     setShowCvModal(false);
     setShowHistory(false);
+    setEmailSubject('');
+    setEmailBody('');
     try {
       const [sessionData, cvData] = await Promise.all([
         fetchCareerSession(sessionId),
@@ -501,6 +594,8 @@ export function CareerView() {
       ]);
       setMessages(sessionData.messages || []);
       if (cvData.html) setCvHtml(cvData.html);
+      setEmailSubject(sessionData.email_subject || '');
+      setEmailBody(sessionData.email_body || '');
     } catch {
       setMessages([]);
     } finally {
@@ -515,6 +610,8 @@ export function CareerView() {
       await qc.invalidateQueries({ queryKey: ['careerSessions'] });
       setActiveSessionId(id);
       setMessages([]);
+      setEmailSubject('');
+      setEmailBody('');
       setShowHistory(false);
     } finally {
       setCreatingNew(false);
@@ -569,6 +666,15 @@ export function CareerView() {
       const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: reply, has_image: false };
       setMessages(prev => [...prev, assistantMsg]);
       await qc.invalidateQueries({ queryKey: ['careerSessions'] });
+      // El chat pudo haber guardado un asunto/cuerpo nuevo (guardar_resumen) —
+      // refrescar para que el editor de email no muestre datos viejos.
+      try {
+        const fresh = await fetchCareerSession(activeSessionId);
+        setEmailSubject(fresh.email_subject || '');
+        setEmailBody(fresh.email_body || '');
+      } catch {
+        // no bloquea el chat si esto falla
+      }
     } catch (err) {
       const errMsg = { id: Date.now() + 2, role: 'assistant', content: `Error: ${err.message}`, has_image: false };
       setMessages(prev => [...prev, errMsg]);
@@ -724,6 +830,9 @@ export function CareerView() {
                           sessionId={activeSessionId}
                           messageContent={msg.content}
                           hasCv={!!cvHtml}
+                          emailSubject={emailSubject}
+                          emailBody={emailBody}
+                          onEmailSaved={(subject, body) => { setEmailSubject(subject); setEmailBody(body); }}
                         />
                       </>
                     )}

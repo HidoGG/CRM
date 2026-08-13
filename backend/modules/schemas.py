@@ -193,3 +193,8 @@ class CareerDraftRequest(BaseModel):
         if not VALID_EMAIL_RE.fullmatch(cleaned):
             raise ValueError("formato de email inválido")
         return cleaned
+
+
+class CareerEmailUpdateRequest(BaseModel):
+    subject: str
+    body: str

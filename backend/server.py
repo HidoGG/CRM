@@ -945,6 +945,33 @@ async def create_career_draft(session_id: int, payload: schemas.CareerDraftReque
         raise HTTPException(status_code=500, detail=f"Error creando borrador: {exc}")
 
 
+@app.patch("/career/sessions/{session_id}/email")
+def update_career_email(session_id: int, payload: schemas.CareerEmailUpdateRequest):
+    """Actualiza el asunto/cuerpo del email de una sesión (edición manual del usuario).
+
+    Es lo mismo que guarda guardar_resumen desde el chat -- el próximo envío
+    (POST /career/sessions/{id}/send) usa estos valores tal cual queden acá.
+    """
+    from modules.database import get_session as db_session, now_utc
+
+    with db_session() as db:
+        exists = db.execute(
+            text("SELECT 1 FROM career_sessions WHERE id = :id"), {"id": session_id}
+        ).fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+        db.execute(
+            text("""
+                UPDATE career_sessions
+                SET email_subject = :subject, email_body = :body, updated_at = :now
+                WHERE id = :id
+            """),
+            {"subject": payload.subject, "body": payload.body, "now": now_utc(), "id": session_id},
+        )
+        db.commit()
+    return {"ok": True}
+
+
 @app.post("/career/sessions/{session_id}/send")
 async def send_career_email(session_id: int, payload: schemas.CareerDraftRequest):
     """Envía directamente el email generado por el asistente con el CV adjunto."""
