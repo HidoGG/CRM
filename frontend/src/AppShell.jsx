@@ -129,11 +129,22 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Alerta de re-autorización de Gmail ──
-  const gmailStatus = useGmailStatus().data;
+  const gmailStatusQuery = useGmailStatus();
+  const gmailStatus = gmailStatusQuery.data;
   const [gmailReauthDismissed, setGmailReauthDismissed] = useState(
     () => sessionStorage.getItem('gmail-reauth-dismissed') === '1'
   );
-  const showGmailReauth = !gmailReauthDismissed && gmailStatus?.needs_reauth === true;
+  // Antes solo se disparaba con needs_reauth (caso puntual: rotación de
+  // CRM_API_KEY). El caso mas frecuente es que el token se venza o Google lo
+  // revoque solo (las apps en modo "Prueba" duran 7 días) y ahí
+  // needs_reauth queda en false — authorized:false ya cubre ambos casos.
+  // isPlaceholderData evita un falso positivo: el placeholder de
+  // useGmailStatus arranca con authorized:false hasta que responde el
+  // backend, y no queremos mostrar el modal en ese instante inicial.
+  const showGmailReauth =
+    !gmailReauthDismissed &&
+    !gmailStatusQuery.isPlaceholderData &&
+    gmailStatus?.authorized === false;
   function dismissGmailReauth() {
     sessionStorage.setItem('gmail-reauth-dismissed', '1');
     setGmailReauthDismissed(true);
@@ -598,7 +609,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
         </div>
       )}
 
-      {/* ── Modal: Gmail perdió la sesión (ej: rotación de CRM_API_KEY) ── */}
+      {/* ── Modal: Gmail no está autorizado (token vencido/revocado o rotación de CRM_API_KEY) ── */}
       {showGmailReauth && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
@@ -625,7 +636,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
                   Gmail necesita re-autorización
                 </p>
                 <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                  Tu sesión de Gmail venció — probablemente por un cambio de credenciales del servidor. Los envíos automáticos están pausados hasta que vuelvas a conectar tu cuenta.
+                  {gmailStatus?.reason || 'Tu sesión de Gmail venció. Los envíos automáticos y la detección de respuestas están pausados hasta que vuelvas a conectar tu cuenta.'}
                 </p>
               </div>
             </div>
