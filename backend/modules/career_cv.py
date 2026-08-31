@@ -29,8 +29,8 @@ EDUCACIÓN:
 - Técnico Superior en Petróleo y Gas — I.S.E.T. N° 812, Comodoro Rivadavia | Nov 2021 | Promedio 7,38
   Materias: Automatismos y Control, Mediciones e Instalaciones Eléctricas, Mecánica de Fluidos,
   Sistemas Integrados de Gestión, Termodinámica y Máquinas Térmicas, Mantenimiento y Confiabilidad.
-- Tecnicatura en Programación — UTN | En curso
-  POO, estructuras de datos, bases de datos, desarrollo de software aplicado a procesos industriales.
+- Tecnicatura en Programación — UTN | Próxima a finalizar
+  Desarrollo de software aplicado a procesos industriales, POO, estructuras de datos, bases de datos.
 
 EXPERIENCIA (de más reciente a más antigua):
 1. Fluodinámica S.A. — Jun 2025 – Sep 2025 | Técnico en Mantenimiento – Sistemas Hidráulicos
@@ -39,10 +39,10 @@ EXPERIENCIA (de más reciente a más antigua):
    - Diagnóstico y asesoramiento técnico a clientes industriales
    - Control de stock, gestión logística, coordinación con proveedores del sector industrial
 
-2. DLS Argentina — Dic 2023 – Mar 2025 | Operario de Pulling / Enganchador
+2. DLS Argentina — Dic 2023 – Mar 2025 | Operario de Pulling (Habilitado para tareas de Enganchador)
    Categoría: Ingresante Cat. I → Peón Práctico Pulling Cat. IV | Habilitado como Enganchador
    - Maniobras críticas en torre y boca de pozo bajo estándares HSE (Pulling Pesado)
-   - Enganchador: enganche/desenganche de varillas y tubulares en altura
+   - Tareas de enganchador: enganche/desenganche de varillas y tubulares en altura
    - Montaje y desmontaje de BOP, participación en pruebas de certificación
    - Control y mantenimiento preventivo: BOP, bombas de ahogo, sistemas hidráulicos
    - Gestión de fluidos de completación y control de niveles en pileta
@@ -135,6 +135,10 @@ honestidad abajo)
 **Título Académico** — Institución | Fecha
 _Materias o detalle relevante (itálica, solo si es relevante para el puesto)_
 **Segundo título** — Institución | Estado
+IMPORTANTE: para la "Tecnicatura en Programación — UTN", SIEMPRE incluí la línea itálica
+"Desarrollo de software aplicado a procesos industriales..." tal cual figura en el perfil —
+nunca la recortes por espacio. Es lo que deja en claro que estudia programación para aplicarla
+a su rubro (Oil & Gas / industria), no para irse del sector — importante para cualquier puesto.
 
 [CERTIFICACIONES]
 **Grupo temático**
