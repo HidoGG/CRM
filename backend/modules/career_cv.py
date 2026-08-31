@@ -13,7 +13,7 @@ _client = AsyncOpenAI(
     api_key=os.environ["GROQ_API_KEY"],
     base_url="https://api.groq.com/openai/v1",
 )
-_MODEL = os.getenv("CAREER_MODEL", "llama-3.3-70b-versatile")
+_MODEL = os.getenv("CAREER_MODEL", "openai/gpt-oss-120b")
 
 # ── Perfil base de Gabriel ────────────────────────────────────────────────────
 
