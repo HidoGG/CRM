@@ -339,8 +339,37 @@ REPLY_RECENT_LIMIT = 40   # envíos más recientes: se revisan SIEMPRE, sin depe
 REPLY_BACKFILL_LIMIT = 40  # backlog viejo: sigue el cursor rotativo, de a poco
 REPLY_CURSOR_KEY = "reply_check_cursor"  # system_settings.key: cursor rotativo (JSON {"sent_at": iso, "id": job_id}) o "" para reiniciar el barrido desde lo más reciente
 REPLY_SEARCH_MAX_RESULTS = 5  # candidatos a revisar en el fallback por remitente
-BOUNCE_QUERY = "from:(mailer-daemon OR postmaster) newer_than:90d"
+
+# Muchas empresas filtran su correo entrante con un gateway de seguridad
+# (Trend Micro, Mimecast, Exchange Online Protection, etc.) que reenvía el
+# rebote desde una dirección propia en vez de mailer-daemon/postmaster —
+# por eso además de mirar el remitente se matchea por el asunto estándar
+# de las notificaciones de no-entrega (RFC 3464 y variantes de uso común).
+_BOUNCE_SUBJECT_PATTERNS = [
+    "undelivered mail returned to sender",
+    "delivery status notification",
+    "mail delivery failed",
+    "message undeliverable",
+    "returned mail to sender",
+    "non-delivery report",
+    "delivery failure",
+]
+BOUNCE_QUERY = (
+    "(from:(mailer-daemon OR postmaster) OR subject:("
+    + " OR ".join(f'"{p}"' for p in _BOUNCE_SUBJECT_PATTERNS)
+    + ")) newer_than:90d"
+)
 BOUNCE_BATCH_LIMIT = 25
+
+
+def _is_bounce_sender(from_val: str, subject: str = "") -> bool:
+    """True si el mensaje es un aviso de rebote (mailer-daemon/postmaster o
+    gateway corporativo con asunto estándar de no-entrega)."""
+    from_val = from_val.lower()
+    if "mailer-daemon" in from_val or "postmaster" in from_val:
+        return True
+    subject_lower = subject.lower()
+    return any(p in subject_lower for p in _BOUNCE_SUBJECT_PATTERNS)
 
 # Evita corridas superpuestas (scheduler cada 2h + botón manual + auto-sync al
 # abrir el CRM pueden coincidir) y ráfagas de sync por recargas seguidas (F5)
@@ -481,7 +510,7 @@ def _find_reply_in_thread(service, my_email: str, thread_id: str) -> dict | None
             continue
         # Los avisos de rebote llegan al mismo thread: NO son respuestas
         # del contacto (de esos se encarga _check_bounces).
-        if "mailer-daemon" in from_val or "postmaster" in from_val:
+        if _is_bounce_sender(from_val, hmap.get("subject", "")):
             continue
         return {"id": msg["id"], "headers": hmap, "subject": hmap.get("subject", ""), "thread_id": thread_id}
     return None
@@ -548,7 +577,7 @@ def _find_reply_by_sender_search(service, contact_email: str, sent_at: datetime)
         raw_headers = msg.get("payload", {}).get("headers", [])
         hmap = {h.get("name", "").lower(): h.get("value", "") for h in raw_headers}
         from_val = hmap.get("from", "").lower()
-        if "mailer-daemon" in from_val or "postmaster" in from_val:
+        if _is_bounce_sender(from_val, hmap.get("subject", "")):
             continue
         return {
             "id": item["id"], "headers": hmap, "subject": hmap.get("subject", ""),
@@ -768,7 +797,8 @@ def _check_replies(service, my_email: str) -> tuple[int, int]:
 
 
 def _check_bounces(service) -> int:
-    """Busca avisos de mailer-daemon/postmaster y marca contactos rebotados.
+    """Busca avisos de rebote (mailer-daemon/postmaster o gateways
+    corporativos como Trend Micro) y marca contactos rebotados.
 
     Cambio respecto a la versión anterior: usa format='full' (mismo costo de
     quota que 'metadata': 5 unidades/llamada según la Gmail API) para obtener
@@ -946,7 +976,7 @@ def _backfill_bounce_reasons(service) -> int:
         try:
             listing = service.users().messages().list(
                 userId="me",
-                q=f"from:(mailer-daemon OR postmaster) {email} newer_than:90d",
+                q=f"{BOUNCE_QUERY} {email}",
                 maxResults=1,
             ).execute()
             msgs = listing.get("messages", [])

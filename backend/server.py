@@ -803,12 +803,19 @@ async def generate_career_cv(session_id: int):
     # (guardada antes de que existiera esta columna) cae al resumen como antes.
     keywords = keywords_ats or resumen or ""
 
-    cv_text = await career_cv.generate_cv_content(
-        empresa=empresa or "",
-        cargo=cargo or "",
-        resumen=resumen or "",
-        keywords=keywords,
-    )
+    try:
+        cv_text = await career_cv.generate_cv_content(
+            empresa=empresa or "",
+            cargo=cargo or "",
+            resumen=resumen or "",
+            keywords=keywords,
+        )
+    except Exception as exc:
+        # Sin este try/except, un error de Groq (cuota, auth, rate limit, timeout)
+        # no atajado hacía que Starlette devuelva un 500 crudo sin headers CORS,
+        # y el navegador lo reporta como "Failed to fetch" en vez de un mensaje
+        # real -- convertimos cualquier falla acá en un error legible.
+        raise HTTPException(status_code=502, detail=f"No se pudo generar el CV: {exc}")
 
     with Session(engine) as db:
         db.execute(
