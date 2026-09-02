@@ -72,6 +72,56 @@ export function InfoModal({ open, title, message, onClose }) {
   );
 }
 
+export function PromptModal({
+  open, title, message, placeholder, confirmLabel = 'Confirmar',
+  value, onChange, onConfirm, onCancel, saving, error,
+}) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) { if (e.key === 'Escape' && !saving) onCancel(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onCancel, saving]);
+
+  if (!open) return null;
+
+  return (
+    <div style={backdropStyle} onClick={() => !saving && onCancel()} role="dialog" aria-modal="true" aria-labelledby="prompt-modal-title">
+      <div style={modalStyle} onClick={e => e.stopPropagation()}>
+        {title && (
+          <h2 id="prompt-modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            {title}
+          </h2>
+        )}
+        {message && (
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+            {message}
+          </p>
+        )}
+        <textarea
+          rows={3}
+          autoFocus
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          style={{ resize: 'vertical', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', background: 'var(--surface-input)', color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'inherit', lineHeight: 1.6 }}
+          aria-label={placeholder}
+        />
+        {error && <p style={{ margin: 0, color: 'var(--red-text)', fontSize: '0.85rem' }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button type="button" onClick={onCancel} className="ghost-button" disabled={saving}>
+            Cancelar
+          </button>
+          <button type="button" onClick={onConfirm} className="primary-button" disabled={saving}>
+            {saving ? 'Guardando…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+      <style>{MODAL_KEYFRAMES}</style>
+    </div>
+  );
+}
+
 export function ConfirmModal({ open, title, message, confirmLabel = 'Eliminar', confirmDanger = true, onConfirm, onCancel }) {
   useEffect(() => {
     if (!open) return;

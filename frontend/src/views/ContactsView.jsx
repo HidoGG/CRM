@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { capitalize, prettifyAction } from '../lib/utils';
-import { ConfirmModal } from '../components/ConfirmModal';
+import { ConfirmModal, PromptModal } from '../components/ConfirmModal';
 import { ContactForm } from '../components/ContactForm';
 import { SectorBadge, SECTORS, getSectorLabel } from '../components/SectorBadge';
 
@@ -43,7 +43,51 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
   const [editError, setEditError]     = useState('');
   const [sectorFilter, setSectorFilter] = useState(null);
   const [searchQuery, setSearchQuery]   = useState('');
+  const [pauseContact, setPauseContact] = useState(null);
+  const [pauseReason, setPauseReason]   = useState('');
+  const [pauseSaving, setPauseSaving]   = useState(false);
+  const [pauseError, setPauseError]     = useState('');
+  const [resumingId, setResumingId]     = useState(null);
   const confirmContact  = contacts.find(c => c.id === confirmId);
+
+  function openPause(contact) {
+    setPauseContact(contact);
+    setPauseReason('');
+    setPauseError('');
+  }
+
+  async function submitPause() {
+    if (!pauseReason.trim()) { setPauseError('Contá brevemente por qué lo pausás.'); return; }
+    setPauseSaving(true);
+    setPauseError('');
+    try {
+      await onUpdate(pauseContact.id, {
+        status: 'sacar',
+        next_action: 'revisar_manual',
+        discard_reason: pauseReason.trim(),
+      });
+      setPauseContact(null);
+    } catch (e) {
+      setPauseError(e.message || 'No se pudo pausar el contacto.');
+    } finally {
+      setPauseSaving(false);
+    }
+  }
+
+  async function handleResume(contact) {
+    setResumingId(contact.id);
+    try {
+      await onUpdate(contact.id, {
+        status: 'mantener',
+        next_action: 'enviar',
+        discard_reason: null,
+      });
+    } catch {
+      /* el error queda visible en el mensaje de estado global */
+    } finally {
+      setResumingId(null);
+    }
+  }
 
   // Memoizado: solo recalcula cuando cambia la lista de contactos
   const statusCountMap = useMemo(() => {
@@ -124,6 +168,22 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
         confirmLabel="Eliminar"
         onConfirm={() => { onDelete(confirmId); setConfirmId(null); }}
         onCancel={() => setConfirmId(null)}
+      />
+
+      <PromptModal
+        open={pauseContact !== null}
+        title="Pausar contacto"
+        message={pauseContact
+          ? `${pauseContact.name || pauseContact.email} sale de la cola de envíos y se cancelan los emails que tenía programados. Contá por qué lo pausás para acordarte después.`
+          : ''}
+        placeholder="Ej: ya no trabaja en la empresa (me lo dijo por mail el 4/8)"
+        confirmLabel="Pausar"
+        value={pauseReason}
+        onChange={setPauseReason}
+        onConfirm={submitPause}
+        onCancel={() => setPauseContact(null)}
+        saving={pauseSaving}
+        error={pauseError}
       />
 
       {/* ── Modal de edición de contacto ── */}
@@ -446,7 +506,10 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{prettifyAction(contact.next_action || 'revisar_manual')}</span>
                             {contact.discard_reason && (
-                              <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 7px', borderRadius: 6, background: 'var(--gray-bg)', color: 'var(--gray-text)', whiteSpace: 'nowrap', display: 'inline-block', fontFamily: "'Barlow Condensed', sans-serif" }}>
+                              <span
+                                title={contact.discard_reason === 'rebote_email' ? 'Rebote' : contact.discard_reason}
+                                style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 7px', borderRadius: 6, background: 'var(--gray-bg)', color: 'var(--gray-text)', display: 'inline-block', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: "'Barlow Condensed', sans-serif" }}
+                              >
                                 {contact.discard_reason === 'rebote_email' ? 'Rebote' : contact.discard_reason}
                               </span>
                             )}
@@ -481,6 +544,26 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
                             >
                               Editar
                             </button>
+                            {statusKey === 'sacar' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleResume(contact)}
+                                disabled={resumingId === contact.id}
+                                style={{ color: 'var(--green-text)', fontSize: '0.78rem', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                aria-label={`Reanudar contacto ${contact.name || contact.email}`}
+                              >
+                                {resumingId === contact.id ? 'Reanudando…' : 'Reanudar'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openPause(contact)}
+                                style={{ color: 'var(--amber-text)', fontSize: '0.78rem', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                aria-label={`Pausar contacto ${contact.name || contact.email}`}
+                              >
+                                Pausar
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => setConfirmId(contact.id)}

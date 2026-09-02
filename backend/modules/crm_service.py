@@ -966,6 +966,15 @@ def update_contact(contact_id: int, payload: dict) -> dict:
             text(f"UPDATE contacts SET {set_clause} WHERE id = :id"), params
         )
 
+        # Al pausar un contacto ("sacar"), cancelar los envíos que quedaron programados
+        cancelled_jobs = 0
+        if updates.get("status") == "sacar":
+            result = session.execute(
+                text("DELETE FROM email_jobs WHERE contact_id = :id AND status = 'pending'"),
+                {"id": contact_id},
+            )
+            cancelled_jobs = result.rowcount or 0
+
         changed_fields = [f for f in updates if f != "updated_at"]
         changed_labels = [_FIELD_LABEL_ES.get(f, f) for f in changed_fields]
         insert_history(
@@ -1001,7 +1010,7 @@ def update_contact(contact_id: int, payload: dict) -> dict:
             text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"),
             {"id": contact_id},
         ).fetchone()
-    return row_to_dict(updated)
+    return {**row_to_dict(updated), "cancelled_jobs": cancelled_jobs}
 
 
 def mark_reply_seen(contact_id: int) -> dict:
