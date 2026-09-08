@@ -106,11 +106,15 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
     [activeJobs]
   );
 
-  // Índice contact_id → thread_id del último job enviado con respuesta
+  // Índice contact_id → thread_id del job que efectivamente tiene la respuesta.
+  // Ojo: no alcanza con "el último enviado" — la cola circular manda un
+  // seguimiento nuevo aunque ya haya respuesta, así que hay que filtrar por
+  // replied_at (jobs ordenados por scheduled_at asc → el último con
+  // replied_at es la respuesta más reciente).
   const threadByContact = useMemo(() => {
     const map = {};
     for (const j of emailJobs) {
-      if (j.thread_id && (j.status === 'sent' || j.status === 'completed')) {
+      if (j.thread_id && j.replied_at) {
         map[j.contact_id] = j.thread_id;
       }
     }
