@@ -291,6 +291,19 @@ def _store_autoreply_detection(job: dict, reason: str, alt_email: str | None, re
             text(f"UPDATE contacts SET {', '.join(set_parts)} WHERE id = :id"),
             params,
         )
+        # Una auto-respuesta también es una respuesta: sin esto, contact.replied_at
+        # nunca se toca y el contacto no aparece en "Respuestas recibidas" (que
+        # filtra por replied_at) aunque el usuario haya recibido un mensaje real
+        # a su casilla. Mismo criterio que la respuesta real: limpiar
+        # reply_seen_at para que reaparezca como no revisada aunque ya se
+        # hubiera visto una respuesta anterior de este contacto.
+        session.execute(
+            text("""
+                UPDATE contacts SET replied_at = :now, reply_seen_at = NULL, updated_at = :now
+                WHERE id = :id
+            """),
+            {"now": now, "id": job["contact_id"]},
+        )
         # Si la auto-respuesta cayó en un thread nuevo (threading roto por el
         # auto-responder), guardamos ESE thread_id para que los links a Gmail
         # lleven a la conversación real.
