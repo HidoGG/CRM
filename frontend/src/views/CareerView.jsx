@@ -436,6 +436,39 @@ function GmailSendButton({ sessionId, messageContent, hasCv, emailSubject, email
   );
 }
 
+const SEPARATOR_LINE_RE = /^\s*[─━—–-]{5,}\s*$/;
+
+/** Si el usuario editó el asunto/cuerpo (guardado en la sesión), reemplaza esas
+ *  dos secciones dentro del mensaje del asistente para que arriba se vea lo que
+ *  realmente se va a enviar. No toca el mensaje guardado: es solo visual.
+ *  Si el mensaje no tiene el formato esperado, lo devuelve sin cambios. */
+function applyEmailEdits(content, subject, body) {
+  if (!content || (!subject && !body)) return content;
+  const lines = content.split('\n');
+  const subjIdx = lines.findIndex(l => l.includes('ASUNTO DEL EMAIL'));
+  const bodyIdx = lines.findIndex(l => l.includes('CUERPO DEL EMAIL'));
+  if (subjIdx === -1 || bodyIdx === -1 || bodyIdx <= subjIdx) return content;
+  let endIdx = lines.findIndex((l, i) => i > bodyIdx && SEPARATOR_LINE_RE.test(l));
+  if (endIdx === -1) endIdx = lines.length;
+  if (lines.slice(subjIdx, endIdx).join('\n').includes('```')) return content;
+
+  const norm = s => (s || '').replace(/\s+/g, ' ').trim();
+  const origSubject = lines.slice(subjIdx + 1, bodyIdx).join('\n');
+  const origBody = lines.slice(bodyIdx + 1, endIdx).join('\n');
+  const subjectChanged = !!subject && norm(subject) !== norm(origSubject);
+  const bodyChanged = !!body && norm(body) !== norm(origBody);
+  if (!subjectChanged && !bodyChanged) return content;
+
+  return [
+    ...lines.slice(0, subjIdx),
+    lines[subjIdx] + (subjectChanged ? '  ✏️ editado' : ''),
+    ...(subjectChanged ? [subject.trim(), ''] : lines.slice(subjIdx + 1, bodyIdx)),
+    lines[bodyIdx] + (bodyChanged ? '  ✏️ editado' : ''),
+    ...(bodyChanged ? [body.trim(), ''] : lines.slice(bodyIdx + 1, endIdx)),
+    ...lines.slice(endIdx),
+  ].join('\n');
+}
+
 function MessageBubble({ role, content, hasImage }) {
   const isUser = role === 'user';
 
@@ -815,7 +848,7 @@ export function CareerView() {
                   <div key={msg.id}>
                     <MessageBubble
                       role={msg.role}
-                      content={msg.content}
+                      content={isLastAssistant ? applyEmailEdits(msg.content, emailSubject, emailBody) : msg.content}
                       hasImage={msg.has_image}
                     />
                     {isLastAssistant && activeSessionId && (
