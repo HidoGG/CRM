@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 from openai import AsyncOpenAI
 
 _client = AsyncOpenAI(
@@ -185,6 +186,24 @@ def _sanitize_prompt_field(value: str | None, max_length: int = 800) -> str:
     return cleaned[:max_length]
 
 
+# Espacios y guiones "especiales" que el modelo suele escribir (ej. U+202F entre
+# "84" y "hs"). En HTML se ven bien, pero rompen el PDF y ensucian el texto
+# guardado, así que se pasan a su equivalente común apenas se genera el CV.
+_SPACE_CODEPOINTS = [0x00A0, 0x1680, *range(0x2000, 0x200B), 0x202F, 0x205F, 0x3000]
+_ZERO_WIDTH_CODEPOINTS = [0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF]
+_DASH_CODEPOINTS = [0x2010, 0x2011, 0x2012, 0x2212]
+_TEXT_FIXES = {
+    **{c: " " for c in _SPACE_CODEPOINTS},
+    **{c: None for c in _ZERO_WIDTH_CODEPOINTS},
+    **{c: "-" for c in _DASH_CODEPOINTS},
+}
+
+
+def normalize_cv_text(text: str) -> str:
+    """Reemplaza espacios/guiones raros por los comunes y quita caracteres invisibles."""
+    return (text or "").translate(_TEXT_FIXES)
+
+
 async def generate_cv_content(
     empresa: str,
     cargo: str,
@@ -211,7 +230,7 @@ async def generate_cv_content(
             f"[career_cv] Aviso: la respuesta de Groq se truncó por longitud "
             f"(cargo={cargo!r}, empresa={empresa!r}) — el CV puede estar incompleto."
         )
-    cv_text = choice.message.content or ""
+    cv_text = normalize_cv_text(choice.message.content or "")
     _warn_missing_sections(cv_text, cargo=cargo, empresa=empresa)
     return cv_text
 
@@ -312,7 +331,7 @@ def _parse_sections(cv_text: str) -> dict[str, list[str]]:
 
 def cv_content_to_html(cv_text: str, cargo: str = "", empresa: str = "") -> str:
     """Convierte el CV generado a HTML con el estilo visual del CV base de Gabriel."""
-    sections = _parse_sections(cv_text)
+    sections = _parse_sections(normalize_cv_text(cv_text))
 
     def esc(s: str) -> str:
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -321,6 +340,7 @@ def cv_content_to_html(cv_text: str, cargo: str = "", empresa: str = "") -> str:
         """Convierte **bold**, _italic_ y texto normal a HTML inline."""
         text = esc(text)
         text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+        text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<em>\1</em>", text)
         text = re.sub(r"_(.+?)_", r"<em>\1</em>", text)
         return text
 
@@ -503,8 +523,38 @@ def cv_content_to_html(cv_text: str, cargo: str = "", empresa: str = "") -> str:
 
 # ── PDF con fpdf2 ─────────────────────────────────────────────────────────────
 
-def cv_content_to_pdf(cv_text: str, cargo: str = "", empresa: str = "") -> bytes:
-    """Genera un PDF de una página con el estilo visual del CV base de Gabriel."""
+def _to_latin1(s: str) -> str:
+    """Convierte a Latin-1 para las fuentes built-in de fpdf2.
+
+    Todo lo que no entra en Latin-1 se transforma en un equivalente visual antes
+    de caer al "?" (ver normalize_cv_text para espacios y guiones especiales).
+    """
+    s = normalize_cv_text(s)
+    replacements = {
+        "•": "-", "–": "-", "—": "-",
+        "“": '"', "”": '"', "‘": "'", "’": "'",
+        "…": "...", "→": "->", "←": "<-", "≥": ">=", "≤": "<=",
+        "✓": "-", "✔": "-", "€": "EUR",
+    }
+    for c, r in replacements.items():
+        s = s.replace(c, r)
+    # Lo que quede fuera de Latin-1: intentar descomponer (ej. "ē" → "e")
+    out = []
+    for ch in s:
+        if ord(ch) < 256:
+            out.append(ch)
+            continue
+        base = unicodedata.normalize("NFKD", ch).encode("latin-1", errors="ignore").decode("latin-1")
+        out.append(base or "?")
+    return "".join(out)
+
+
+def _build_cv_pdf(cv_text: str, cargo: str, k: float):
+    """Arma el PDF del CV con todos los tamaños multiplicados por k (1.0 = normal).
+
+    Devuelve el objeto FPDF ya renderizado; el llamador revisa cuántas páginas
+    ocupó (ver cv_content_to_pdf).
+    """
     from fpdf import FPDF
 
     # Paleta de colores
@@ -513,88 +563,83 @@ def cv_content_to_pdf(cv_text: str, cargo: str = "", empresa: str = "") -> bytes
     C_GRAY = (90, 90, 90)
     C_LINE = (15, 15, 15)
 
-    def ltr(s: str) -> str:
-        """Convierte a Latin-1 para fuentes built-in de fpdf2."""
-        replacements = {
-            "•": "-", "–": "-", "—": "-",
-            "“": '"', "”": '"', "‘": "'", "’": "'",
-            "·": ".", "…": "...",
-        }
-        for c, r in replacements.items():
-            s = s.replace(c, r)
-        return s.encode("latin-1", errors="replace").decode("latin-1")
+    ltr = _to_latin1
+    LH = 4.5 * k  # alto de línea del cuerpo
 
     sections = _parse_sections(cv_text)
 
     pdf = FPDF()
-    pdf.set_margins(14, 12, 14)
+    pdf.set_margins(14, 12 * k, 14)
+    # Margen inferior de 10 mm (el de fábrica es ~20 mm y desperdicia media línea de hoja)
+    pdf.set_auto_page_break(True, margin=10)
     pdf.add_page()
 
     PAGE_W = pdf.w - 28  # content width (margins 14+14)
 
     # ── Encabezado ────────────────────────────────────────────────────────────
-    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_font("Helvetica", "B", 22 * k)
     pdf.set_text_color(*C_BLACK)
-    pdf.cell(PAGE_W, 9, "GABRIEL HIDALGO", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(PAGE_W, 9 * k, "GABRIEL HIDALGO", new_x="LMARGIN", new_y="NEXT")
 
     subtitle = " ".join(l.strip() for l in sections.get("SUBTITULO", []) if l.strip())
     if not subtitle:
         subtitle = cargo
-    pdf.set_font("Helvetica", "", 10)
+    pdf.set_font("Helvetica", "", 10 * k)
     pdf.set_text_color(*C_BLUE)
-    pdf.cell(PAGE_W, 5, ltr(subtitle), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(PAGE_W, 5 * k, ltr(subtitle), new_x="LMARGIN", new_y="NEXT")
 
-    pdf.set_font("Helvetica", "", 8)
+    pdf.set_font("Helvetica", "", 8 * k)
     pdf.set_text_color(*C_GRAY)
-    contact = "299-329-7977  |  gabriel.hid.orl@gmail.com  |  linkedin.com/in/hidalgogabrielo  |  Plottier, Neuquen  |  Disp. inmediata  |  Lic. B1"
-    pdf.cell(PAGE_W, 5, ltr(contact), new_x="LMARGIN", new_y="NEXT")
+    contact = "299-329-7977  |  gabriel.hid.orl@gmail.com  |  linkedin.com/in/hidalgogabrielo  |  Plottier, Neuquén  |  Disp. inmediata  |  Lic. B1"
+    pdf.cell(PAGE_W, 5 * k, ltr(contact), new_x="LMARGIN", new_y="NEXT")
 
     # Línea divisoria bajo el header
     pdf.set_draw_color(*C_LINE)
     pdf.set_line_width(0.5)
-    y = pdf.get_y() + 2
+    y = pdf.get_y() + 2 * k
     pdf.line(14, y, pdf.w - 14, y)
-    pdf.ln(4)
+    pdf.ln(4 * k)
 
     # ── Helper: título de sección ────────────────────────────────────────────
     def section_header(label: str):
-        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_font("Helvetica", "B", 8 * k)
         pdf.set_text_color(*C_BLACK)
-        pdf.cell(PAGE_W, 5, ltr(label.upper()), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(PAGE_W, 5 * k, ltr(label.upper()), new_x="LMARGIN", new_y="NEXT")
         y2 = pdf.get_y()
         pdf.set_draw_color(*C_LINE)
         pdf.set_line_width(0.4)
         pdf.line(14, y2, pdf.w - 14, y2)
-        pdf.ln(2)
+        pdf.ln(2 * k)
 
     # ── Helper: texto con fragmentos bold/italic ──────────────────────────────
     def write_mixed(line: str, base_size: float = 9.0, color=C_BLACK):
-        """Escribe una línea con **bold** e _italic_ intercalados."""
-        # Splitea por tokens **bold** e _italic_
-        tokens = re.split(r"(\*\*[^*]+\*\*|_[^_]+_)", line)
+        """Escribe una línea con **bold**, _italic_ y *italic* intercalados."""
+        # Splitea por tokens **bold**, *italic* e _italic_
+        tokens = re.split(r"(\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_)", line)
         for tok in tokens:
-            if tok.startswith("**") and tok.endswith("**"):
-                pdf.set_font("Helvetica", "B", base_size)
+            if tok.startswith("**") and tok.endswith("**") and len(tok) > 4:
+                pdf.set_font("Helvetica", "B", base_size * k)
                 pdf.set_text_color(*color)
-                pdf.write(4.5, ltr(tok[2:-2]))
-            elif tok.startswith("_") and tok.endswith("_"):
-                pdf.set_font("Helvetica", "I", base_size - 0.5)
+                pdf.write(LH, ltr(tok[2:-2]))
+            elif len(tok) > 2 and ((tok.startswith("_") and tok.endswith("_"))
+                                   or (tok.startswith("*") and tok.endswith("*"))):
+                pdf.set_font("Helvetica", "I", (base_size - 0.5) * k)
                 pdf.set_text_color(*C_GRAY)
-                pdf.write(4.5, ltr(tok[1:-1]))
+                pdf.write(LH, ltr(tok[1:-1]))
             else:
-                pdf.set_font("Helvetica", "", base_size)
+                pdf.set_font("Helvetica", "", base_size * k)
                 pdf.set_text_color(*color)
-                pdf.write(4.5, ltr(tok))
+                pdf.write(LH, ltr(tok))
 
     def body_line(line: str, size: float = 9.0, color=C_BLACK,
                   font_style: str = "", indent: float = 0):
         """Imprime una línea con multi-cell para word-wrap correcto."""
         if indent:
             pdf.set_x(14 + indent)
-        pdf.set_font("Helvetica", font_style, size)
+        pdf.set_font("Helvetica", font_style, size * k)
         pdf.set_text_color(*color)
         avail = PAGE_W - indent
-        pdf.multi_cell(avail, 4.5, ltr(line), new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(avail, LH, ltr(line), new_x="LMARGIN", new_y="NEXT")
 
     # ── Renderizado de secciones ─────────────────────────────────────────────
 
@@ -602,12 +647,12 @@ def cv_content_to_pdf(cv_text: str, cargo: str = "", empresa: str = "") -> bytes
         for raw in lines:
             line = raw.rstrip()
             if not line:
-                pdf.ln(2)
+                pdf.ln(2 * k)
                 continue
             # Job title (## prefix)
             if line.lstrip().startswith("## "):
                 title = line.lstrip()[3:]
-                pdf.ln(2)
+                pdf.ln(2 * k)
                 body_line(title, size=10.0, font_style="B", color=C_BLACK)
             # Company · Date
             elif re.search(r"·", line.lstrip()) and not line.lstrip().startswith("-"):
@@ -616,6 +661,9 @@ def cv_content_to_pdf(cv_text: str, cargo: str = "", empresa: str = "") -> bytes
             elif re.match(r"^\s*_(.+)_\s*$", line):
                 inner = re.match(r"^\s*_(.+)_\s*$", line).group(1)
                 body_line(inner, size=8.0, font_style="I", color=C_GRAY)
+            # Línea entera en *cursiva* (ej. materias de la carrera)
+            elif re.match(r"^\*(?!\*)(.+)(?<!\*)\*$", line.strip()):
+                body_line(line.strip()[1:-1], size=8.0, font_style="I", color=C_GRAY)
             # Bullet
             elif re.match(r"^\s*[-•]\s+", line):
                 content = re.sub(r"^\s*[-•]\s+", "", line)
@@ -640,7 +688,7 @@ def cv_content_to_pdf(cv_text: str, cargo: str = "", empresa: str = "") -> bytes
     ]
 
     for key, label in section_order:
-        lines = [l for l in sections.get(key, []) if l.strip() or True]
+        lines = sections.get(key, [])
         # Omite secciones vacías
         if not any(l.strip() for l in lines):
             continue
@@ -651,6 +699,29 @@ def cv_content_to_pdf(cv_text: str, cargo: str = "", empresa: str = "") -> bytes
                 body_line(perfil_text, size=9.0)
         else:
             render_lines(lines)
-        pdf.ln(1)
+        pdf.ln(1 * k)
 
+    return pdf
+
+
+# Escalas que se prueban hasta que el CV entre en una sola hoja (1.0 = tamaño normal)
+_PDF_SCALES = [round(1.0 - 0.02 * i, 2) for i in range(0, 15)]  # 1.00 → 0.72
+
+
+def cv_content_to_pdf(cv_text: str, cargo: str = "", empresa: str = "") -> bytes:
+    """Genera el PDF del CV en UNA sola hoja, con el estilo visual del CV base.
+
+    Si con el tamaño normal el contenido se pasa a una segunda hoja, se vuelve a
+    armar el PDF achicando de a poco tipografía y espaciado hasta que entre.
+    """
+    cv_text = normalize_cv_text(cv_text)
+    pdf = None
+    for k in _PDF_SCALES:
+        pdf = _build_cv_pdf(cv_text, cargo, k)
+        if pdf.page_no() == 1:
+            return bytes(pdf.output())
+    print(
+        f"[career_cv] Aviso: el CV no entra en una hoja ni con escala {_PDF_SCALES[-1]} "
+        f"(cargo={cargo!r}, empresa={empresa!r}) — se entrega con {pdf.page_no()} hojas."
+    )
     return bytes(pdf.output())
