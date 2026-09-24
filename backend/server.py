@@ -123,6 +123,16 @@ async def lifespan(app: FastAPI):
         id="backfill_jobs",
         replace_existing=True,
     )
+    # Reenvíos automáticos programados del Asistente de RRHH (por chat/sesión).
+    # Cada 10 min para que los horarios elegidos (ej. "08:00") no se atrasen mucho.
+    from modules import career_resend
+    _scheduler.add_job(
+        career_resend.send_due_resends,
+        trigger="interval",
+        minutes=10,
+        id="career_resends",
+        replace_existing=True,
+    )
     _scheduler.start()
     # Snapshot y re-encolar al arrancar (cubre cold starts de Render)
     try:
@@ -137,6 +147,10 @@ async def lifespan(app: FastAPI):
         crm_service.backfill_missing_email_jobs()
     except Exception as exc:
         print(f"[startup] No se pudo hacer backfill de jobs: {exc}")
+    try:
+        career_resend.send_due_resends()
+    except Exception as exc:
+        print(f"[startup] No se pudo procesar reenvíos del Asistente: {exc}")
     yield
     _scheduler.shutdown(wait=False)
 
@@ -663,8 +677,9 @@ def create_career_session():
 
 @app.get("/career/sessions/{session_id}")
 def get_career_session(session_id: int):
-    """Devuelve una sesión con todos sus mensajes."""
+    """Devuelve una sesión con todos sus mensajes y el estado de su tanda de reenvíos."""
     from modules.database import get_session as db_session, row_to_dict
+    from modules import career_resend
     with db_session() as db:
         session_row = db.execute(
             text("SELECT * FROM career_sessions WHERE id = :id"),
@@ -679,7 +694,30 @@ def get_career_session(session_id: int):
     return {
         **row_to_dict(session_row),
         "messages": [row_to_dict(m) for m in messages],
+        "resend_schedule": career_resend.get_schedule_status(session_id),
     }
+
+
+@app.post("/career/sessions/{session_id}/resend-schedule")
+def create_career_resend_schedule(session_id: int, payload: schemas.CareerResendScheduleRequest):
+    """Programa una tanda de reenvíos automáticos (mismo email/CV) para esta sesión.
+
+    Reemplaza cualquier tanda pendiente anterior de la misma sesión.
+    """
+    from modules import career_resend
+    try:
+        result = career_resend.create_schedule(session_id, payload.to, payload.days, payload.hours)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {**result, "status": career_resend.get_schedule_status(session_id)}
+
+
+@app.delete("/career/sessions/{session_id}/resend-schedule")
+def cancel_career_resend_schedule(session_id: int):
+    """Cancela los envíos automáticos pendientes de esta sesión (los ya enviados quedan como historial)."""
+    from modules import career_resend
+    cancelled = career_resend.cancel_schedule(session_id)
+    return {"cancelled": cancelled, "status": career_resend.get_schedule_status(session_id)}
 
 
 @app.delete("/career/sessions/{session_id}")

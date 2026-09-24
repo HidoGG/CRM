@@ -1647,6 +1647,87 @@ tr:last-child td {
   border-radius: 6px;
 }
 
+/* ── Reenvío automático (Asistente de RRHH) ────────────────────────────────── */
+
+.career-resend-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.career-resend-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.career-resend-status {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.career-resend-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.career-resend-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.career-resend-days-input {
+  width: 56px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.87rem;
+}
+
+.career-resend-days-suffix {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.career-resend-hour-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.career-resend-hour-input {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.87rem;
+}
+
+.career-resend-hour-remove {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 1rem;
+}
+
+.career-resend-hour-remove:hover {
+  background: var(--red-bg);
+  color: var(--red-text);
+  border-color: var(--red-text);
+}
+
 /* ── CV Preview Bar ─────────────────────────────────────────────────────────── */
 
 .cv-preview-bar {

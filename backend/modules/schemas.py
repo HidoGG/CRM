@@ -6,6 +6,8 @@ mantener una sola fuente de verdad.
 """
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field, field_validator
 
 from modules.crm_service import VALID_EMAIL_RE
@@ -198,3 +200,33 @@ class CareerDraftRequest(BaseModel):
 class CareerEmailUpdateRequest(BaseModel):
     subject: str
     body: str
+
+
+_HOUR_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+class CareerResendScheduleRequest(BaseModel):
+    to: str
+    days: int = Field(ge=1, le=30)
+    hours: list[str] = Field(min_length=1, max_length=4)
+
+    @field_validator("to")
+    @classmethod
+    def to_email_must_be_valid(cls, v: str) -> str:
+        cleaned = str(v).strip().lower()
+        if not VALID_EMAIL_RE.fullmatch(cleaned):
+            raise ValueError("formato de email inválido")
+        return cleaned
+
+    @field_validator("hours")
+    @classmethod
+    def hours_must_be_valid_and_unique(cls, v: list[str]) -> list[str]:
+        cleaned = []
+        for h in v:
+            h = str(h).strip()
+            if not _HOUR_RE.fullmatch(h):
+                raise ValueError(f"horario inválido: {h!r} (formato HH:MM)")
+            cleaned.append(h)
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("hay horarios repetidos")
+        return sorted(cleaned)
