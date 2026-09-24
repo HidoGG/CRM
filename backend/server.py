@@ -688,7 +688,11 @@ def get_career_session(session_id: int):
         if not session_row:
             raise HTTPException(status_code=404, detail="Sesión no encontrada")
         messages = db.execute(
-            text("SELECT id, role, content, has_image, created_at FROM career_messages WHERE session_id = :id ORDER BY id ASC"),
+            text("""
+                SELECT id, role, content, has_image, created_at,
+                       (image_path IS NOT NULL) AS has_stored_image
+                FROM career_messages WHERE session_id = :id ORDER BY id ASC
+            """),
             {"id": session_id},
         ).fetchall()
     return {
@@ -720,6 +724,26 @@ def cancel_career_resend_schedule(session_id: int):
     return {"cancelled": cancelled, "status": career_resend.get_schedule_status(session_id)}
 
 
+@app.get("/career/sessions/{session_id}/messages/{message_id}/image")
+def download_career_message_image(session_id: int, message_id: int):
+    """Devuelve la imagen adjuntada en un mensaje del chat (miniatura y descarga)."""
+    from modules import supabase_storage
+    with Session(engine) as db:
+        row = db.execute(
+            text("SELECT image_path, image_mime FROM career_messages WHERE id = :id AND session_id = :sid"),
+            {"id": message_id, "sid": session_id},
+        ).fetchone()
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="Este mensaje no tiene una imagen guardada.")
+    image_path, image_mime = row
+    image_bytes = supabase_storage.download(image_path)
+    return StreamingResponse(
+        iter([image_bytes]),
+        media_type=image_mime or "image/jpeg",
+        headers={"Content-Disposition": f'inline; filename="imagen_{message_id}{Path(image_path).suffix}"'},
+    )
+
+
 @app.delete("/career/sessions/{session_id}")
 def delete_career_session(session_id: int):
     """Elimina una sesión y todos sus mensajes."""
@@ -748,13 +772,16 @@ async def career_chat(session_id: int, request: Request):
     image_b64 = None
     image_mime = "image/jpeg"
 
+    image_raw = None
     if "multipart/form-data" in content_type:
         form = await request.form()
         user_text = str(form.get("message", "")).strip()
         image_file = form.get("image")
         if image_file and hasattr(image_file, "read"):
-            raw = await image_file.read()
-            image_b64 = base64.b64encode(raw).decode()
+            image_raw = await image_file.read()
+            if len(image_raw) > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Imagen demasiado grande. Máximo permitido: 15 MB.")
+            image_b64 = base64.b64encode(image_raw).decode()
             image_mime = image_file.content_type or "image/jpeg"
     else:
         body = await request.json()
@@ -797,13 +824,14 @@ async def career_chat(session_id: int, request: Request):
         user_content_stored = f"[imagen] {user_text}"
 
     with Session(engine) as db:
-        db.execute(
+        user_msg_id = db.execute(
             text("""
                 INSERT INTO career_messages (session_id, role, content, has_image, created_at)
                 VALUES (:sid, 'user', :content, :has_img, :now)
+                RETURNING id
             """),
             {"sid": session_id, "content": user_content_stored, "has_img": bool(image_b64), "now": now},
-        )
+        ).scalar()
         db.execute(
             text("""
                 INSERT INTO career_messages (session_id, role, content, has_image, created_at)
@@ -816,6 +844,23 @@ async def career_chat(session_id: int, request: Request):
             {"now": now, "id": session_id},
         )
         db.commit()
+
+    # Guardar la imagen en Storage (best-effort: si falla, el mensaje queda
+    # igual con has_image=true pero sin image_path — no bloquea el chat).
+    if image_raw:
+        from modules import supabase_storage
+        ext = {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}.get(image_mime, ".jpg")
+        object_key = f"career-chat/{session_id}/{uuid.uuid4().hex}{ext}"
+        try:
+            supabase_storage.upload(image_raw, object_key, content_type=image_mime)
+            with Session(engine) as db:
+                db.execute(
+                    text("UPDATE career_messages SET image_path = :path, image_mime = :mime WHERE id = :id"),
+                    {"path": object_key, "mime": image_mime, "id": user_msg_id},
+                )
+                db.commit()
+        except Exception as exc:
+            print(f"[career_chat] No se pudo guardar la imagen adjunta (mensaje {user_msg_id}): {exc}")
 
     return {"reply": reply}
 
