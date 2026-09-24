@@ -136,6 +136,30 @@ export async function updateCareerEmail(sessionId, subject, body) {
   return res.json();
 }
 
+export async function createCareerResendSchedule(sessionId, to, days, hours) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/resend-schedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to, days, hours }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'No se pudo programar el reenvío');
+  }
+  return res.json();
+}
+
+export async function cancelCareerResendSchedule(sessionId) {
+  const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/resend-schedule`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'No se pudo cancelar el reenvío');
+  }
+  return res.json();
+}
+
 export async function generateCareerCv(sessionId) {
   const res = await apiFetch(`${API_BASE}/career/sessions/${sessionId}/cv`, { method: 'POST' });
   if (!res.ok) {

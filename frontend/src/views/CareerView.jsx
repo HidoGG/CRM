@@ -9,6 +9,8 @@ import {
   sendCareerMessage,
   sendCareerEmail,
   updateCareerEmail,
+  createCareerResendSchedule,
+  cancelCareerResendSchedule,
   generateCareerCv,
   getCareerCvPdfUrl,
 } from '../lib/api';
@@ -249,7 +251,19 @@ function CvPreviewButton({ sessionId, onCvGenerated, cvHtml, onOpenModal }) {
   );
 }
 
-function GmailSendButton({ sessionId, messageContent, hasCv, emailSubject, emailBody, onEmailSaved }) {
+const RESEND_MAX_DAYS = 30;
+const RESEND_MAX_HOURS = 4;
+
+/** Formatea un ISO UTC como fecha/hora ART corta, ej. "vie 26/9 08:00". */
+function formatArDateTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function GmailSendButton({ sessionId, messageContent, hasCv, emailSubject, emailBody, onEmailSaved, resendSchedule, onResendChanged }) {
   const cvFiles = useCvFiles();
   const cvs = cvFiles.data || [];
   const [selectedCvId, setSelectedCvId] = useState('');
@@ -266,6 +280,13 @@ function GmailSendButton({ sessionId, messageContent, hasCv, emailSubject, email
   const [draftBody, setDraftBody] = useState(emailBody || '');
   const [savingEmail, setSavingEmail] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  // Reenvío automático programado (mismo email/CV, mismo destinatario, horarios elegidos)
+  const [showResendForm, setShowResendForm] = useState(false);
+  const [resendDays, setResendDays] = useState(5);
+  const [resendHours, setResendHours] = useState(['08:00']);
+  const [resendSaving, setResendSaving] = useState(false);
+  const [resendError, setResendError] = useState('');
 
   useEffect(() => {
     if (detectedEmail && !recipientEmail) setRecipientEmail(detectedEmail);
@@ -327,6 +348,47 @@ function GmailSendButton({ sessionId, messageContent, hasCv, emailSubject, email
       setSaveError(err.message || 'No se pudo guardar el email');
     } finally {
       setSavingEmail(false);
+    }
+  }
+
+  function updateResendHour(idx, value) {
+    setResendHours(prev => prev.map((h, i) => (i === idx ? value : h)));
+  }
+
+  function addResendHour() {
+    setResendHours(prev => (prev.length >= RESEND_MAX_HOURS ? prev : [...prev, '13:00']));
+  }
+
+  function removeResendHour(idx) {
+    setResendHours(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleActivateResend() {
+    setResendError('');
+    if (!emailValid) { setResendError('Poné primero el email del destinatario.'); return; }
+    if (!resendHours.length) { setResendError('Agregá al menos un horario.'); return; }
+    setResendSaving(true);
+    try {
+      const res = await createCareerResendSchedule(sessionId, recipientEmail.trim(), resendDays, resendHours);
+      onResendChanged?.(res.status);
+      setShowResendForm(false);
+    } catch (err) {
+      setResendError(err.message || 'No se pudo programar el reenvío.');
+    } finally {
+      setResendSaving(false);
+    }
+  }
+
+  async function handleCancelResend() {
+    setResendSaving(true);
+    setResendError('');
+    try {
+      const res = await cancelCareerResendSchedule(sessionId);
+      onResendChanged?.(res.status);
+    } catch (err) {
+      setResendError(err.message || 'No se pudo cancelar el reenvío.');
+    } finally {
+      setResendSaving(false);
     }
   }
 
@@ -432,6 +494,83 @@ function GmailSendButton({ sessionId, messageContent, hasCv, emailSubject, email
           </button>
         </div>
       )}
+
+      <div className="career-resend-box">
+        <div className="career-draft-label-row">
+          <p className="career-draft-label">🔁 Reenvío automático</p>
+          {!resendSchedule?.active && !showResendForm && (
+            <button type="button" className="career-draft-edit-btn" onClick={() => setShowResendForm(true)}>
+              Programar
+            </button>
+          )}
+        </div>
+
+        {resendSchedule?.active ? (
+          <>
+            <p className="career-resend-status">
+              Se mandó {resendSchedule.sent_count} de {resendSchedule.total_count} veces.
+              {resendSchedule.next_at && <> Próximo: <strong>{formatArDateTime(resendSchedule.next_at)}</strong> (ART).</>}
+            </p>
+            <button type="button" className="career-draft-retry-btn" onClick={handleCancelResend} disabled={resendSaving}>
+              {resendSaving ? 'Desactivando…' : 'Desactivar'}
+            </button>
+          </>
+        ) : showResendForm ? (
+          <div className="career-resend-form">
+            <div className="career-resend-field-row">
+              <label className="career-draft-edit-field-label" htmlFor="career-resend-days">Repetir por</label>
+              <input
+                id="career-resend-days"
+                type="number"
+                min={1}
+                max={RESEND_MAX_DAYS}
+                className="career-resend-days-input"
+                value={resendDays}
+                onChange={e => setResendDays(Math.min(RESEND_MAX_DAYS, Math.max(1, Number(e.target.value) || 1)))}
+                disabled={resendSaving}
+              />
+              <span className="career-resend-days-suffix">día{resendDays === 1 ? '' : 's'}</span>
+            </div>
+
+            <label className="career-draft-edit-field-label">Horarios (hora ART)</label>
+            {resendHours.map((h, idx) => (
+              <div key={idx} className="career-resend-hour-row">
+                <input
+                  type="time"
+                  className="career-resend-hour-input"
+                  value={h}
+                  onChange={e => updateResendHour(idx, e.target.value)}
+                  disabled={resendSaving}
+                />
+                {resendHours.length > 1 && (
+                  <button type="button" className="career-resend-hour-remove" onClick={() => removeResendHour(idx)} disabled={resendSaving} aria-label="Quitar horario">
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            {resendHours.length < RESEND_MAX_HOURS && (
+              <button type="button" className="career-draft-edit-btn" onClick={addResendHour} disabled={resendSaving}>
+                + agregar horario
+              </button>
+            )}
+
+            {resendError && <p className="career-draft-error">{resendError}</p>}
+            <div className="career-draft-edit-actions">
+              <button type="button" className="career-draft-btn" onClick={handleActivateResend} disabled={resendSaving}>
+                {resendSaving ? 'Programando…' : 'Activar reenvío automático'}
+              </button>
+              <button type="button" className="career-draft-retry-btn" onClick={() => { setShowResendForm(false); setResendError(''); }} disabled={resendSaving}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="career-resend-hint">
+            Mandá este mismo email al mismo destinatario varias veces, en los horarios que elijas, sin tener que hacerlo a mano.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -600,6 +739,9 @@ export function CareerView() {
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
 
+  // Tanda de reenvíos automáticos de esta sesión (null = todavía no se cargó)
+  const [resendSchedule, setResendSchedule] = useState(null);
+
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
@@ -620,6 +762,7 @@ export function CareerView() {
     setShowHistory(false);
     setEmailSubject('');
     setEmailBody('');
+    setResendSchedule(null);
     try {
       const [sessionData, cvData] = await Promise.all([
         fetchCareerSession(sessionId),
@@ -629,6 +772,7 @@ export function CareerView() {
       if (cvData.html) setCvHtml(cvData.html);
       setEmailSubject(sessionData.email_subject || '');
       setEmailBody(sessionData.email_body || '');
+      setResendSchedule(sessionData.resend_schedule || null);
     } catch {
       setMessages([]);
     } finally {
@@ -645,6 +789,7 @@ export function CareerView() {
       setMessages([]);
       setEmailSubject('');
       setEmailBody('');
+      setResendSchedule(null);
       setShowHistory(false);
     } finally {
       setCreatingNew(false);
@@ -866,6 +1011,8 @@ export function CareerView() {
                           emailSubject={emailSubject}
                           emailBody={emailBody}
                           onEmailSaved={(subject, body) => { setEmailSubject(subject); setEmailBody(body); }}
+                          resendSchedule={resendSchedule}
+                          onResendChanged={setResendSchedule}
                         />
                       </>
                     )}
