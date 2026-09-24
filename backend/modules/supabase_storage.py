@@ -21,18 +21,18 @@ def _bucket() -> str:
     return os.getenv("SUPABASE_STORAGE_BUCKET", "cvs")
 
 
-def upload(file_bytes: bytes, object_key: str) -> str:
+def upload(file_bytes: bytes, object_key: str, content_type: str = "application/pdf") -> str:
     """Sube bytes al bucket de Storage. Devuelve el object_key."""
     _client().storage.from_(_bucket()).upload(
         path=object_key,
         file=file_bytes,
-        file_options={"content-type": "application/pdf", "upsert": "true"},
+        file_options={"content-type": content_type, "upsert": "true"},
     )
     return object_key
 
 
 def download(object_key: str, *, retries: int = 3) -> bytes:
-    """Descarga un CV del bucket con retry + exponential backoff.
+    """Descarga un archivo del bucket con retry + exponential backoff.
 
     La Python SDK de Supabase v2 no tiene retry automático a diferencia de la JS SDK.
     Errores transitorios de red fallan el job permanentemente sin este wrapper.
@@ -52,8 +52,7 @@ def download(object_key: str, *, retries: int = 3) -> bytes:
                 )
                 time.sleep(wait)
     raise RuntimeError(
-        f"No se pudo descargar el CV '{object_key}' tras {retries} intentos: {last_exc}. "
-        "Borrá el registro y volvé a subir el CV desde la sección Envíos."
+        f"No se pudo descargar '{object_key}' tras {retries} intentos: {last_exc}."
     ) from last_exc
 
 

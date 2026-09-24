@@ -179,6 +179,10 @@ export function getCareerCvPdfUrl(sessionId) {
   return `${API_BASE}/career/sessions/${sessionId}/cv.pdf`;
 }
 
+export function getCareerMessageImageUrl(sessionId, messageId) {
+  return `${API_BASE}/career/sessions/${sessionId}/messages/${messageId}/image`;
+}
+
 export async function patchSectorDefault(sector, templateId, cvFileId) {
   const res = await apiFetch(`${API_BASE}/sector-defaults/${sector}`, {
     method: 'PATCH',

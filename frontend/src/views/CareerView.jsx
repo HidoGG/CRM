@@ -13,6 +13,7 @@ import {
   cancelCareerResendSchedule,
   generateCareerCv,
   getCareerCvPdfUrl,
+  getCareerMessageImageUrl,
 } from '../lib/api';
 import { useCareerSessions, useCvFiles } from '../lib/queries';
 import { formatDate } from '../lib/utils';
@@ -608,7 +609,66 @@ function applyEmailEdits(content, subject, body) {
   ].join('\n');
 }
 
-function MessageBubble({ role, content, hasImage }) {
+/** Miniatura de la imagen adjuntada en un mensaje del chat, con botón de
+ *  descarga. La trae con apiFetch (no un <img src> directo) porque el
+ *  backend exige la API key — un <img> del navegador no la mandaría. */
+function ChatImageThumb({ sessionId, messageId }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = null;
+    (async () => {
+      try {
+        const res = await apiFetch(getCareerMessageImageUrl(sessionId, messageId));
+        if (!res.ok) throw new Error();
+        const blob = await res.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [sessionId, messageId]);
+
+  function handleDownload(e) {
+    e.stopPropagation();
+    if (!blobUrl) return;
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `imagen_${messageId}`;
+    a.click();
+  }
+
+  if (failed) return null; // imagen vieja (de antes de este cambio) o falló al traerla — no rompe el chat
+  return (
+    <div className="career-bubble-image-wrap">
+      {blobUrl ? (
+        <>
+          <img
+            src={blobUrl}
+            alt="Imagen adjunta"
+            className="career-bubble-thumb"
+            onClick={() => window.open(blobUrl, '_blank')}
+          />
+          <button type="button" className="career-bubble-image-download" onClick={handleDownload} title="Descargar imagen">
+            <DownloadIcon /> Descargar
+          </button>
+        </>
+      ) : (
+        <span className="career-bubble-image-loading">Cargando imagen…</span>
+      )}
+    </div>
+  );
+}
+
+function MessageBubble({ role, content, hasImage, sessionId, messageId, hasStoredImage }) {
   const isUser = role === 'user';
 
   // Parsea bloques de código delimitados por ``` y los renderiza con botón copiar
@@ -647,7 +707,9 @@ function MessageBubble({ role, content, hasImage }) {
   return (
     <div className={`career-bubble ${isUser ? 'career-bubble-user' : 'career-bubble-assistant'}`}>
       {hasImage && isUser && (
-        <span className="career-bubble-img-badge">📎 imagen adjunta</span>
+        hasStoredImage
+          ? <ChatImageThumb sessionId={sessionId} messageId={messageId} />
+          : <span className="career-bubble-img-badge">📎 imagen adjunta</span>
       )}
       <div className="career-bubble-text">
         {isUser ? (
@@ -850,6 +912,10 @@ export function CareerView() {
         const fresh = await fetchCareerSession(activeSessionId);
         setEmailSubject(fresh.email_subject || '');
         setEmailBody(fresh.email_body || '');
+        // Si se mandó una imagen, el mensaje optimista de arriba tiene un id
+        // falso (Date.now()) — sin los datos reales no se puede traer la
+        // imagen guardada. Se reemplaza por la lista real del servidor.
+        if (userImg) setMessages(fresh.messages || []);
       } catch {
         // no bloquea el chat si esto falla
       }
@@ -995,6 +1061,9 @@ export function CareerView() {
                       role={msg.role}
                       content={isLastAssistant ? applyEmailEdits(msg.content, emailSubject, emailBody) : msg.content}
                       hasImage={msg.has_image}
+                      hasStoredImage={msg.has_stored_image}
+                      sessionId={activeSessionId}
+                      messageId={msg.id}
                     />
                     {isLastAssistant && activeSessionId && (
                       <>
