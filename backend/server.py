@@ -4,9 +4,10 @@ from __future__ import annotations
 from dotenv import load_dotenv
 load_dotenv()
 
-import base64
 import io
+import json
 import os
+import re
 import secrets
 import uuid
 from contextlib import asynccontextmanager
@@ -689,8 +690,10 @@ def get_career_session(session_id: int):
             raise HTTPException(status_code=404, detail="Sesión no encontrada")
         messages = db.execute(
             text("""
-                SELECT id, role, content, has_image, created_at,
-                       (image_path IS NOT NULL) AS has_stored_image
+                SELECT id, role, content, has_image, created_at, agent,
+                       (image_path IS NOT NULL OR images IS NOT NULL) AS has_stored_image,
+                       COALESCE(jsonb_array_length(images),
+                                CASE WHEN image_path IS NOT NULL THEN 1 ELSE 0 END) AS image_count
                 FROM career_messages WHERE session_id = :id ORDER BY id ASC
             """),
             {"id": session_id},
@@ -725,22 +728,33 @@ def cancel_career_resend_schedule(session_id: int):
 
 
 @app.get("/career/sessions/{session_id}/messages/{message_id}/image")
-def download_career_message_image(session_id: int, message_id: int):
-    """Devuelve la imagen adjuntada en un mensaje del chat (miniatura y descarga)."""
+def download_career_message_image(session_id: int, message_id: int, index: int = 0):
+    """Devuelve una imagen adjuntada en un mensaje del chat (miniatura y descarga).
+
+    index: posición de la imagen dentro del mensaje (puede tener varias).
+    """
     from modules import supabase_storage
     with Session(engine) as db:
         row = db.execute(
-            text("SELECT image_path, image_mime FROM career_messages WHERE id = :id AND session_id = :sid"),
+            text("SELECT image_path, image_mime, images FROM career_messages WHERE id = :id AND session_id = :sid"),
             {"id": message_id, "sid": session_id},
         ).fetchone()
-    if not row or not row[0]:
+    if not row:
         raise HTTPException(status_code=404, detail="Este mensaje no tiene una imagen guardada.")
-    image_path, image_mime = row
+    image_path, image_mime, images = row
+    if images:
+        if index < 0 or index >= len(images):
+            raise HTTPException(status_code=404, detail="Esa imagen no existe en este mensaje.")
+        image_path, image_mime = images[index].get("path"), images[index].get("mime")
+    elif index != 0:
+        image_path = None
+    if not image_path:
+        raise HTTPException(status_code=404, detail="Este mensaje no tiene una imagen guardada.")
     image_bytes = supabase_storage.download(image_path)
     return StreamingResponse(
         iter([image_bytes]),
         media_type=image_mime or "image/jpeg",
-        headers={"Content-Disposition": f'inline; filename="imagen_{message_id}{Path(image_path).suffix}"'},
+        headers={"Content-Disposition": f'inline; filename="imagen_{message_id}_{index + 1}{Path(image_path).suffix}"'},
     )
 
 
@@ -754,6 +768,126 @@ def delete_career_session(session_id: int):
     return {"ok": True}
 
 
+MAX_CHAT_IMAGES = 5
+_CV_HISTORY_MAX = 15
+_GROQ_PREFIX_RE = re.compile(r"^\s*/groq\b[\s:,-]*", re.IGNORECASE)
+
+
+def _push_cv_history(db, session_id: int, previous_cv: str | None) -> None:
+    """Guarda la versión anterior del CV (para "/groq deshacer"), máx. _CV_HISTORY_MAX."""
+    if not previous_cv:
+        return
+    db.execute(
+        text("""
+            UPDATE career_sessions
+            SET cv_history = (
+                SELECT COALESCE(jsonb_agg(v ORDER BY ord), '[]'::jsonb) FROM (
+                    SELECT v, ord FROM jsonb_array_elements(
+                        COALESCE(cv_history, '[]'::jsonb) || jsonb_build_array(CAST(:prev AS TEXT))
+                    ) WITH ORDINALITY AS t(v, ord)
+                    ORDER BY ord DESC LIMIT :max
+                ) last_versions
+            )
+            WHERE id = :id
+        """),
+        {"prev": previous_cv, "max": _CV_HISTORY_MAX, "id": session_id},
+    )
+
+
+async def _handle_groq_command(session_id: int, instruction: str, had_images: bool) -> dict:
+    """Procesa un mensaje "/groq ...": corrige el CV de la sesión con Groq
+    (o lo vuelve a la versión anterior con "/groq deshacer").
+
+    Devuelve {"reply", "cv_updated", "cv_html"}. No toca a Gemini.
+    """
+    import modules.career_cv as career_cv
+
+    with Session(engine) as db:
+        row = db.execute(
+            text("""
+                SELECT cv_content, company, role, cv_user_notes,
+                       jsonb_array_length(COALESCE(cv_history, '[]'::jsonb))
+                FROM career_sessions WHERE id = :id
+            """),
+            {"id": session_id},
+        ).fetchone()
+    cv_text, empresa, cargo, notas, history_len = row
+    notas = notas or ""
+
+    def html_for(cv: str) -> str:
+        return career_cv.cv_content_to_html(cv, cargo=cargo or "", empresa=empresa or "")
+
+    if not instruction:
+        return {
+            "reply": (
+                "Escribí después de /groq qué querés cambiar del CV. Ejemplos:\n"
+                "/groq cambiá \"flowback\" por \"pruebas de pozo\" en el perfil\n"
+                "/groq sacá el trabajo del hotel\n"
+                "/groq deshacer  (vuelve a la versión anterior)"
+            ),
+            "cv_updated": False,
+            "cv_html": None,
+        }
+
+    if instruction.strip().lower().rstrip(".!") in ("deshacer", "undo", "volver", "volver atrás", "volver atras"):
+        if not history_len:
+            return {"reply": "No hay una versión anterior del CV para volver.", "cv_updated": False, "cv_html": None}
+        with Session(engine) as db:
+            previous = db.execute(
+                text("""
+                    UPDATE career_sessions
+                    SET cv_content = cv_history ->> (jsonb_array_length(cv_history) - 1),
+                        cv_history = cv_history - (jsonb_array_length(cv_history) - 1)
+                    WHERE id = :id
+                    RETURNING cv_content
+                """),
+                {"id": session_id},
+            ).scalar()
+            db.commit()
+        left = history_len - 1
+        extra = f" Podés deshacer {left} vez{'es' if left != 1 else ''} más." if left else ""
+        return {
+            "reply": f"Listo, volví el CV a la versión anterior.{extra}",
+            "cv_updated": True,
+            "cv_html": html_for(previous),
+        }
+
+    if not cv_text:
+        return {
+            "reply": "Todavía no hay un CV generado en esta búsqueda. Tocá \"Generar CV ATS\" primero y después pedime los cambios.",
+            "cv_updated": False,
+            "cv_html": None,
+        }
+
+    try:
+        new_cv, message = await career_cv.edit_cv(
+            cv_text, instruction, empresa=empresa or "", cargo=cargo or "", notas=notas,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"No se pudo corregir el CV con Groq: {exc}")
+
+    if had_images:
+        message += "\n(Nota: Groq no puede ver imágenes, así que ignoré las que adjuntaste.)"
+    if new_cv is None:
+        return {"reply": message, "cv_updated": False, "cv_html": None}
+
+    # Los pedidos quedan anotados: se respetan si se regenera el CV, y la
+    # revisión automática toma como reales los datos que Gabriel aporta.
+    new_notes = f"{notas}\n- {instruction}".strip()[-2000:]
+    with Session(engine) as db:
+        _push_cv_history(db, session_id, cv_text)
+        db.execute(
+            text("UPDATE career_sessions SET cv_content = :cv, cv_user_notes = :notes WHERE id = :id"),
+            {"cv": new_cv, "notes": new_notes, "id": session_id},
+        )
+        db.commit()
+    return {
+        "reply": f"{message}\n\nSi no te gusta, escribí /groq deshacer.",
+        "cv_updated": True,
+        "cv_html": html_for(new_cv),
+    }
+
+
 @app.post("/career/sessions/{session_id}/chat")
 @limiter.limit("20/minute")
 async def career_chat(session_id: int, request: Request):
@@ -761,33 +895,35 @@ async def career_chat(session_id: int, request: Request):
     Envía un mensaje al agente de RRHH y devuelve su respuesta.
     Body (multipart/form o JSON):
       - message: texto del usuario
-      - image: archivo de imagen opcional (multipart)
+      - images: una o más imágenes (multipart, hasta MAX_CHAT_IMAGES).
+        También acepta el campo viejo "image" (una sola).
+    Si el mensaje empieza con "/groq", no va a Gemini: corrige el CV con Groq.
     """
     import modules.career_agent as career_agent
-    from modules.database import get_session as db_session, now_utc, row_to_dict
+    from modules.database import now_utc
 
-    # Parsear body — acepta multipart (con imagen) o JSON (solo texto)
+    # Parsear body — acepta multipart (con imágenes) o JSON (solo texto)
     content_type = request.headers.get("content-type", "")
     user_text = ""
-    image_b64 = None
-    image_mime = "image/jpeg"
+    images: list[tuple[bytes, str]] = []
 
-    image_raw = None
     if "multipart/form-data" in content_type:
         form = await request.form()
         user_text = str(form.get("message", "")).strip()
-        image_file = form.get("image")
-        if image_file and hasattr(image_file, "read"):
-            image_raw = await image_file.read()
-            if len(image_raw) > MAX_UPLOAD_BYTES:
-                raise HTTPException(status_code=413, detail="Imagen demasiado grande. Máximo permitido: 15 MB.")
-            image_b64 = base64.b64encode(image_raw).decode()
-            image_mime = image_file.content_type or "image/jpeg"
+        files = [f for f in [*form.getlist("images"), *form.getlist("image")] if hasattr(f, "read")]
+        if len(files) > MAX_CHAT_IMAGES:
+            raise HTTPException(status_code=400, detail=f"Podés adjuntar hasta {MAX_CHAT_IMAGES} imágenes por mensaje.")
+        for f in files:
+            raw = await f.read()
+            if len(raw) > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Imagen demasiado grande. Máximo permitido: 15 MB por imagen.")
+            if raw:
+                images.append((raw, f.content_type or "image/jpeg"))
     else:
         body = await request.json()
         user_text = str(body.get("message", "")).strip()
 
-    if not user_text and not image_b64:
+    if not user_text and not images:
         raise HTTPException(status_code=400, detail="Mensaje vacío")
 
     # Verificar que la sesión existe
@@ -798,46 +934,63 @@ async def career_chat(session_id: int, request: Request):
         if not exists:
             raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
-        # Cargar historial previo
-        rows = db.execute(
-            text("SELECT role, content FROM career_messages WHERE session_id = :id ORDER BY id ASC"),
-            {"id": session_id},
-        ).fetchall()
+    is_groq = bool(_GROQ_PREFIX_RE.match(user_text))
+    groq_result = None
+    if is_groq:
+        groq_result = await _handle_groq_command(
+            session_id, _GROQ_PREFIX_RE.sub("", user_text, count=1).strip(), had_images=bool(images),
+        )
+        reply = groq_result["reply"]
+        images = []  # Groq no ve imágenes: no se guardan en este mensaje
+    else:
+        # Historial previo para Gemini (sin los mensajes de /groq, que son de otra IA)
+        with Session(engine) as db:
+            rows = db.execute(
+                text("""
+                    SELECT role, content FROM career_messages
+                    WHERE session_id = :id AND agent IS DISTINCT FROM 'groq'
+                    ORDER BY id ASC
+                """),
+                {"id": session_id},
+            ).fetchall()
         history = [{"role": r[0], "content": r[1]} for r in rows]
 
-    # Correr el agente
-    try:
-        reply = await career_agent.run_chat(
-            session_id=session_id,
-            history=history,
-            user_text=user_text,
-            image_b64=image_b64,
-            image_mime=image_mime,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error del agente: {exc}")
+        try:
+            reply = await career_agent.run_chat(
+                session_id=session_id,
+                history=history,
+                user_text=user_text,
+                images=images,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Error del agente: {exc}")
 
     # Guardar mensajes en DB
     now = now_utc()
-    user_content_stored = user_text or "[imagen adjunta]"
-    if image_b64 and user_text:
-        user_content_stored = f"[imagen] {user_text}"
+    agent = "groq" if is_groq else None
+    if images:
+        label = "[imagen]" if len(images) == 1 else f"[{len(images)} imágenes]"
+        user_content_stored = f"{label} {user_text}" if user_text else (
+            "[imagen adjunta]" if len(images) == 1 else f"[{len(images)} imágenes adjuntas]"
+        )
+    else:
+        user_content_stored = user_text
 
     with Session(engine) as db:
         user_msg_id = db.execute(
             text("""
-                INSERT INTO career_messages (session_id, role, content, has_image, created_at)
-                VALUES (:sid, 'user', :content, :has_img, :now)
+                INSERT INTO career_messages (session_id, role, content, has_image, agent, created_at)
+                VALUES (:sid, 'user', :content, :has_img, :agent, :now)
                 RETURNING id
             """),
-            {"sid": session_id, "content": user_content_stored, "has_img": bool(image_b64), "now": now},
+            {"sid": session_id, "content": user_content_stored, "has_img": bool(images), "agent": agent, "now": now},
         ).scalar()
         db.execute(
             text("""
-                INSERT INTO career_messages (session_id, role, content, has_image, created_at)
-                VALUES (:sid, 'assistant', :content, false, :now)
+                INSERT INTO career_messages (session_id, role, content, has_image, agent, created_at)
+                VALUES (:sid, 'assistant', :content, false, :agent, :now)
             """),
-            {"sid": session_id, "content": reply, "now": now},
+            {"sid": session_id, "content": reply, "agent": agent, "now": now},
         )
         db.execute(
             text("UPDATE career_sessions SET updated_at = :now WHERE id = :id"),
@@ -845,24 +998,37 @@ async def career_chat(session_id: int, request: Request):
         )
         db.commit()
 
-    # Guardar la imagen en Storage (best-effort: si falla, el mensaje queda
-    # igual con has_image=true pero sin image_path — no bloquea el chat).
-    if image_raw:
+    # Guardar las imágenes en Storage (best-effort: si falla alguna, el mensaje
+    # queda igual con has_image=true — no bloquea el chat).
+    if images:
         from modules import supabase_storage
-        ext = {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}.get(image_mime, ".jpg")
-        object_key = f"career-chat/{session_id}/{uuid.uuid4().hex}{ext}"
-        try:
-            supabase_storage.upload(image_raw, object_key, content_type=image_mime)
+        stored = []
+        for raw, mime in images:
+            ext = {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif", "application/pdf": ".pdf"}.get(mime, ".jpg")
+            object_key = f"career-chat/{session_id}/{uuid.uuid4().hex}{ext}"
+            try:
+                supabase_storage.upload(raw, object_key, content_type=mime)
+                stored.append({"path": object_key, "mime": mime})
+            except Exception as exc:
+                print(f"[career_chat] No se pudo guardar una imagen adjunta (mensaje {user_msg_id}): {exc}")
+        if stored:
             with Session(engine) as db:
                 db.execute(
-                    text("UPDATE career_messages SET image_path = :path, image_mime = :mime WHERE id = :id"),
-                    {"path": object_key, "mime": image_mime, "id": user_msg_id},
+                    text("""
+                        UPDATE career_messages
+                        SET images = CAST(:images AS JSONB), image_path = :path, image_mime = :mime
+                        WHERE id = :id
+                    """),
+                    {"images": json.dumps(stored), "path": stored[0]["path"], "mime": stored[0]["mime"], "id": user_msg_id},
                 )
                 db.commit()
-        except Exception as exc:
-            print(f"[career_chat] No se pudo guardar la imagen adjunta (mensaje {user_msg_id}): {exc}")
 
-    return {"reply": reply}
+    return {
+        "reply": reply,
+        "agent": agent,
+        "cv_updated": bool(groq_result and groq_result["cv_updated"]),
+        "cv_html": groq_result["cv_html"] if groq_result else None,
+    }
 
 
 @app.post("/career/sessions/{session_id}/cv")
@@ -872,12 +1038,25 @@ async def generate_career_cv(session_id: int):
 
     with Session(engine) as db:
         row = db.execute(
-            text("SELECT company, role, summary, keywords_ats FROM career_sessions WHERE id = :id"),
+            text("""
+                SELECT company, role, summary, keywords_ats, aviso_detail, cv_user_notes, cv_content
+                FROM career_sessions WHERE id = :id
+            """),
             {"id": session_id},
         ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Sesión no encontrada")
-        empresa, cargo, resumen, keywords_ats = row
+        empresa, cargo, resumen, keywords_ats, aviso_detail, notas, previous_cv = row
+        # Análisis completo de Gemini (el último mensaje con el formato de análisis)
+        analisis = db.execute(
+            text("""
+                SELECT content FROM career_messages
+                WHERE session_id = :id AND role = 'assistant' AND agent IS DISTINCT FROM 'groq'
+                  AND content LIKE '%ANÁLISIS DEL PUESTO%'
+                ORDER BY id DESC LIMIT 1
+            """),
+            {"id": session_id},
+        ).scalar()
 
     if not cargo and not empresa:
         raise HTTPException(status_code=400, detail="Todavía no se analizó ningún aviso en esta sesión.")
@@ -892,6 +1071,9 @@ async def generate_career_cv(session_id: int):
             cargo=cargo or "",
             resumen=resumen or "",
             keywords=keywords,
+            detalle=aviso_detail or "",
+            analisis=analisis or "",
+            notas=notas or "",
         )
     except Exception as exc:
         # Sin este try/except, un error de Groq (cuota, auth, rate limit, timeout)
@@ -901,6 +1083,7 @@ async def generate_career_cv(session_id: int):
         raise HTTPException(status_code=502, detail=f"No se pudo generar el CV: {exc}")
 
     with Session(engine) as db:
+        _push_cv_history(db, session_id, previous_cv)  # "Actualizar CV" también se puede deshacer
         db.execute(
             text("UPDATE career_sessions SET cv_content = :cv WHERE id = :id"),
             {"cv": cv_text, "id": session_id},

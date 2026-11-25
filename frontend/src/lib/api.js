@@ -87,12 +87,12 @@ export async function fetchCareerSession(sessionId) {
   return getJson(`/career/sessions/${sessionId}`);
 }
 
-export async function sendCareerMessage(sessionId, message, imageFile = null) {
+export async function sendCareerMessage(sessionId, message, imageFiles = []) {
   let body, headers;
-  if (imageFile) {
+  if (imageFiles.length) {
     const fd = new FormData();
     fd.append('message', message);
-    fd.append('image', imageFile);
+    imageFiles.forEach(f => fd.append('images', f));
     body = fd;
   } else {
     headers = { 'Content-Type': 'application/json' };
@@ -179,8 +179,8 @@ export function getCareerCvPdfUrl(sessionId) {
   return `${API_BASE}/career/sessions/${sessionId}/cv.pdf`;
 }
 
-export function getCareerMessageImageUrl(sessionId, messageId) {
-  return `${API_BASE}/career/sessions/${sessionId}/messages/${messageId}/image`;
+export function getCareerMessageImageUrl(sessionId, messageId, index = 0) {
+  return `${API_BASE}/career/sessions/${sessionId}/messages/${messageId}/image?index=${index}`;
 }
 
 export async function patchSectorDefault(sector, templateId, cvFileId) {
