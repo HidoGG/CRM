@@ -5,10 +5,14 @@ secciones en MAYÚSCULA con línea divisoria — idéntico al CV base de Gabriel
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import unicodedata
+
 from openai import AsyncOpenAI
+
+from modules.gabriel_profile import GABRIEL_PROFILE
 
 _client = AsyncOpenAI(
     api_key=os.environ["GROQ_API_KEY"],
@@ -16,60 +20,8 @@ _client = AsyncOpenAI(
 )
 _MODEL = os.getenv("CAREER_MODEL", "openai/gpt-oss-120b")
 
-# ── Perfil base de Gabriel ────────────────────────────────────────────────────
-
-_GABRIEL_PROFILE = """
-NOMBRE: Gabriel Orlando Hidalgo
-TELÉFONO: 299-329-7977
-EMAIL: gabriel.hid.orl@gmail.com
-UBICACIÓN: Plottier, Neuquén
-DISPONIBILIDAD: Inmediata | Acepta régimen rotativo
-LICENCIA: B1 vigente
-
-EDUCACIÓN:
-- Técnico Superior en Petróleo y Gas — I.S.E.T. N° 812, Comodoro Rivadavia | Nov 2021 | Promedio 7,38
-  Materias: Automatismos y Control, Mediciones e Instalaciones Eléctricas, Mecánica de Fluidos,
-  Sistemas Integrados de Gestión, Termodinámica y Máquinas Térmicas, Mantenimiento y Confiabilidad.
-- Tecnicatura en Programación — UTN | Próxima a finalizar
-  Desarrollo de software aplicado a procesos industriales, POO, estructuras de datos, bases de datos.
-
-EXPERIENCIA (de más reciente a más antigua):
-1. Fluodinámica S.A. — Jun 2025 – Sep 2025 | Técnico en Mantenimiento – Sistemas Hidráulicos
-   - Armado, prueba hidráulica y certificación de mangueras de alta presión
-   - Verificación de presiones y estanqueidad bajo normas técnicas
-   - Diagnóstico y asesoramiento técnico a clientes industriales
-   - Control de stock, gestión logística, coordinación con proveedores del sector industrial
-
-2. DLS Argentina — Dic 2023 – Mar 2025 | Operario de Pulling (Habilitado para tareas de Enganchador)
-   Categoría: Ingresante Cat. I → Peón Práctico Pulling Cat. IV | Habilitado como Enganchador
-   - Maniobras críticas en torre y boca de pozo bajo estándares HSE (Pulling Pesado)
-   - Tareas de enganchador: enganche/desenganche de varillas y tubulares en altura
-   - Montaje y desmontaje de BOP, participación en pruebas de certificación
-   - Control y mantenimiento preventivo: BOP, bombas de ahogo, sistemas hidráulicos
-   - Gestión de fluidos de completación y control de niveles en pileta
-   - Well Control y HSE en todas las etapas de la operación
-
-3. Ejército Argentino — May 2011 – Jul 2012 | Soldado Voluntario
-4. Hotel Amerian — Ene 2014 – Feb 2016 | Empleado de Recepción
-
-CERTIFICACIONES (504+ hs):
-- Fundación YPF (336 hs): Instrumentación Industrial (84 hs), Automatización (84 hs),
-  Instalaciones Eléctricas (84 hs), Energías Renovables (84 hs)
-- ITP Neuquén: Control de Pozos 32 hs (Cert. N° 404/21), Coiled Tubing 32 hs (Cert. N° 526/21)
-- Global Training Technology: Nivelación WO/PU 100, Introducción Teórica 90, Especialización WO/PU 100
-- DLS Argentina: Well Control Introductorio PAE, Montaje/Desmontaje BOP ×3, Calificación Enganchador (nov 2024)
-- Seguridad: H2S Alive, Trabajo en Altura ×3, RCP y 1° Auxilios, SSMA, Salud Ocupacional,
-  Gestión Ambiental, Gestión Calidad
-
-COMPETENCIAS TÉCNICAS:
-- Operaciones de pozo: Pulling pesado, BOP, tubulares, varillas, pistoneo, fluidos de completación
-- Sistemas hidráulicos: alta presión, mantenimiento preventivo/correctivo, diagnóstico de fallas
-- Instrumentación: sensores, transmisores, lazos de control, calibración de instrumentos
-- Automatización: control discreto y continuo, instalaciones eléctricas industriales
-- Seguridad HSE: Well Control, H2S Alive, trabajo en altura, análisis de riesgo
-- Software: AutoCAD, MS Office, Google Workspace | Inglés técnico (lectura)
-- Programación: POO, bases de datos (UTN, en curso)
-"""
+# Perfil real de Gabriel: viene de la ficha única compartida con el chat.
+_GABRIEL_PROFILE = GABRIEL_PROFILE
 
 # ── Prompt de generación ──────────────────────────────────────────────────────
 
@@ -80,7 +32,17 @@ Generá un CV para Gabriel Hidalgo, adaptado específicamente para esta postulac
 PUESTO OBJETIVO: {cargo}
 EMPRESA A LA QUE SE POSTULA: {empresa}
 KEYWORDS ATS: {keywords}
-CONTEXTO DEL AVISO: {resumen}
+RESUMEN DEL AVISO: {resumen}
+
+AVISO COMPLETO (transcripción hecha por el asesor que leyó el aviso original — vos no lo ves,
+esto es todo lo que pide la empresa):
+{detalle}
+
+ANÁLISIS DEL ASESOR (encaje, qué CV usar y QUÉ DESTACAR para este puesto — seguí sus tips):
+{analisis}
+
+PEDIDOS PREVIOS DE GABRIEL SOBRE SU CV (respetalos; los datos que él aporta acá son reales):
+{notas}
 
 ⚠️ Gabriel NO trabaja ni trabajó en {empresa} — se está POSTULANDO ahí. En ningún lugar del CV
 puede aparecer texto que dé a entender que ya tiene ese cargo o que ya es empleado de esa
@@ -164,7 +126,7 @@ Además, siempre:
    EXPLÍCITAMENTE en el perfil real de arriba — ni una palabra ni un nombre inventado.
 2. No copies frases textuales del aviso como si fueran logros de Gabriel: adaptá SU experiencia
    real al vocabulario del puesto, sin afirmar que hizo algo que no hizo.
-3. Si el CONTEXTO DEL AVISO señala una certificación concreta de Gabriel como relevante (ej.
+3. Si el AVISO o el ANÁLISIS DEL ASESOR señalan una certificación concreta de Gabriel como relevante (ej.
    "Coiled Tubing"), esa certificación tiene que aparecer en [CERTIFICACIONES] — no se puede
    omitir si es real y fue señalada como relevante.
 
@@ -204,35 +166,285 @@ def normalize_cv_text(text: str) -> str:
     return (text or "").translate(_TEXT_FIXES)
 
 
+async def _groq(prompt: str, temperature: float = 0.25, max_tokens: int = 2500, label: str = "") -> str:
+    """Una llamada a Groq; devuelve el texto (normalizado). Avisa si se truncó."""
+    response = await _client.chat.completions.create(
+        model=_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    choice = response.choices[0]
+    if choice.finish_reason == "length":
+        print(f"[career_cv] Aviso: la respuesta de Groq se truncó por longitud ({label}).")
+    return normalize_cv_text(choice.message.content or "").strip()
+
+
 async def generate_cv_content(
     empresa: str,
     cargo: str,
     resumen: str,
     keywords: str,
+    detalle: str = "",
+    analisis: str = "",
+    notas: str = "",
 ) -> str:
-    """Genera el contenido del CV adaptado al puesto usando Groq."""
+    """Genera el contenido del CV adaptado al puesto usando Groq, y lo pasa por
+    la revisión automática (review_and_fix) antes de devolverlo."""
     prompt = _CV_PROMPT.format(
         empresa=_sanitize_prompt_field(empresa, 200) or "la empresa",
         cargo=_sanitize_prompt_field(cargo, 200) or "el puesto",
-        keywords=_sanitize_prompt_field(keywords, 400),
+        keywords=_sanitize_prompt_field(keywords, 600),
         resumen=_sanitize_prompt_field(resumen, 800),
+        detalle=_sanitize_prompt_field(detalle, 3000) or "(no disponible — usá el resumen y las keywords)",
+        analisis=_sanitize_prompt_field(analisis, 3000) or "(no disponible)",
+        notas=_sanitize_prompt_field(notas, 2000) or "(ninguno)",
         perfil=_GABRIEL_PROFILE,
     )
-    response = await _client.chat.completions.create(
-        model=_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.25,
-        max_tokens=2500,
-    )
-    choice = response.choices[0]
-    if choice.finish_reason == "length":
-        print(
-            f"[career_cv] Aviso: la respuesta de Groq se truncó por longitud "
-            f"(cargo={cargo!r}, empresa={empresa!r}) — el CV puede estar incompleto."
-        )
-    cv_text = normalize_cv_text(choice.message.content or "")
+    cv_text = await _groq(prompt, label=f"generar cargo={cargo!r} empresa={empresa!r}")
     _warn_missing_sections(cv_text, cargo=cargo, empresa=empresa)
-    return cv_text
+    return await review_and_fix(cv_text, empresa=empresa, cargo=cargo, notas=notas)
+
+
+# ── Revisión automática del CV ────────────────────────────────────────────────
+
+# Secciones que el prompt prohíbe agregar.
+_FORBIDDEN_HEADINGS_RE = re.compile(r"^\W*(referencias|objetivo|idiomas)\b", re.IGNORECASE | re.MULTILINE)
+
+
+def _deterministic_issues(cv_text: str, empresa: str, notas: str = "") -> list[str]:
+    """Chequeos por código (sin IA) de errores típicos. Devuelve la lista de
+    problemas encontrados, en lenguaje claro para pasárselos a la IA que corrige."""
+    issues: list[str] = []
+    sections = _parse_sections(cv_text)
+    reference = _GABRIEL_PROFILE + "\n" + (notas or "")
+
+    required = [t for t in _KNOWN_TAGS if t != "EXPERIENCIA"]
+    missing = [t for t in required if not any(l.strip() for l in sections.get(t, []))]
+    if missing:
+        issues.append(f"Faltan o están vacías las secciones: {', '.join('[' + t + ']' for t in missing)}.")
+    unknown = _find_unknown_tags(cv_text)
+    if unknown:
+        issues.append(f"Usaste etiquetas que no existen: {', '.join('[' + t + ']' for t in unknown)}. Usá solo las 6 etiquetas del formato.")
+
+    emp = (empresa or "").strip()
+    subtitulo = " ".join(sections.get("SUBTITULO", []))
+    if len(emp) >= 3 and emp.lower() not in ("no especificada", "la empresa") and emp.lower() in subtitulo.lower():
+        issues.append(f"El [SUBTITULO] menciona a la empresa objetivo ({emp}); Gabriel no trabaja ahí, sacala.")
+
+    perfil = " ".join(sections.get("PERFIL", []))
+    if re.search(r"\bGabriel\b|\bHidalgo\b", perfil):
+        issues.append("El [PERFIL] está en tercera persona con nombre propio; arrancá directo con el rol.")
+
+    if re.search(r"no aplica", cv_text, re.IGNORECASE):
+        issues.append('Aparece "No aplica": si un trabajo no aporta, omitilo entero.')
+    if _FORBIDDEN_HEADINGS_RE.search(cv_text):
+        issues.append("Agregaste una sección prohibida (Referencias / Objetivo / Idiomas). Sacala.")
+
+    words = len(re.findall(r"\w+", cv_text))
+    if words > 620:
+        issues.append(f"El CV tiene ~{words} palabras; tiene que quedar en máximo 550 (una hoja).")
+
+    # Años, números de certificado y cargas horarias que no están en el perfil
+    # real = datos inventados (o mal copiados).
+    bad_years = sorted({y for y in re.findall(r"\b(?:19|20)\d{2}\b", cv_text) if y not in reference})
+    if bad_years:
+        issues.append(f"Aparecen años que no están en el perfil real: {', '.join(bad_years)}. Revisá las fechas.")
+    bad_certs = sorted({c for c in re.findall(r"\b\d{2,}/\d{2}\b", cv_text) if c not in reference})
+    if bad_certs:
+        issues.append(f"Números de certificado que no existen en el perfil: {', '.join(bad_certs)}.")
+    ref_hours = set(re.findall(r"(\d+)\s*hs", reference))
+    bad_hours = sorted({h for h in re.findall(r"(\d+)\s*hs", cv_text) if h not in ref_hours}, key=int)
+    if bad_hours:
+        issues.append(f"Cargas horarias que no están en el perfil: {', '.join(h + ' hs' for h in bad_hours)}.")
+    return issues
+
+
+_FACT_CHECK_PROMPT = """Sos un revisor estricto de CVs. Tu ÚNICO trabajo es detectar datos FALSOS:
+cosas que el CV afirma sobre Gabriel y que NO están respaldadas por su perfil real ni por los
+datos que él mismo aportó.
+
+PERFIL REAL DE GABRIEL:
+{perfil}
+
+DATOS Y PEDIDOS QUE GABRIEL APORTÓ (son verdaderos, aunque no estén en el perfil):
+{notas}
+
+PUESTO AL QUE SE POSTULA: {cargo} en {empresa} (Gabriel NO trabaja ahí; es una postulación)
+
+CV A REVISAR:
+{cv}
+
+Marcá como problema SOLO:
+- Certificaciones, cursos, títulos, empresas, trabajos, fechas, cifras o logros que no existen
+  en el perfil ni en los datos de Gabriel.
+- Herramientas, equipos o tareas que Gabriel nunca hizo según el perfil, presentadas como
+  experiencia o competencia propia (ej. el puesto objetivo listado como si ya lo hubiera hecho).
+- Afirmaciones de que ya trabaja o trabajó en {empresa}.
+- Datos de contacto/personales distintos a los del perfil.
+- Trabajos ubicados en un orden cronológico incorrecto, o datos mezclados entre trabajos.
+
+NO marques: reformulaciones o sinónimos de tareas reales, haber omitido datos, el estilo, la
+redacción ni el formato.
+
+Respondé SOLO con JSON válido, sin texto antes ni después:
+{{"problemas": ["descripción corta y concreta de cada dato falso", ...]}}
+Si no hay ninguno: {{"problemas": []}}"""
+
+
+async def _ai_fact_check(cv_text: str, empresa: str, cargo: str, notas: str) -> list[str]:
+    """Segunda IA (misma Groq, otra consigna) que busca datos inventados.
+    Si la llamada falla o devuelve algo ilegible, no bloquea: devuelve []."""
+    prompt = _FACT_CHECK_PROMPT.format(
+        perfil=_GABRIEL_PROFILE,
+        notas=_sanitize_prompt_field(notas, 2000) or "(ninguno)",
+        cargo=_sanitize_prompt_field(cargo, 200) or "el puesto",
+        empresa=_sanitize_prompt_field(empresa, 200) or "la empresa",
+        cv=cv_text,
+    )
+    try:
+        raw = await _groq(prompt, temperature=0.0, max_tokens=1200, label="revisión")
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        data = json.loads(match.group(0)) if match else {}
+        problems = data.get("problemas") or []
+        return [str(p).strip() for p in problems if str(p).strip()][:10]
+    except Exception as exc:
+        print(f"[career_cv] La revisión con IA falló (se sigue sin ella): {exc}")
+        return []
+
+
+_FIX_PROMPT = """Sos un experto en CVs para Oil & Gas e industria en Argentina. Una revisión
+automática encontró problemas en este CV de Gabriel Hidalgo. Corregí SOLO esos problemas y dejá
+todo lo demás igual (mismo formato con etiquetas [SUBTITULO], [PERFIL], [EXPERIENCIA],
+[COMPETENCIAS], [FORMACION], [CERTIFICACIONES], cada una sola en su línea).
+
+PROBLEMAS A CORREGIR:
+{problemas}
+
+PERFIL REAL DE GABRIEL — la única fuente de verdad:
+{perfil}
+
+DATOS Y PEDIDOS QUE GABRIEL APORTÓ (verdaderos; NO los deshagas):
+{notas}
+
+PUESTO AL QUE SE POSTULA: {cargo} en {empresa} (Gabriel NO trabaja ahí)
+
+CV ACTUAL:
+{cv}
+
+Si un dato es inventado, sacalo o reemplazalo por el dato real del perfil. Respondé SOLO con el
+CV corregido completo, sin comentarios antes ni después."""
+
+
+async def review_and_fix(cv_text: str, empresa: str, cargo: str, notas: str = "") -> str:
+    """Revisión automática: chequeos por código + revisión de datos con IA. Si
+    encuentra problemas, pide UNA corrección y se queda con la versión que
+    tenga menos problemas de formato (nunca entra en bucle)."""
+    det = _deterministic_issues(cv_text, empresa, notas)
+    ai = await _ai_fact_check(cv_text, empresa, cargo, notas)
+    problems = det + ai
+    if not problems:
+        return cv_text
+    print(f"[career_cv] Revisión encontró {len(problems)} problema(s), corrigiendo: {problems}")
+    prompt = _FIX_PROMPT.format(
+        problemas="\n".join(f"- {p}" for p in problems),
+        perfil=_GABRIEL_PROFILE,
+        notas=_sanitize_prompt_field(notas, 2000) or "(ninguno)",
+        cargo=_sanitize_prompt_field(cargo, 200) or "el puesto",
+        empresa=_sanitize_prompt_field(empresa, 200) or "la empresa",
+        cv=cv_text,
+    )
+    try:
+        fixed = await _groq(prompt, temperature=0.1, label="corrección")
+    except Exception as exc:
+        print(f"[career_cv] La corrección automática falló, queda la versión original: {exc}")
+        return cv_text
+    remaining = _deterministic_issues(fixed, empresa, notas)
+    if len(remaining) > len(det):
+        print(f"[career_cv] La corrección empeoró el formato ({remaining}); queda la versión original.")
+        return cv_text
+    if remaining:
+        print(f"[career_cv] Aviso: quedaron problemas después de corregir: {remaining}")
+    return fixed
+
+
+# ── Edición del CV por pedido de Gabriel (/groq) ──────────────────────────────
+
+_EDIT_PROMPT = """Sos el asistente que arma el CV de Gabriel Hidalgo. Gabriel te pide un cambio en
+su CV actual. Aplicá EXACTAMENTE lo que pide y dejá todo lo demás igual, palabra por palabra.
+
+PEDIDO DE GABRIEL:
+{pedido}
+
+CV ACTUAL (formato con etiquetas — mantenelo idéntico):
+{cv}
+
+PERFIL REAL DE GABRIEL (referencia):
+{perfil}
+
+PEDIDOS ANTERIORES DE GABRIEL (siguen vigentes):
+{notas}
+
+PUESTO AL QUE SE POSTULA: {cargo} en {empresa} (Gabriel NO trabaja ahí)
+
+Reglas:
+- Si Gabriel aporta un dato nuevo sobre él (un curso, una tarea, una fecha), es verdadero:
+  agregalo donde corresponda aunque no esté en el perfil.
+- No inventes nada que él no haya dicho ni esté en el perfil.
+- Mantené las 6 etiquetas [SUBTITULO] [PERFIL] [EXPERIENCIA] [COMPETENCIAS] [FORMACION]
+  [CERTIFICACIONES], cada una sola en su línea, y el mismo estilo de viñetas/negritas.
+- El CV tiene que seguir entrando en una hoja (máximo ~550 palabras).
+
+Formato de respuesta OBLIGATORIO:
+- Si el pedido implica cambiar el CV:
+CAMBIOS: <1 a 3 líneas en lenguaje simple, explicándole a Gabriel qué cambiaste>
+===CV===
+<el CV completo ya modificado>
+- Si es solo una pregunta o no hace falta cambiar nada:
+RESPUESTA: <tu respuesta breve>"""
+
+
+async def edit_cv(
+    cv_text: str,
+    pedido: str,
+    empresa: str,
+    cargo: str,
+    notas: str = "",
+) -> tuple[str | None, str]:
+    """Aplica un pedido de Gabriel al CV. Devuelve (cv_nuevo | None, mensaje).
+    cv_nuevo es None si no hubo cambio (pregunta, o el resultado salió roto)."""
+    prompt = _EDIT_PROMPT.format(
+        pedido=_sanitize_prompt_field(pedido, 1500),
+        cv=cv_text,
+        perfil=_GABRIEL_PROFILE,
+        notas=_sanitize_prompt_field(notas, 2000) or "(ninguno)",
+        cargo=_sanitize_prompt_field(cargo, 200) or "el puesto",
+        empresa=_sanitize_prompt_field(empresa, 200) or "la empresa",
+    )
+    raw = await _groq(prompt, temperature=0.15, max_tokens=3000, label="edición /groq")
+
+    if "===CV===" not in raw:
+        answer = re.sub(r"^\s*RESPUESTA:\s*", "", raw).strip()
+        return None, answer or "No entendí el pedido. Probá decirme qué querés cambiar del CV."
+
+    head, new_cv = raw.split("===CV===", 1)
+    changes = re.sub(r"^\s*CAMBIOS:\s*", "", head).strip() or "Listo, actualicé el CV."
+    new_cv = new_cv.strip()
+
+    # Si la edición rompió el formato (secciones perdidas), no se guarda.
+    sections = _parse_sections(new_cv)
+    lost = [t for t in _KNOWN_TAGS if t != "EXPERIENCIA" and not any(l.strip() for l in sections.get(t, []))]
+    if lost:
+        print(f"[career_cv] Edición /groq descartada: perdió secciones {lost}")
+        return None, (
+            "Intenté aplicar el cambio pero el CV quedó incompleto, así que no lo guardé. "
+            "Probá pedirlo de otra forma o más concreto."
+        )
+
+    reviewed = await review_and_fix(new_cv, empresa=empresa, cargo=cargo, notas=f"{notas}\n- {pedido}".strip())
+    if reviewed != new_cv:
+        changes += "\n(La revisión automática además corrigió algún dato que no coincidía con tu perfil.)"
+    return reviewed, changes
 
 
 def _warn_missing_sections(cv_text: str, cargo: str, empresa: str) -> None:

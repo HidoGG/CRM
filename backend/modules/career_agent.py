@@ -5,8 +5,6 @@ Modelo por defecto: gemini-3.5-flash.
 """
 from __future__ import annotations
 
-import base64 as b64_module
-import io
 import ipaddress
 import os
 import socket
@@ -17,6 +15,7 @@ import google.generativeai as genai
 from sqlmodel import Session, text
 
 from modules.database import engine, now_utc
+from modules.gabriel_profile import GABRIEL_PROFILE
 
 # ── Protección SSRF — whitelist de dominios y bloqueo de IPs privadas ─────────
 
@@ -100,72 +99,7 @@ _SYSTEM_PROMPT = """Sos un consultor experto en RRHH, reclutamiento en Oil & Gas
 
 Tu cliente es Gabriel Hidalgo. Su perfil completo:
 
-━━━ DATOS PERSONALES ━━━
-Nombre: Gabriel Orlando Hidalgo
-Ubicación: Plottier, Neuquén | Tel: 299-329-7977
-Email: gabriel.hid.orl@gmail.com
-LinkedIn: linkedin.com/in/hidalgogabrielo
-Licencia: B1 vigente | Disponibilidad inmediata | Acepta régimen rotativo
-
-━━━ EDUCACIÓN ━━━
-• Técnico Superior en Petróleo y Gas — I.S.E.T. N° 812, Comodoro Rivadavia
-  Egresado nov. 2021 | Promedio: 7,38 | Cert. N° 00847930
-  Materias clave: Automatismos y Control, Mediciones e Instalaciones Eléctricas, Mecánica de Fluidos, Sistemas Integrados de Gestión, Perforación y Terminación de Pozos, Producción, Captación y Tratamiento de Gas, Mantenimiento y Confiabilidad
-
-• Tecnicatura en Programación — UTN | En curso
-  POO, estructuras de datos, bases de datos, desarrollo de software industrial
-
-━━━ EXPERIENCIA LABORAL ━━━
-Fluodinámica S.A. — Jun 2025 – Sep 2025 (contrato temporal, Neuquén)
-  Técnico en Mantenimiento – Sistemas Hidráulicos y Soporte Técnico
-  • Armado, prueba hidráulica y certificación de mangueras de alta presión
-  • Verificación de presiones y estanqueidad bajo normas técnicas
-  • Asesoramiento técnico a clientes industriales (selección de componentes, especificaciones de presión, compatibilidad de materiales)
-  • Control de stock, gestión logística, coordinación con proveedores
-
-DLS Argentina — Dic 2023 – Mar 2025 (Neuquén)
-  Operario de Pulling / Intervención de Pozos
-  Ingresante Cat. I → Peón Práctico Cat. IV | Habilitado Enganchador
-  (Desvinculación: reducción de personal masiva ~60 personas, causa externa)
-  • Maniobras críticas en torre y boca de pozo bajo estándares HSE
-  • Enganchador en torre: enganche/desenganche de varillas y tubulares en altura; corrida y corte de cable de aparejo y pistoneo
-  • Montaje y desmontaje de BOP, pruebas de certificación en boca de pozo
-  • Control y mantenimiento preventivo: BOP, bombas de ahogo, sistemas hidráulicos
-  • Gestión de fluidos de completación y control de niveles en pileta
-  • Aplicación de protocolos Well Control y HSE en todas las etapas
-  • Trabajo en altura ×3 renovaciones, H2S Alive, RCP vigentes
-
-Hotel Amerian — Ene 2014 – Feb 2016 | Empleado de Recepción
-Ejército Argentino — May 2011 – Jul 2012 | Soldado Voluntario
-
-━━━ CERTIFICACIONES (504+ hs) ━━━
-Fundación YPF (336 hs totales, 84 hs c/u):
-  • Instrumentación Industrial Nivel Inicial
-  • Automatización Nivel Inicial
-  • Instalaciones Eléctricas Nivel Inicial
-  • Energías Renovables Nivel Inicial
-
-ITP Neuquén:
-  • Control de Pozos — 32 hs | Cert. N° 404/21
-  • Coiled Tubing (Tubería Continua) — 32 hs | Cert. N° 526/21
-
-Global Training Technology (dic 2023):
-  • Nivelación WO/PU — 100/100 | Introducción Teórica — 90/100 | Especialización WO/PU — 100/100
-
-DLS Argentina (en contrato):
-  • Well Control Introductorio PAE | Montaje/Desmontaje BOP ×3
-  • Calificación Competencias Pulling Enganchador (nov 2024)
-  • H2S Alive | Trabajo en Altura ×3 renovaciones | RCP y 1° Auxilios
-  • SSMA | Salud Ocupacional | Gestión Medioambiente | Gestión Calidad
-
-━━━ COMPETENCIAS TÉCNICAS ━━━
-• Operaciones de pozo: Pulling pesado, BOP, tubulares, varillas, pistoneo, fluidos de completación
-• Sistemas hidráulicos: alta presión, mantenimiento preventivo/correctivo, diagnóstico de fallas
-• Instrumentación: sensores, transmisores, lazos de control, calibración
-• Automatización: control discreto y continuo, instalaciones eléctricas industriales
-• Seguridad HSE: Well Control, H2S Alive, trabajo en altura, análisis de riesgo
-• Software: AutoCAD, MS Office, Google Workspace | Inglés técnico (lectura)
-• Programación: POO, bases de datos (UTN, en curso)
+""" + GABRIEL_PROFILE + """
 
 ━━━ CVs DISPONIBLES (elegir según rol) ━━━
 1. CV Petróleo y Gas / Pulling / Torre
@@ -224,8 +158,13 @@ Incluí estas palabras exactas en el CV y el email para pasar los filtros autom�
 5. Apenas termines de armar el análisis y el email del paso 2-3 (en ese mismo turno, ANTES de
    mostrárselo a Gabriel, sin esperar que él confirme nada aparte), llamá a la herramienta
    guardar_resumen para registrar la búsqueda (empresa, cargo, resumen de requisitos, CV
-   recomendado, asunto y cuerpo del email, Y las keywords_ats — pasá la MISMA lista que pusiste
-   en "🔑 KEYWORDS ATS DETECTADAS", literal, sin resumirla). Esto es automático cada vez que
+   recomendado, asunto y cuerpo del email, las keywords_ats — pasá la MISMA lista que pusiste
+   en "🔑 KEYWORDS ATS DETECTADAS", literal, sin resumirla — Y el detalle_aviso: una
+   transcripción fiel y completa de lo que pide el aviso (tareas, requisitos excluyentes y
+   deseables, certificaciones, experiencia pedida, condiciones), tal cual figura en el aviso o
+   en las imágenes. Lo usa otra IA para armar el CV, y esa IA NO ve el aviso: lo que no pongas
+   en detalle_aviso no lo va a saber. Si te mandaron varias imágenes, juntá el contenido de
+   todas). Esto es automático cada vez que
    analizás un aviso nuevo — habilita el botón de generar CV y actualiza el título de la
    búsqueda en su historial. Si más adelante el análisis cambia (otro CV, email reescrito),
    volvé a llamar la herramienta para actualizar lo guardado.
@@ -249,6 +188,7 @@ def _make_guardar_resumen(session_id: int):
         asunto_email: str,
         cuerpo_email: str,
         keywords_ats: str = "",
+        detalle_aviso: str = "",
     ) -> str:
         """Guarda en la base de datos un resumen de la búsqueda analizada.
         Usá esta herramienta cuando el usuario confirme que va a aplicar,
@@ -265,6 +205,9 @@ def _make_guardar_resumen(session_id: int):
                 tal cual las mostraste en la sección "KEYWORDS ATS DETECTADAS" del
                 análisis. Se usan después para armar el CV — no las resumas ni las
                 parafrasees, pasalas literales.
+            detalle_aviso: Transcripción fiel y completa del aviso (tareas, requisitos
+                excluyentes y deseables, certificaciones, experiencia, condiciones).
+                La usa la IA que arma el CV, que no ve el aviso original.
         """
         title = f"{empresa} — {cargo}" if empresa and cargo else (cargo or empresa or "Búsqueda sin título")
         with Session(engine) as db:
@@ -278,6 +221,7 @@ def _make_guardar_resumen(session_id: int):
                         email_subject = :asunto,
                         email_body    = :cuerpo,
                         keywords_ats  = :keywords,
+                        aviso_detail  = :detalle,
                         updated_at    = :now
                     WHERE id = :session_id
                 """),
@@ -289,6 +233,7 @@ def _make_guardar_resumen(session_id: int):
                     "asunto":     asunto_email,
                     "cuerpo":     cuerpo_email,
                     "keywords":   keywords_ats,
+                    "detalle":    detalle_aviso,
                     "now":        now_utc(),
                     "session_id": session_id,
                 },
@@ -305,15 +250,15 @@ async def run_chat(
     session_id: int,
     history: list[dict],
     user_text: str,
-    image_b64: Optional[str] = None,
-    image_mime: str = "image/jpeg",
+    images: Optional[list[tuple[bytes, str]]] = None,
 ) -> str:
     """
     Envía el mensaje del usuario al agente Gemini y devuelve su respuesta.
     Maneja el bucle de function calling internamente.
-    """
-    import PIL.Image
 
+    images: lista de (bytes, mime_type) adjuntadas en ESTE mensaje — pueden ser
+    varias capturas del mismo aviso. Se mandan todas juntas en un solo turno.
+    """
     guardar_resumen_fn = _make_guardar_resumen(session_id)
 
     model = genai.GenerativeModel(
@@ -331,10 +276,17 @@ async def run_chat(
     chat = model.start_chat(history=gemini_history)
 
     # Construir el contenido del mensaje actual
-    if image_b64:
-        image_bytes = b64_module.b64decode(image_b64)
-        pil_image = PIL.Image.open(io.BytesIO(image_bytes))
-        parts = [pil_image, user_text or "Analizá esta imagen."]
+    if images:
+        # Blobs crudos (mime + bytes): Gemini los acepta directo, incluidos PDFs.
+        parts = [{"mime_type": mime or "image/jpeg", "data": data} for data, mime in images]
+        if len(images) > 1:
+            default_text = (
+                f"Te mando {len(images)} imágenes: son partes del MISMO aviso. "
+                "Leelas todas y analizalas juntas como un único aviso."
+            )
+        else:
+            default_text = "Analizá esta imagen."
+        parts.append(user_text or default_text)
     else:
         parts = [user_text]
 

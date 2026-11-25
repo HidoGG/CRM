@@ -252,6 +252,7 @@ function CvPreviewButton({ sessionId, onCvGenerated, cvHtml, onOpenModal }) {
   );
 }
 
+const MAX_CHAT_IMAGES = 5;
 const RESEND_MAX_DAYS = 30;
 const RESEND_MAX_HOURS = 4;
 
@@ -612,7 +613,7 @@ function applyEmailEdits(content, subject, body) {
 /** Miniatura de la imagen adjuntada en un mensaje del chat, con botón de
  *  descarga. La trae con apiFetch (no un <img src> directo) porque el
  *  backend exige la API key — un <img> del navegador no la mandaría. */
-function ChatImageThumb({ sessionId, messageId }) {
+function ChatImageThumb({ sessionId, messageId, index = 0 }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [failed, setFailed] = useState(false);
 
@@ -621,7 +622,7 @@ function ChatImageThumb({ sessionId, messageId }) {
     let objectUrl = null;
     (async () => {
       try {
-        const res = await apiFetch(getCareerMessageImageUrl(sessionId, messageId));
+        const res = await apiFetch(getCareerMessageImageUrl(sessionId, messageId, index));
         if (!res.ok) throw new Error();
         const blob = await res.blob();
         if (cancelled) return;
@@ -635,14 +636,14 @@ function ChatImageThumb({ sessionId, messageId }) {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [sessionId, messageId]);
+  }, [sessionId, messageId, index]);
 
   function handleDownload(e) {
     e.stopPropagation();
     if (!blobUrl) return;
     const a = document.createElement('a');
     a.href = blobUrl;
-    a.download = `imagen_${messageId}`;
+    a.download = `imagen_${messageId}_${index + 1}`;
     a.click();
   }
 
@@ -668,8 +669,9 @@ function ChatImageThumb({ sessionId, messageId }) {
   );
 }
 
-function MessageBubble({ role, content, hasImage, sessionId, messageId, hasStoredImage }) {
+function MessageBubble({ role, content, hasImage, sessionId, messageId, hasStoredImage, imageCount = 1, agent }) {
   const isUser = role === 'user';
+  const isGroq = agent === 'groq';
 
   // Parsea bloques de código delimitados por ``` y los renderiza con botón copiar
   function renderContent(text) {
@@ -705,11 +707,20 @@ function MessageBubble({ role, content, hasImage, sessionId, messageId, hasStore
   }
 
   return (
-    <div className={`career-bubble ${isUser ? 'career-bubble-user' : 'career-bubble-assistant'}`}>
+    <div className={`career-bubble ${isUser ? 'career-bubble-user' : 'career-bubble-assistant'} ${isGroq && !isUser ? 'career-bubble-groq' : ''}`}>
+      {isGroq && !isUser && <span className="career-bubble-agent-label">Groq · CV</span>}
       {hasImage && isUser && (
-        hasStoredImage
-          ? <ChatImageThumb sessionId={sessionId} messageId={messageId} />
-          : <span className="career-bubble-img-badge">📎 imagen adjunta</span>
+        hasStoredImage ? (
+          <div className="career-bubble-images">
+            {Array.from({ length: Math.max(1, imageCount) }, (_, i) => (
+              <ChatImageThumb key={i} sessionId={sessionId} messageId={messageId} index={i} />
+            ))}
+          </div>
+        ) : (
+          <span className="career-bubble-img-badge">
+            📎 {imageCount > 1 ? `${imageCount} imágenes adjuntas` : 'imagen adjunta'}
+          </span>
+        )
       )}
       <div className="career-bubble-text">
         {isUser ? (
@@ -788,8 +799,9 @@ export function CareerView() {
   const [loadingSession, setLoadingSession] = useState(false);
   const [sending, setSending] = useState(false);
   const [text, setText] = useState('');
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  // Imágenes adjuntas al próximo mensaje: [{ file, preview }] (hasta MAX_CHAT_IMAGES)
+  const [attachments, setAttachments] = useState([]);
+  const [attachError, setAttachError] = useState('');
   const [creatingNew, setCreatingNew] = useState(false);
   const [showHistory, setShowHistory] = useState(true); // mobile: alternar panel
 
@@ -869,42 +881,70 @@ export function CareerView() {
   }
 
   function handleImageChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = ev => setImagePreview(ev.target.result);
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files || []);
+    if (fileInputRef.current) fileInputRef.current.value = ''; // permite volver a elegir la misma foto
+    if (!files.length) return;
+    const room = MAX_CHAT_IMAGES - attachments.length;
+    setAttachError(files.length > room
+      ? `Podés adjuntar hasta ${MAX_CHAT_IMAGES} imágenes por mensaje.`
+      : '');
+    files.slice(0, Math.max(0, room)).forEach(file => {
+      const isImage = file.type.startsWith('image/');
+      const item = { file, preview: null, id: `${file.name}-${file.size}-${Math.random()}` };
+      setAttachments(prev => [...prev, item]);
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onload = ev => setAttachments(prev =>
+          prev.map(a => (a.id === item.id ? { ...a, preview: ev.target.result } : a)));
+        reader.readAsDataURL(file);
+      }
+    });
   }
 
-  function clearImage() {
-    setImageFile(null);
-    setImagePreview(null);
+  function removeAttachment(id) {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+    setAttachError('');
+  }
+
+  function clearAttachments() {
+    setAttachments([]);
+    setAttachError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   async function handleSend() {
-    if ((!text.trim() && !imageFile) || sending || !activeSessionId) return;
+    if ((!text.trim() && !attachments.length) || sending || !activeSessionId) return;
 
     const userText = text.trim();
-    const userImg = imageFile;
+    const userFiles = attachments.map(a => a.file);
+    const isGroq = /^\s*\/groq\b/i.test(userText);
+    const n = userFiles.length;
 
     // Optimistic UI
     const tempUserMsg = {
       id: Date.now(),
       role: 'user',
-      content: userImg ? (userText ? `[imagen] ${userText}` : '[imagen adjunta]') : userText,
-      has_image: !!userImg,
+      content: n && !isGroq
+        ? (userText ? `${n > 1 ? `[${n} imágenes]` : '[imagen]'} ${userText}` : (n > 1 ? `[${n} imágenes adjuntas]` : '[imagen adjunta]'))
+        : userText,
+      has_image: n > 0 && !isGroq,
+      image_count: n,
+      agent: isGroq ? 'groq' : null,
     };
     setMessages(prev => [...prev, tempUserMsg]);
     setText('');
-    clearImage();
+    clearAttachments();
     setSending(true);
 
     try {
-      const { reply } = await sendCareerMessage(activeSessionId, userText, userImg || null);
-      const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: reply, has_image: false };
+      const res = await sendCareerMessage(activeSessionId, userText, userFiles);
+      const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: res.reply, has_image: false, agent: res.agent };
       setMessages(prev => [...prev, assistantMsg]);
+      // /groq corrigió el CV → actualizar la vista previa y mostrarla
+      if (res.cv_updated && res.cv_html) {
+        setCvHtml(res.cv_html);
+        setShowCvModal(true);
+      }
       await qc.invalidateQueries({ queryKey: ['careerSessions'] });
       // El chat pudo haber guardado un asunto/cuerpo nuevo (guardar_resumen) —
       // refrescar para que el editor de email no muestre datos viejos.
@@ -912,10 +952,10 @@ export function CareerView() {
         const fresh = await fetchCareerSession(activeSessionId);
         setEmailSubject(fresh.email_subject || '');
         setEmailBody(fresh.email_body || '');
-        // Si se mandó una imagen, el mensaje optimista de arriba tiene un id
+        // Si se mandaron imágenes, el mensaje optimista de arriba tiene un id
         // falso (Date.now()) — sin los datos reales no se puede traer la
         // imagen guardada. Se reemplaza por la lista real del servidor.
-        if (userImg) setMessages(fresh.messages || []);
+        if (n && !isGroq) setMessages(fresh.messages || []);
       } catch {
         // no bloquea el chat si esto falla
       }
@@ -1037,7 +1077,7 @@ export function CareerView() {
                     <li>✉️ Cuerpo del email personalizado listo para copiar</li>
                   </ul>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                    📎 Adjuntá una imagen/captura · 🔗 Pegá un enlace de portal de empleo · ✍️ O escribí el texto del aviso
+                    📎 Adjuntá una o varias capturas (hasta {MAX_CHAT_IMAGES}) · 🔗 Pegá un enlace de portal de empleo · ✍️ O escribí el texto del aviso
                   </p>
                 </div>
               )}
@@ -1045,16 +1085,17 @@ export function CareerView() {
               {messages.map((msg, idx) => {
                 // Detecta el último mensaje del asistente que tiene análisis de aviso
                 // (con ``` bloques o con los emojis de sección del agente)
-                const hasAnalysis = (c) =>
+                // Los mensajes de /groq (corrección del CV) nunca cuentan como análisis.
+                const hasAnalysis = (m) => m.agent !== 'groq' && (c =>
                   c.includes('```') ||
                   c.includes('📧') ||
                   c.includes('✉️') ||
                   c.includes('ASUNTO') ||
-                  c.includes('CUERPO DEL EMAIL');
+                  c.includes('CUERPO DEL EMAIL'))(m.content);
                 const isLastAssistant =
                   msg.role === 'assistant' &&
-                  hasAnalysis(msg.content) &&
-                  messages.slice(idx + 1).every(m => m.role !== 'assistant' || !hasAnalysis(m.content));
+                  hasAnalysis(msg) &&
+                  messages.slice(idx + 1).every(m => m.role !== 'assistant' || !hasAnalysis(m));
                 return (
                   <div key={msg.id}>
                     <MessageBubble
@@ -1062,6 +1103,8 @@ export function CareerView() {
                       content={isLastAssistant ? applyEmailEdits(msg.content, emailSubject, emailBody) : msg.content}
                       hasImage={msg.has_image}
                       hasStoredImage={msg.has_stored_image}
+                      imageCount={msg.image_count || 1}
+                      agent={msg.agent}
                       sessionId={activeSessionId}
                       messageId={msg.id}
                     />
@@ -1100,25 +1143,34 @@ export function CareerView() {
 
             {/* Input */}
             <div className="career-input-area">
-              {imagePreview && (
-                <div className="career-image-preview">
-                  <img src={imagePreview} alt="imagen adjunta" />
-                  <button type="button" onClick={clearImage} aria-label="Quitar imagen">×</button>
+              {attachments.length > 0 && (
+                <div className="career-image-previews">
+                  {attachments.map(a => (
+                    <div key={a.id} className="career-image-preview">
+                      {a.preview
+                        ? <img src={a.preview} alt="imagen adjunta" />
+                        : <span className="career-image-preview-file">📄 {a.file.name}</span>}
+                      <button type="button" onClick={() => removeAttachment(a.id)} aria-label="Quitar imagen">×</button>
+                    </div>
+                  ))}
                 </div>
               )}
+              {attachError && <p className="career-attach-error">{attachError}</p>}
               <div className="career-input-row">
                 <button
                   type="button"
                   className="career-img-btn"
                   onClick={() => fileInputRef.current?.click()}
-                  title="Adjuntar imagen"
-                  aria-label="Adjuntar imagen"
+                  title={`Adjuntar imágenes (hasta ${MAX_CHAT_IMAGES})`}
+                  aria-label="Adjuntar imágenes"
+                  disabled={attachments.length >= MAX_CHAT_IMAGES}
                 >
                   <ImageIcon />
                 </button>
                 <input
                   type="file"
                   ref={fileInputRef}
+                  multiple
                   accept="image/*,.pdf"
                   onChange={handleImageChange}
                   hidden
@@ -1135,15 +1187,17 @@ export function CareerView() {
                 />
                 <button
                   type="button"
-                  className={`career-send-btn ${(!text.trim() && !imageFile) || sending ? 'is-disabled' : ''}`}
+                  className={`career-send-btn ${(!text.trim() && !attachments.length) || sending ? 'is-disabled' : ''}`}
                   onClick={handleSend}
-                  disabled={(!text.trim() && !imageFile) || sending}
+                  disabled={(!text.trim() && !attachments.length) || sending}
                   aria-label="Enviar"
                 >
                   <SendIcon />
                 </button>
               </div>
-              <p className="career-input-hint">Enter para enviar · Shift+Enter para nueva línea</p>
+              <p className="career-input-hint">
+                Enter para enviar · Shift+Enter para nueva línea · <strong>/groq</strong> + tu pedido para corregir el CV (<strong>/groq deshacer</strong> para volver atrás)
+              </p>
             </div>
           </>
         )}

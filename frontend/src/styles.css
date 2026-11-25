@@ -1352,8 +1352,40 @@ tr:last-child td {
   margin-bottom: 4px;
 }
 
+.career-bubble-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .career-bubble-image-wrap {
   margin-bottom: 6px;
+}
+
+.career-bubble-images .career-bubble-image-wrap {
+  margin-bottom: 0;
+}
+
+.career-bubble-images .career-bubble-thumb {
+  max-width: 140px;
+  max-height: 140px;
+}
+
+/* Respuestas de /groq (corrección del CV): se distinguen del chat normal */
+.career-bubble-groq {
+  background: var(--purple-bg);
+  border-color: var(--purple-text);
+}
+
+.career-bubble-agent-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--purple-text);
+  margin-bottom: 4px;
 }
 
 .career-bubble-thumb {
@@ -1965,10 +1997,38 @@ tr:last-child td {
   flex-shrink: 0;
 }
 
+.career-image-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding-top: 6px;
+}
+
 .career-image-preview {
   position: relative;
   display: inline-block;
-  margin-bottom: 8px;
+}
+
+.career-image-preview-file {
+  display: flex;
+  align-items: center;
+  height: 60px;
+  max-width: 140px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-faint);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.career-attach-error {
+  font-size: 0.75rem;
+  color: var(--red-text);
+  margin: 0 0 6px;
 }
 
 .career-image-preview img {
