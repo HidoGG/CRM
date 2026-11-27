@@ -1328,6 +1328,43 @@ async def send_career_email(session_id: int, payload: schemas.CareerDraftRequest
 # Rubros / Sectores industriales
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Búsquedas — ofertas laborales (Gemini + Google Search) y postulaciones
+# ---------------------------------------------------------------------------
+
+@app.get("/job-offers")
+def list_job_offers(status: str = Query("result")):
+    """Lista ofertas por estado: result (resultados), saved (mis postulaciones)."""
+    from modules import job_search
+    if status not in schemas.JOB_OFFER_STATUSES:
+        raise HTTPException(status_code=400, detail="Estado inválido.")
+    return job_search.list_offers(status)
+
+
+@app.post("/job-offers/search")
+@limiter.limit("6/hour")
+async def search_job_offers(request: Request):
+    """Busca ofertas nuevas en Google (solo Neuquén / Río Negro) y las guarda como resultados."""
+    from modules import job_search
+    try:
+        return await job_search.run_search()
+    except job_search.SearchBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        print(f"[job_search] Error en la búsqueda: {exc!r}")
+        raise HTTPException(status_code=502, detail=f"No se pudo completar la búsqueda: {exc}")
+
+
+@app.patch("/job-offers/{offer_id}")
+def update_job_offer(offer_id: int, payload: schemas.JobOfferUpdate):
+    """Guardar / descartar una oferta, cambiar el estado de la postulación, notas, seguimiento."""
+    from modules import job_search
+    updated = job_search.update_offer(offer_id, payload)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Oferta no encontrada.")
+    return updated
+
+
 @app.get("/sector-defaults")
 def list_sector_defaults():
     from modules.industry_service import get_sector_defaults

@@ -8,7 +8,7 @@ CRM personal de Gabriel Hidalgo para su búsqueda laboral en Oil & Gas / industr
 
 - **Backend**: FastAPI + uvicorn + SQLModel + psycopg3 + APScheduler. Carpeta `backend/`.
 - **Frontend**: React + Vite + TanStack Query. Carpeta `frontend/`.
-- **DB**: Supabase PostgreSQL vía pgBouncer puerto **6543 (transaction mode)**. Migraciones con Alembic (`backend/migrations/versions/`, cadena lineal, última: `0008_send_cycle.py`).
+- **DB**: Supabase PostgreSQL vía pgBouncer puerto **6543 (transaction mode)**. Migraciones con Alembic (`backend/migrations/versions/`, cadena lineal, última: `0014_job_offers.py`).
 - **Env vars** en `backend/.env`: `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `PORT`. dotenv se carga al tope de `server.py`.
 - Correr local: backend `python server.py` dentro de `backend/` (venv activo); frontend `npm run dev` dentro de `frontend/` (puerto 5173).
 
@@ -32,7 +32,8 @@ Otras advertencias operativas:
 - **Cola circular de envíos**: tabla `email_jobs`. Tras un envío exitoso se crea un job nuevo al final de la cola. `backfill_missing_email_jobs()` (startup + cada hora) crea jobs pendientes para contactos con `next_action='enviar'` sin job.
 - **Rubros**: `contacts.industry` (oilgas, industria, generalista, tecnologia). Tabla `sector_defaults` mapea rubro → `template_id` + `cv_file_id`. El preview de email (`get_email_preview()` en `crm_service.py`) cae a sector_defaults si el job no tiene template.
 - **Ciclo de envío**: un ciclo = una pasada completa por todos los contactos con `next_action='enviar'`. `contacts.last_sent_at` marca el envío; `app_settings.cycle_started_at` marca el inicio del ciclo; `_check_and_advance_cycle()` arranca ciclo nuevo cuando no queda nadie sin enviar. Endpoint `GET /cycle`. En el frontend, el filtro "Enviados" de Operaciones usa `last_sent_at >= cycle_started_at`.
-- **Navegación** (Sidebar): Hoy · Operaciones (Bandeja/Pipeline/Agenda) · Contactos · Importaciones · **Configuración** (antes "Envíos"; sub-pestaña "Conexión y CVs") · Asistente IA.
+- **Navegación** (Sidebar): Hoy · Operaciones (Bandeja/Pipeline/Agenda) · **Búsquedas** (Resultados / Mis postulaciones) · Contactos · Importaciones · **Configuración** (antes "Envíos"; sub-pestaña "Conexión y CVs") · Asistente IA.
+- **Búsquedas** (`backend/modules/job_search.py`, tabla `job_offers`, vista `BusquedasView.jsx`): botón "Buscar" → 3 búsquedas cortas en paralelo con Gemini + Google Search (SDK nuevo `google-genai`; el Asistente sigue con el viejo `google-generativeai`, que no soporta Google Search) → otra llamada sin buscador evalúa A–F con `GABRIEL_PROFILE`. Solo Neuquén / Río Negro; solo se muestran A/B/C. Si Gemini no usó Google (grounding vacío) NO se guarda nada (evita ofertas inventadas). `url_verified` = el link figura entre las fuentes reales de Google; Bumeran/Computrabajo/ZonaJobs responden 200 aunque el aviso no exista, así que un 200 no confirma. Deduplicación por `url_key` y `dedupe_key` (1ra palabra de la empresa + puesto sin acentos). Seguimiento: postulado/en_proceso con 7+ días sin contacto → aviso en Hoy y contador en el menú. Tarda ~1,5–2 min.
 
 ## Archivos clave
 

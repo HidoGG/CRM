@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
-import { API_BASE, apiFetch } from '../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { API_BASE, apiFetch, updateJobOffer } from '../lib/api';
+import { useJobOffers } from '../lib/queries';
+import { APPLICATION_STATUS_LABEL, daysSinceContact } from '../lib/jobOffers';
 
 // ── Iconos inline (sin dependencias externas) ──────────────────────────────────
 const IconSend    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
@@ -214,6 +218,9 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
         )}
       </div>
 
+      {/* ── Postulaciones para hacer seguimiento (pestaña Búsquedas) ── */}
+      <JobFollowUps />
+
       {/* ── KPIs ── */}
       <div className="hoy-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
         <KpiCard
@@ -406,6 +413,73 @@ export function HoyView({ summary, contacts, emailJobs, onRefresh }) {
 }
 
 // ── Sub-componentes ────────────────────────────────────────────────────────────
+
+/** Postulaciones de "Búsquedas" con 7+ días sin respuesta. Solo aparece si hay alguna. */
+function JobFollowUps() {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const saved = useJobOffers('saved').data || [];
+  const [busyId, setBusyId] = useState(null);
+  const due = saved.filter(o => o.follow_up_due);
+  if (due.length === 0) return null;
+
+  async function patch(offer, body) {
+    setBusyId(offer.id);
+    try {
+      await updateJobOffer(offer.id, body);
+      await qc.invalidateQueries({ queryKey: ['jobOffers'] });
+    } catch (e) {
+      console.error('[seguimiento]', e);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <DetailPanel
+      title="Postulaciones: mandá seguimiento"
+      count={due.length}
+      emptyMsg=""
+      countColor="var(--amber-text)"
+      countBg="var(--amber-bg)"
+    >
+      {due.map(o => (
+        <ContactRow
+          key={o.id}
+          icon={<IconClock />}
+          iconColor="var(--amber-text)"
+          iconBg="var(--amber-bg)"
+          name={o.title}
+          company={o.company || '—'}
+          detail={`Pasaron ${daysSinceContact(o)} días sin respuesta`}
+          date={APPLICATION_STATUS_LABEL[o.application_status] || ''}
+        >
+          <ActionButton
+            label="Ya hice seguimiento"
+            loading={busyId === o.id}
+            variant="neutral"
+            onClick={() => patch(o, { follow_up_done: true })}
+            title="Reinicia el contador: te vuelve a avisar en 7 días si no hay respuesta."
+          />
+          <ActionButton
+            label="Cerrar"
+            loading={busyId === o.id}
+            variant="neutral"
+            onClick={() => patch(o, { application_status: 'cerrado' })}
+            title="Marca la postulación como cerrada (no te avisa más)."
+          />
+          <ActionButton
+            label="Ver en Búsquedas"
+            loading={false}
+            variant="neutral"
+            onClick={() => navigate('/busquedas')}
+            title="Abre la pestaña Búsquedas → Mis postulaciones."
+          />
+        </ContactRow>
+      ))}
+    </DetailPanel>
+  );
+}
 
 function KpiCard({ icon, label, value, sub, subColor = 'neutral', iconBg, iconColor, highlight = false }) {
   const subColors = { green: 'var(--green-text)', red: 'var(--red-text)', amber: 'var(--amber-text)', neutral: 'var(--text-secondary)' };

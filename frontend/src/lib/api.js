@@ -195,3 +195,33 @@ export async function patchSectorDefault(sector, templateId, cvFileId) {
   }
   return res.json();
 }
+
+// ── Búsquedas — ofertas laborales y postulaciones ───────────────────────────
+
+export async function fetchJobOffers(status = 'result') {
+  return getJson(`/job-offers?status=${encodeURIComponent(status)}`);
+}
+
+/** Busca ofertas nuevas en Google (tarda 1–2 minutos). */
+export async function searchJobOffers() {
+  const res = await apiFetch(`${API_BASE}/job-offers/search`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (res.status === 429) throw new Error('Hiciste muchas búsquedas seguidas. Esperá un rato y probá de nuevo.');
+    throw new Error(err.detail || err.error || 'No se pudo completar la búsqueda');
+  }
+  return res.json();
+}
+
+export async function updateJobOffer(offerId, patch) {
+  const res = await apiFetch(`${API_BASE}/job-offers/${offerId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'No se pudo actualizar la oferta');
+  }
+  return res.json();
+}

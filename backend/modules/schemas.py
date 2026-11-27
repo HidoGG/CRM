@@ -230,3 +230,34 @@ class CareerResendScheduleRequest(BaseModel):
         if len(set(cleaned)) != len(cleaned):
             raise ValueError("hay horarios repetidos")
         return sorted(cleaned)
+
+
+# ---------------------------------------------------------------------------
+# Búsquedas — ofertas laborales y postulaciones
+# ---------------------------------------------------------------------------
+
+JOB_OFFER_STATUSES = {"result", "saved", "dismissed"}
+APPLICATION_STATUSES = {"pendiente", "postulado", "en_proceso", "entrevista", "rechazado", "cerrado"}
+
+
+class JobOfferUpdate(BaseModel):
+    status: str | None = None
+    application_status: str | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+    career_session_id: int | None = None
+    # True = "Ya hice seguimiento": reinicia el contador de 7 días.
+    follow_up_done: bool = False
+
+    @field_validator("status")
+    @classmethod
+    def status_must_be_valid(cls, v: str | None) -> str | None:
+        if v is not None and v not in JOB_OFFER_STATUSES:
+            raise ValueError(f"estado inválido: {v!r}")
+        return v
+
+    @field_validator("application_status")
+    @classmethod
+    def application_status_must_be_valid(cls, v: str | None) -> str | None:
+        if v is not None and v not in APPLICATION_STATUSES:
+            raise ValueError(f"estado de postulación inválido: {v!r}")
+        return v

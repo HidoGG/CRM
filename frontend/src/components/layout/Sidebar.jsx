@@ -19,6 +19,7 @@ const MoonIcon = () => (
 const navItems = [
   { id: 'dashboard',     label: 'Hoy',          note: 'Centro de control',           badge: true },
   { id: 'operaciones',   label: 'Operaciones',   note: 'Bandeja · Pipeline · Agenda', badge: true },
+  { id: 'busquedas',     label: 'Búsquedas',     note: 'Ofertas y postulaciones',     badge: true },
   { id: 'contactos',     label: 'Contactos',     note: 'Base y filtros'               },
   { id: 'importaciones', label: 'Importaciones', note: 'Cargar empresas'              },
   { id: 'envios',        label: 'Configuración', note: 'Gmail, CVs y plantillas'      },
@@ -31,13 +32,14 @@ const CloseIcon = () => (
   </svg>
 );
 
-export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount = 0, unseenRepliesCount = 0, theme, toggleTheme, isOpen, onClose }) {
+export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount = 0, unseenRepliesCount = 0, followUpDueCount = 0, theme, toggleTheme, isOpen, onClose }) {
   const isDark = theme === 'dark';
 
   // Contador rojo por ítem del menú: Hoy = respuestas sin ver, Operaciones = vencidos
   const badgeByItem = {
     dashboard: unseenRepliesCount,
     operaciones: overdueCount,
+    busquedas: followUpDueCount,
   };
 
   function handleNavClick(id) {
@@ -77,7 +79,8 @@ export function Sidebar({ activeView, setActiveView, statusMessage, overdueCount
             (item.id === 'envios' && (activeView === 'plantillas' || activeView === 'cronogramas'));
 
           const badgeCount = item.badge ? (badgeByItem[item.id] || 0) : 0;
-          const badgeLabel = item.id === 'dashboard' ? 'respuestas sin ver' : 'vencidos';
+          const badgeLabel = item.id === 'dashboard' ? 'respuestas sin ver'
+            : item.id === 'busquedas' ? 'para hacer seguimiento' : 'vencidos';
 
           return (
             <button

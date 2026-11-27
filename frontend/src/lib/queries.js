@@ -146,3 +146,13 @@ export function useRefresh() {
     await client.invalidateQueries();
   };
 }
+
+// Búsquedas: status 'result' (resultados) o 'saved' (mis postulaciones)
+export function useJobOffers(status) {
+  return useQuery({
+    queryKey: ['jobOffers', status],
+    queryFn: () => import('./api').then(m => m.fetchJobOffers(status)),
+    placeholderData: [],
+    staleTime: 60_000,
+  });
+}
