@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   apiFetch,
   createCareerSession,
@@ -825,6 +826,25 @@ export function CareerView() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Viene de "Búsquedas → Analizar en Asistente": abre ese chat y, si es nuevo,
+  // manda solo el mensaje con los datos de la oferta. Se limpia el state de la
+  // navegación para que recargar la página no lo vuelva a mandar.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const handledNavKeyRef = useRef(null);
+  useEffect(() => {
+    const { openSessionId, autoMessage } = location.state || {};
+    if (!openSessionId || handledNavKeyRef.current === location.key) return;
+    handledNavKeyRef.current = location.key;
+    navigate(location.pathname, { replace: true, state: null });
+    (async () => {
+      await qc.invalidateQueries({ queryKey: ['careerSessions'] });
+      await openSession(openSessionId);
+      if (autoMessage) await sendMessage(openSessionId, autoMessage);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+
   // Al seleccionar una sesión, carga mensajes + CV guardado
   async function openSession(sessionId) {
     if (sessionId === activeSessionId) return;
@@ -917,6 +937,14 @@ export function CareerView() {
 
     const userText = text.trim();
     const userFiles = attachments.map(a => a.file);
+    setText('');
+    clearAttachments();
+    await sendMessage(activeSessionId, userText, userFiles);
+  }
+
+  // Envía un mensaje a una sesión (lo usa el input y el "Analizar en Asistente"
+  // de la pestaña Búsquedas, que llega con el mensaje ya armado).
+  async function sendMessage(sessionId, userText, userFiles = []) {
     const isGroq = /^\s*\/groq\b/i.test(userText);
     const n = userFiles.length;
 
@@ -932,12 +960,10 @@ export function CareerView() {
       agent: isGroq ? 'groq' : null,
     };
     setMessages(prev => [...prev, tempUserMsg]);
-    setText('');
-    clearAttachments();
     setSending(true);
 
     try {
-      const res = await sendCareerMessage(activeSessionId, userText, userFiles);
+      const res = await sendCareerMessage(sessionId, userText, userFiles);
       const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: res.reply, has_image: false, agent: res.agent };
       setMessages(prev => [...prev, assistantMsg]);
       // /groq corrigió el CV → actualizar la vista previa y mostrarla
@@ -949,7 +975,7 @@ export function CareerView() {
       // El chat pudo haber guardado un asunto/cuerpo nuevo (guardar_resumen) —
       // refrescar para que el editor de email no muestre datos viejos.
       try {
-        const fresh = await fetchCareerSession(activeSessionId);
+        const fresh = await fetchCareerSession(sessionId);
         setEmailSubject(fresh.email_subject || '');
         setEmailBody(fresh.email_body || '');
         // Si se mandaron imágenes, el mensaje optimista de arriba tiene un id

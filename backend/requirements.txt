@@ -28,6 +28,8 @@ openai>=2.36.0
 
 # Agente de RRHH (Gemini via Google Generative AI)
 google-generativeai>=0.8.0
+# Pestaña Búsquedas: Gemini + Google Search (el SDK viejo no lo soporta)
+google-genai>=1.0.0
 Pillow>=10.0.0
 
 # Gmail API

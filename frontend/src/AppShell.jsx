@@ -9,6 +9,7 @@ import { ContactsView } from './views/ContactsView';
 import { ImportsView } from './views/ImportsView';
 import { EnviosView } from './views/EnviosView';
 import { CareerView } from './views/CareerView';
+import { BusquedasView } from './views/BusquedasView';
 import { LoginView } from './views/LoginView';
 import { API_BASE, apiFetch, setAccessToken } from './lib/api';
 import { authEnabled, supabase } from './lib/supabaseClient';
@@ -19,6 +20,7 @@ import {
   useImports,
   useRefresh,
   useReporting,
+  useJobOffers,
   useSummary,
   useCycleInfo,
 } from './lib/queries';
@@ -43,6 +45,7 @@ const VIEW_ROUTES = {
   operaciones: '/operaciones',
   bandeja: '/operaciones',
   pipeline: '/operaciones',
+  busquedas: '/busquedas',
   contactos: '/contactos',
   importaciones: '/importaciones',
   envios: '/envios',
@@ -54,6 +57,7 @@ const VIEW_ROUTES = {
 const PATH_TITLES = {
   '/': 'Hoy',
   '/operaciones': 'Operaciones',
+  '/busquedas': 'Búsquedas',
   '/contactos': 'Contactos',
   '/importaciones': 'Importaciones',
   '/envios': 'Configuración',
@@ -62,6 +66,7 @@ const PATH_TITLES = {
 
 function pathToViewId(pathname) {
   if (pathname.startsWith('/operaciones')) return 'operaciones';
+  if (pathname.startsWith('/busquedas')) return 'busquedas';
   if (pathname.startsWith('/contactos')) return 'contactos';
   if (pathname.startsWith('/importaciones')) return 'importaciones';
   if (pathname.startsWith('/envios')) return 'envios';
@@ -166,6 +171,9 @@ function AuthenticatedApp({ theme, toggleTheme }) {
   const emailJobs = useEmailJobs().data || [];
   const cycleInfo = useCycleInfo().data;
   const cycleStartedAt = cycleInfo?.cycle_started_at ?? null;
+  // Postulaciones con seguimiento vencido (contador rojo en el menú Búsquedas)
+  const savedOffers = useJobOffers('saved').data || [];
+  const followUpDueCount = savedOffers.filter((o) => o.follow_up_due).length;
 
   // ── Auto-sync de Gmail al abrir el CRM (una sola vez por carga de la app) ──
   const didAutoSyncRef = useRef(false);
@@ -673,6 +681,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
         setActiveView={setActiveView}
         statusMessage={statusMessage}
         overdueCount={reporting.queue.overdue}
+        followUpDueCount={followUpDueCount}
         unseenRepliesCount={contacts.filter((c) => c.replied_at && !c.reply_seen_at).length}
         theme={theme}
         toggleTheme={toggleTheme}
@@ -815,6 +824,7 @@ function AuthenticatedApp({ theme, toggleTheme }) {
               <EnviosView onRefresh={refresh} />
             }
           />
+          <Route path="/busquedas" element={<BusquedasView />} />
           <Route path="/asistente" element={<CareerView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
