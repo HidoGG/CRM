@@ -34,6 +34,27 @@ const SECTOR_FILTERS = [
 // Set a nivel de módulo: no se recrea en cada render
 const KNOWN_INDUSTRIES = new Set(['oilgas', 'industria', 'generalista', 'tecnologia']);
 
+// Buscador: minúsculas y sin tildes ("Petróleo" = "petroleo")
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+// Versión sin espacios ni signos, para que "one tetra" o "one-tetra" encuentren "onetetra"
+function compactText(value) {
+  return value.replace(/[^a-z0-9@]/g, '');
+}
+
+// Todo el texto donde busca el buscador: nombre, empresa, email (y su dominio), cargo y notas
+function buildSearchText(c) {
+  const email = c.email || '';
+  const domain = email.includes('@') ? email.split('@')[1] : '';
+  return normalizeText([c.name, c.company, email, domain, c.title, c.notes].join(' '));
+}
+
 export function ContactsView({ contacts, allContacts, activeFilter, onFilterChange, form, onFormChange, onSubmit, onReset, saving, onDelete, onUpdate }) {
   const [activeTab, setActiveTab]     = useState('lista');
   const [confirmId, setConfirmId]     = useState(null);
@@ -112,21 +133,28 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
     return map;
   }, [allContacts, contacts]);
 
+  const searchTokens = useMemo(() => {
+    const q = normalizeText(searchQuery);
+    return q ? q.split(/\s+/).filter(Boolean) : [];
+  }, [searchQuery]);
+
   const visibleContacts = useMemo(() => contacts.filter(c => {
     if (sectorFilter === 'unset') {
       if (KNOWN_INDUSTRIES.has(c.industry)) return false;
     } else if (sectorFilter) {
       if (c.industry !== sectorFilter) return false;
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      if (
-        !(c.name || '').toLowerCase().includes(q) &&
-        !(c.company || '').toLowerCase().includes(q)
-      ) return false;
+    if (searchTokens.length) {
+      const haystack = buildSearchText(c);
+      const compact = compactText(haystack);
+      // Cada palabra buscada tiene que aparecer en algún campo (en cualquier orden).
+      // Se compara también sin espacios/puntos: "one tetra" encuentra "onetetra".
+      if (!searchTokens.every(t => haystack.includes(t) || compact.includes(compactText(t)))) {
+        return false;
+      }
     }
     return true;
-  }), [contacts, sectorFilter, searchQuery]);
+  }), [contacts, sectorFilter, searchTokens]);
 
   function openEdit(contact) {
     setEditContact(contact);
@@ -305,8 +333,8 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <input
-              type="search"
-              placeholder="Buscar por nombre o empresa…"
+              type="text"
+              placeholder="Buscar por nombre, empresa, email o cargo…"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               style={{
@@ -320,7 +348,7 @@ export function ContactsView({ contacts, allContacts, activeFilter, onFilterChan
                 outline: 'none',
                 boxSizing: 'border-box',
               }}
-              aria-label="Buscar contactos por nombre o empresa"
+              aria-label="Buscar contactos por nombre, empresa, email o cargo"
             />
             {searchQuery && (
               <button
